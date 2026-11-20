@@ -6,6 +6,7 @@ import struct
 import tempfile
 import unittest
 import zlib
+from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
@@ -238,6 +239,133 @@ def _staging(root: Path) -> StagingStorageResource:
 
 
 class UsLandslideRegionsSourceTests(unittest.TestCase):
+    def test_retained_page_reads_and_decodes_have_no_duplicate_corpus_passes(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        for initially_sealed in (True, False):
+            with self.subTest(initially_sealed=initially_sealed), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture_root = root / "capture"
+                decodes, reads = Counter(), Counter()
+                load, read_bytes = src.load_replay, Path.read_bytes
+
+                def load_page(directory, name):
+                    if src._PAGE_NAME_PATTERN.fullmatch(name): decodes[name] += 1
+                    return load(directory, name)
+
+                def read_page(path):
+                    if path.parent == capture_root and path.suffix in {".body", ".wire"}:
+                        name = path.name.removesuffix(path.suffix)
+                        if src._PAGE_NAME_PATTERN.fullmatch(name): reads[name, path.suffix] += 1
+                    return read_bytes(path)
+
+                with fixture_mode(schema_sha, make_responder(rows)), \
+                        patch.object(src, "load_replay", side_effect=load_page), \
+                        patch.object(Path, "read_bytes", autospec=True, side_effect=read_page):
+                    storage = _staging(root)
+                    if initially_sealed:
+                        src.capture_us_landslide_regions(storage, version="first", capture_directory=str(capture_root))
+                        self.assertEqual(set(decodes.values()), {3})
+                        self.assertEqual({count for (name, suffix), count in reads.items() if suffix == ".body"}, {4})
+                        self.assertEqual({count for (name, suffix), count in reads.items() if suffix == ".wire"}, {5})
+                    else:
+                        src.fetch_us_landslide_regions_pages(capture_root)
+                    decodes.clear(); reads.clear()
+                    with patch.object(src, "_PageStream", wraps=src._PageStream) as streams:
+                        result = src.capture_us_landslide_regions(storage, version="resume", capture_directory=str(capture_root))
+                    self.assertEqual(streams.call_count, 2)
+                    self.assertEqual(result["reused"], initially_sealed)
+                    self.assertEqual(len(decodes), 2)
+                    self.assertEqual(set(decodes.values()), {4 if initially_sealed else 5})
+                    self.assertEqual({count for (name, suffix), count in reads.items() if suffix == ".body"},
+                                     {4 if initially_sealed else 5})
+                    self.assertEqual({count for (name, suffix), count in reads.items() if suffix == ".wire"},
+                                     {4 if initially_sealed else 6})
+
+    def test_accepted_corruption_fails_before_network_write_or_quarantine(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                src.fetch_us_landslide_regions_pages(capture_root)
+                page = json.loads((capture_root / "capture_state.json").read_bytes())["pages"][0]["name"]
+                body = (capture_root / f"{page}.body").read_bytes().replace(b"Inventory A", b"Inventory X")
+                (capture_root / f"{page}.body").write_bytes(body)
+                receipt_path = capture_root / f"{page}.receipt.json"
+                receipt = json.loads(receipt_path.read_bytes())
+                receipt.update(bytes=len(body), sha256=src._sha(body))
+                receipt_path.write_bytes(json.dumps(receipt).encode())
+                before = {p.name: p.read_bytes() for p in capture_root.iterdir()}
+                with patch.object(src, "_default_client", side_effect=AssertionError("HTTP forbidden")), \
+                        patch.object(Path, "write_bytes", side_effect=AssertionError("write forbidden")), \
+                        patch.object(src, "_witness_aside", side_effect=AssertionError("rename forbidden")), \
+                        patch.object(src, "quarantine_incomplete_capture", side_effect=AssertionError("quarantine forbidden")):
+                    with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_wire_body_mismatch"):
+                        src.capture_us_landslide_regions(_staging(root), version="forged", capture_directory=str(capture_root))
+                self.assertEqual({p.name: p.read_bytes() for p in capture_root.iterdir()}, before)
+
+    def test_refused_custody_is_verified_once_at_admission_not_by_repeated_corpus_scans(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        for failure in ("producer_error", "truncated_gzip"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture_root = root / "capture"
+                inner = make_responder(_fixture_rows(), refuse_counts={4})
+
+                def respond(request):
+                    response = inner.handler(request)
+                    if failure == "producer_error": return response
+                    body = response.read(); response.close()
+                    wire = gzip.compress(body, mtime=0)
+                    if parse_qs(urlsplit(str(request.url)).query).get("resultRecordCount") == ["4"]:
+                        wire = wire[:-4]
+                    return httpx.Response(200, headers={"Content-Encoding": "gzip", "Content-Length": str(len(wire))},
+                                          stream=httpx.ByteStream(wire))
+
+                with fixture_mode(schema_sha, httpx.MockTransport(respond)), \
+                        patch.object(src, "_validate_retained_transport", wraps=src._validate_retained_transport) as verification:
+                    storage = _staging(root)
+                    src.capture_us_landslide_regions(storage, version="first", capture_directory=str(capture_root))
+                    admissions = [tuple(call.kwargs["names"]) for call in verification.call_args_list if call.kwargs.get("names") is not None]
+                    self.assertEqual(len(admissions), 6)
+                    self.assertEqual(len(set(admissions)), 6)
+                    self.assertEqual(len(verification.call_args_list), 6)
+                    originals = {key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}
+                    evidence = [key for key in originals if "/evidence/refused/" in key]
+                    self.assertEqual(len(evidence), 18)
+                    for key in evidence:
+                        self.assertEqual(storage.read_key(key), (capture_root / key.split("/evidence/refused/")[1]).read_bytes())
+                    verification.reset_mock()
+                    with patch.object(src, "_default_client", side_effect=lambda: httpx.Client(
+                            transport=httpx.MockTransport(lambda request: (_ for _ in ()).throw(AssertionError("HTTP forbidden"))))):
+                        result = src.capture_us_landslide_regions(storage, version="replay", capture_directory=str(capture_root))
+                    self.assertTrue(result["reused"])
+                    self.assertEqual(verification.call_count, 1)
+                    self.assertIsNone(verification.call_args.kwargs.get("names"))
+                    self.assertEqual({key: (storage.read_key(key), storage.object_snapshot(key)) for key in storage.list_prefix("")}, originals)
+
+    def test_refused_bytes_cannot_change_between_verification_and_admission(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            verify = src._validate_retained_transport
+
+            def change_after_verification(directory, *, names=None):
+                verify(directory, names=names)
+                if names:
+                    path = directory / f"{next(iter(names))}.wire"
+                    path.write_bytes(path.read_bytes() + b"changed")
+
+            with fixture_mode(schema_sha, make_responder(_fixture_rows(), refuse_counts={4})), \
+                    patch.object(src, "_validate_retained_transport", side_effect=change_after_verification):
+                storage = _staging(root)
+                with self.assertRaisesRegex(src.UsLandslideRegionsError, "retained_capture_changed_during_admission"):
+                    src.capture_us_landslide_regions(storage, version="changed", capture_directory=str(capture_root))
+                self.assertFalse(storage.list_prefix("_construction-state/"))
+                self.assertFalse(any("/evidence/refused/" in key for key in storage.list_prefix("")))
+
     def test_retained_capture_binds_identity_and_gzip_wire_to_body(self):
         for encoding in ("identity", "gzip"):
             with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as tmp:
@@ -331,7 +459,7 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                 name = "layer_before.attempt-01"
                 for suffix in ("body", "wire", "receipt.json"):
                     (root / f"layer_before.{suffix}").rename(root / f"{name}.{suffix}")
-                self.assertEqual(src._validate_retained_transport(root), [name])
+                src._validate_retained_transport(root)
                 receipt_path = root / f"{name}.receipt.json"
                 receipt = json.loads(receipt_path.read_bytes())
                 forged = b"x" * max(1, receipt["bytes"])
