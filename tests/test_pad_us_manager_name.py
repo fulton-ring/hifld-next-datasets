@@ -2,6 +2,7 @@
 import io
 import gzip
 import json
+import os
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -735,8 +736,10 @@ class PadUsManagerNameTests(unittest.TestCase):
                     (root / f"{name}.receipt.json").write_bytes(src._canonical(receipt))
                     with patch.object(src, "MAX_BODY_BYTES",
                                       len(body) - 1 if case == "oversized" else src.MAX_BODY_BYTES):
-                        with self.assertRaisesRegex(src.PadUsManagerNameError,
-                                                    "retained_capture_receipt_invalid"):
+                        with self.assertRaisesRegex(
+                                src.PadUsManagerNameError,
+                                "source_capture_exceeds_scratch_budget" if case == "oversized"
+                                else "retained_capture_receipt_invalid"):
                             src._read_capture(root, name)
 
     def test_resume_refetches_entire_closing_group_after_another_interruption(self):
@@ -845,13 +848,98 @@ class PadUsManagerNameTests(unittest.TestCase):
                 src.fetch_pad_us_manager_name_pages(capture)
                 name = src._load_state(capture)["segments"][0]["name"]
                 (capture / f"{name}.body").unlink()
+                state_before = (capture / "capture_state.json").read_bytes()
                 with patch.object(src, "MAX_CAPTURE_BYTES", 0):
                     with self.assertRaises(src.PadUsManagerNameError):
                         src.capture_pad_us_manager_name(_staging(root), version="budget",
                                                        capture_directory=str(capture))
-                self.assertFalse(src._load_state(capture)["complete"])
+                self.assertEqual((capture / "capture_state.json").read_bytes(), state_before)
                 self.assertFalse(list((root / "staging").rglob("candidate_ready.json")))
-                self.assertTrue(list((root / "staging" / "_quarantine").rglob("failure.json")))
+                self.assertFalse(list((root / "staging" / "_quarantine").rglob("failure.json")))
+
+    def test_retained_directory_admission_refuses_before_any_read_or_recovery(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        for case in ("total", "artifact", "fifo", "symlink", "directory", "unknown"):
+            with self.subTest(case), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture = root / "capture"
+                with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                    src.fetch_pad_us_manager_name_pages(capture)
+                    target = capture / "capture_state.json"
+                    total = sum(path.stat().st_size for path in capture.iterdir())
+                    if case == "fifo":
+                        target.unlink()
+                        os.mkfifo(target)
+                    elif case == "symlink":
+                        target.unlink()
+                        target.symlink_to(capture / "computed_baseline.json")
+                    elif case == "directory":
+                        target.unlink()
+                        target.mkdir()
+                    elif case == "unknown":
+                        (capture / "unexpected.bin").write_bytes(b"unexpected")
+                    before = {path.name: path.lstat() for path in capture.iterdir()}
+                    with (
+                        patch.object(src, "MAX_CAPTURE_BYTES",
+                                     total - 1 if case == "total" else src.MAX_CAPTURE_BYTES),
+                        patch.object(src, "MAX_BODY_BYTES",
+                                     1 if case == "artifact" else src.MAX_BODY_BYTES),
+                        patch.object(Path, "read_bytes", side_effect=AssertionError("content read")),
+                        patch.object(src, "_witness_aside", side_effect=AssertionError("recovery")),
+                        patch.object(src, "quarantine_incomplete_capture",
+                                     side_effect=AssertionError("quarantine")),
+                        patch.object(httpx.Client, "send", side_effect=AssertionError("HTTP")),
+                    ):
+                        for run in (
+                            lambda: src._load_state(capture),
+                            lambda: src.fetch_pad_us_manager_name_pages(capture),
+                            lambda: src._stream_validate(capture, parquet_sink=None),
+                            lambda: src.capture_pad_us_manager_name(
+                                _staging(root), version="admission", capture_directory=str(capture)),
+                        ):
+                            with self.assertRaises(src.PadUsManagerNameError):
+                                run()
+                    self.assertEqual(before, {path.name: path.lstat()
+                                              for path in capture.iterdir()})
+
+    def test_admission_counts_retained_evidence_and_generated_sidecars(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        names = ("layer_before.error-123.body", "page_000000_00002.attempt-01.wire",
+                 "capture_state.json.tmp", f"{src.FILE_SLUG}.parquet",
+                 f"{src.FILE_SLUG}.parquet.construction-tmp")
+        for name in names:
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                    src.fetch_pad_us_manager_name_pages(root)
+                    (root / name).write_bytes(b"retained evidence or generated output")
+                    total = sum(path.stat().st_size for path in root.iterdir())
+                    with (
+                        patch.object(src, "MAX_CAPTURE_BYTES", total - 1),
+                        patch.object(Path, "read_bytes", side_effect=AssertionError("content read")),
+                    ):
+                        with self.assertRaisesRegex(src.PadUsManagerNameAdmissionError,
+                                                    "source_capture_exceeds_scratch_budget"):
+                            src.fetch_pad_us_manager_name_pages(root)
+
+    def test_direct_replay_refuses_nonregular_artifacts_before_loading(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        for kind in ("fifo", "symlink", "directory"):
+            with self.subTest(kind), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                with fixture_mode(schema_sha, make_responder(_fixture_rows())):
+                    src.fetch_pad_us_manager_name_pages(root)
+                    path = root / "layer_before.wire"
+                    path.unlink()
+                    if kind == "fifo":
+                        os.mkfifo(path)
+                    elif kind == "symlink":
+                        path.symlink_to(root / "layer_before.body")
+                    else:
+                        path.mkdir()
+                    with patch.object(shared, "load_replay", side_effect=AssertionError("load")):
+                        with self.assertRaises(src.PadUsManagerNameAdmissionError):
+                            src._read_capture(root, "layer_before")
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ import hashlib
 import json
 import re
 import shutil
+import stat
 from array import array
 from collections import deque
 from datetime import datetime, timezone
@@ -156,6 +157,40 @@ class PadUsManagerNameError(ValueError):
     def __init__(self, code: str):
         self.code = code
         super().__init__(code)
+
+
+class PadUsManagerNameAdmissionError(PadUsManagerNameError):
+    """The retained directory is unsafe to read or recover."""
+
+
+def _preflight_capture_directory(capture_root: Path) -> None:
+    root = Path(capture_root).absolute()
+    if ".." in root.parts or any(parent.is_symlink() for parent in root.parents):
+        raise PadUsManagerNameAdmissionError("unsafe_capture_directory")
+    try:
+        root_stat = root.lstat()
+    except FileNotFoundError:
+        return
+    if not stat.S_ISDIR(root_stat.st_mode):
+        raise PadUsManagerNameAdmissionError("unsafe_capture_directory")
+    document_names = "|".join((*METADATA_NAMES, *AFTER_NAMES))
+    evidence = re.compile(
+        rf"(?:{document_names}|page_[0-9]{{6}}_[0-9]{{5}})"
+        r"(?:\.(?:attempt-[0-9]{2}|error-[0-9]+))?\.(?:body|wire|receipt\.json)"
+    )
+    parquet_names = {f"{FILE_SLUG}.parquet", f"{FILE_SLUG}.parquet.construction-tmp"}
+    sidecars = {"capture_state.json", "capture_state.json.tmp", "computed_baseline.json"}
+    total = 0
+    for path in root.iterdir():
+        entry = path.lstat()
+        if not stat.S_ISREG(entry.st_mode):
+            raise PadUsManagerNameAdmissionError("retained_capture_nonregular_file:" + path.name)
+        if path.name not in sidecars | parquet_names and not evidence.fullmatch(path.name):
+            raise PadUsManagerNameAdmissionError("retained_capture_unexpected_artifact:" + path.name)
+        limit = MAX_CAPTURE_BYTES if path.name in parquet_names else MAX_BODY_BYTES
+        total += entry.st_size
+        if entry.st_size > limit or total > MAX_CAPTURE_BYTES:
+            raise PadUsManagerNameAdmissionError("source_capture_exceeds_scratch_budget")
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -343,8 +378,12 @@ def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, objec
     try:
         paths = [capture_root / f"{name}.{suffix}"
                  for suffix in ("body", "wire", "receipt.json")]
-        if any(path.stat().st_size > MAX_BODY_BYTES for path in paths):
-            raise ValueError("source_capture_exceeds_scratch_budget")
+        for path in paths:
+            entry = path.lstat()
+            if not stat.S_ISREG(entry.st_mode):
+                raise PadUsManagerNameAdmissionError("retained_capture_nonregular_file:" + name)
+            if entry.st_size > MAX_BODY_BYTES:
+                raise PadUsManagerNameAdmissionError("source_capture_exceeds_scratch_budget")
         body, receipt = shared.load_replay(capture_root, name)
         _load_receipt(capture_root, name)
         base_name = name.split(".attempt-")[0].split(".error-")[0]
@@ -360,11 +399,14 @@ def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, objec
             url = _segment_query(*_parse_segment_name(base_name))
         validate_capture_request_identity(name, receipt, url)
         return body, receipt
+    except PadUsManagerNameAdmissionError:
+        raise
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         raise PadUsManagerNameError("retained_capture_receipt_invalid:" + name) from exc
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
+    _preflight_capture_directory(capture_root)
     return shared.load_state(capture_root, PadUsManagerNameError)
 
 
@@ -378,6 +420,8 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
            for suffix in ("body", "wire", "receipt.json")):
         try:
             return _read_capture(capture_root, name)
+        except PadUsManagerNameAdmissionError:
+            raise
         except PadUsManagerNameError:
             _witness_aside(capture_root, name)
     return _capture_with_retry(client, url, capture_root, name,
@@ -423,6 +467,8 @@ def _plan_segment_gaps(capture_root: Path, roster: list[int],
             continue
         try:
             body, _receipt = _read_capture(capture_root, name)
+        except PadUsManagerNameAdmissionError:
+            raise
         except PadUsManagerNameError:
             _witness_aside(capture_root, name)
             continue
@@ -547,11 +593,14 @@ def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client 
     and document.
     """
     capture_root = Path(capture_root).absolute()
+    _preflight_capture_directory(capture_root)
     capture_root.mkdir(parents=True, exist_ok=True)
     state = _load_state(capture_root)
     if state.get("complete") is True:
         try:
             extracted = _stream_validate(capture_root, parquet_sink=None)
+        except PadUsManagerNameAdmissionError:
+            raise
         except (OSError, ValueError, TypeError, KeyError):
             pass
         else:
@@ -833,6 +882,7 @@ class _SegmentStream:
 def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[str, object]:
     """Re-verify every retained capture and optionally reconstruct the native geoparquet."""
     capture_root = Path(capture_root).absolute()
+    _preflight_capture_directory(capture_root)
     docs = {name: json.loads(_read_capture(capture_root, name)[0])
             for name in METADATA_NAMES if name != "sb_item"}
     _validate_corroboration_documents(capture_root)
@@ -1048,6 +1098,7 @@ def _segment_pages_input(index_body: bytes, rows: list[list], total_bytes: int) 
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_segments: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
+    _preflight_capture_directory(capture_root)
     identity = _code_identity()
     version = content_derived_version(extracted["record_sha"], extracted["geometry_sha"],
                                       extracted["schema_sha"], identity)
@@ -1339,8 +1390,7 @@ def capture_pad_us_manager_name(storage: StagingStorageResource, *, version: str
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in
                                          (capture_root, *capture_root.parents)):
         raise PadUsManagerNameError("unsafe_capture_directory")
-    resumed_segments = len(_load_state(capture_root).get("segments", [])) \
-        if (capture_root / "capture_state.json").exists() else 0
+    resumed_segments = len(_load_state(capture_root).get("segments", []))
     try:
         fetch_pad_us_manager_name_pages(capture_root)
         state = _load_state(capture_root)
@@ -1352,6 +1402,8 @@ def capture_pad_us_manager_name(storage: StagingStorageResource, *, version: str
                                resumed_segments=resumed_segments,
                                first_captured_at=captured[0] if captured else "",
                                last_captured_at=captured[-1] if captured else "")
+    except PadUsManagerNameAdmissionError:
+        raise
     except Exception as exc:
         valid_names = []
         for receipt_path in sorted(capture_root.glob("*.receipt.json")) \
