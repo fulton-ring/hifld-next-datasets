@@ -389,6 +389,25 @@ class NationalTransitMapAgenciesPipelineTests(unittest.TestCase):
                     (refreshed / "item.body").read_bytes())), "2026-10-24")
                 self.assertNotEqual((refreshed / "page_000.wire").read_bytes(),
                                     (captured / "page_000.wire").read_bytes())
+                if count in (1, 251):
+                    relative = ("metadata/candidate_ready.json" if count == 1 else
+                                "raw/page_000.body")
+                    staged = root / "stage" / prefix / relative
+                    if count == 1:
+                        staged.unlink()
+                        expected_error = "cached_candidate_storage_roster_changed"
+                    else:
+                        staged.write_bytes(staged.read_bytes() + b"tampered")
+                        expected_error = "cached_candidate_object_integrity_failed"
+                    with patch.object(real_client, "send", side_effect=AssertionError("offline HTTP")):
+                        with self.assertRaisesRegex(ValueError, expected_error):
+                            source.capture_national_transit_map_agencies(
+                                storage, version="corrupt", capture_directory=str(root / "corrupt"),
+                                replay_capture_directory=str(captured))
+                    if count == 1:
+                        self.assertFalse(staged.exists())
+                    else:
+                        self.assertTrue(staged.read_bytes().endswith(b"tampered"))
 
     def test_failed_source_response_is_retained_and_quarantined(self):
         from dagster_hifld.resources import StagingStorageResource

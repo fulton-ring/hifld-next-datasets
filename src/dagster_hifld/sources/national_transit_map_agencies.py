@@ -56,7 +56,6 @@ METADATA_NAMES = {"ids_seed", "item", "service_before", "layer_before", "count_b
 LICENSE = "Creative Commons Attribution 3.0 United States (CC-BY-3.0)"
 
 
-
 def _capture_roster(seed: list[int]) -> list[tuple[str, str]]:
     urls = layer_capture_roster(
         seed, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
