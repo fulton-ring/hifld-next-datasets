@@ -1,4 +1,5 @@
 """Focused tests for the USGS 3DHP_all Reach Code / External Connection draft pipeline."""
+import gzip
 import io
 import json
 import struct
@@ -119,10 +120,11 @@ class JSONStream(httpx.SyncByteStream):
 
 def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
                    service=None, alias=None, layer=None, doc_page=None,
-                   refuse_counts=()) -> httpx.MockTransport:
+                   refuse_counts=(), layer_after_mutate=None) -> httpx.MockTransport:
     count = count if count is not None else len(rows)
     objectids = ids if ids is not None else list(FIXTURE_OBJECTIDS)
     layer_fields = layer_fields if layer_fields is not None else _fixture_layer_fields()
+    layer_doc_calls = [0]
 
     def layer_doc():
         if callable(layer):
@@ -147,7 +149,11 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
             return httpx.Response(200, stream=JSONStream(document),
                                   headers={"content-type": "application/json"})
         if path.rstrip("/").endswith(f"/{src.LAYER_ID}"):
-            return httpx.Response(200, stream=JSONStream(layer_doc()),
+            layer_doc_calls[0] += 1
+            document = layer_doc()
+            if layer_after_mutate is not None and layer_doc_calls[0] > 1:
+                document = layer_after_mutate(document)
+            return httpx.Response(200, stream=JSONStream(document),
                                   headers={"content-type": "application/json"})
         if query.get("returnCountOnly") == ["true"]:
             return httpx.Response(200, stream=JSONStream({"count": count}),
@@ -178,38 +184,26 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
 
 
 @contextmanager
-def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_size=2):
-    import dagster_hifld.assets.nhd_hydrolocation_reach_code_external_connection as asset_module
+def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_size=2,
+                 real_provenance=False):
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(src, "EXPECTED_IDS_SHA256", ""),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
-        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
-        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
-        patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_NAN_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_OBSERVED_BOUNDS", None),
-        patch.object(src, "EXPECTED_FEATURETYPE_DISTRIBUTION",
-                     {featuretype: sum(1 for row in rows_fixture()
-                                       if row["attributes"]["featuretype"] == featuretype)
-                      for featuretype in sorted({row["attributes"]["featuretype"]
-                                                 for row in rows_fixture()})}),
         patch.object(src, "SEGMENT_START_RECORDS", segment_size),
         patch.object(src, "SEGMENT_PROBE_BASE_DELAY_SECONDS", 0.0),
         patch.object(src, "DOC_CAPTURE_BASE_DELAY_SECONDS", 0.0),
-        patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
-        patch.object(src, "_code_identity",
+    ]
+    if not real_provenance:
+        contexts.extend([
+            patch.object(src, "_code_identity",
                      return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                    "files": [], "working_tree_status": "unknown"}),
-        patch.object(src, "validate_construction_code_identity"),
-        patch.object(capture_common, "validate_construction_code_identity"),
-    ]
+            patch.object(src, "validate_construction_code_identity"),
+            patch.object(capture_common, "validate_construction_code_identity"),
+        ])
     for context in contexts:
         context.start()
     try:
@@ -219,39 +213,42 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_siz
             context.stop()
 
 
-def rows_fixture() -> list[dict]:
-    return _fixture_rows()
-
-
 def _staging(root: Path) -> StagingStorageResource:
     return StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
                                   prefix="", backend="local")
 
 
 class NhdHydrolocationReachCodeExternalConnectionTests(unittest.TestCase):
+    def test_unusable_geometry_still_checks_every_native_attribute(self):
+        for name, esri_type, _nullable, _length in src.NATIVE_FIELDS:
+            if name in {"OBJECTID", "featuretype", "featuretypelabel"}:
+                continue
+            with self.subTest(name=name):
+                feature = _fixture_rows()[3]
+                feature["attributes"][name] = 99 if esri_type == "esriFieldTypeString" else True
+                with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                            "source_native_type_changed:" + name):
+                    src._validate_feature(feature, tuple(field[0] for field in src.NATIVE_FIELDS),
+                                          feature["attributes"]["OBJECTID"])
+
     def test_source_is_explicit_and_draft_only(self):
         self.assertEqual(src.DATASET_SLUG, "nhd-hydrolocation-reach-code-external-connection")
         self.assertEqual(src.SERVICE_URL,
                          "https://3dhp.nationalmap.gov/arcgis/rest/services/usgs_3dhp_all"
                          "/FeatureServer")
         self.assertEqual(src.LAYER_ID, 40)
-        self.assertEqual(src.LAYER_NAME,
-                         "HydroLocation - External Connection")
+        self.assertEqual(src.LAYER_NAME, "HydroLocation - External Connection")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPoint")
-        self.assertEqual(src.EXPECTED_COUNT, 25)
         self.assertEqual(src.MAX_RECORD_COUNT, 2500)
         self.assertEqual(src.SEGMENT_START_RECORDS, 2000)
         self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
                          "4c4ab8e34f34e4705dd04722bc2e4e0c7cacc210c7bf7e0a34741b86cbebf981")
-        self.assertEqual(src.EXPECTED_IDS_SHA256,
-                         "282ce608cc55dd02654d6cf277afd460172b08417143a1518e8ad991eb0265ea")
-        self.assertEqual(src.EXPECTED_RECORD_SHA256,
-                         "7ac018fdc534b84d7c9ca824c347821e5cb2d3fe7ac60574c3271352c1b73feb")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256,
-                         "6c10edb88892d8450c0f05ac142cc8beb982abfeadc0971ec65f6838749cbfed")
-        self.assertEqual(src.EXPECTED_FEATURETYPE_DISTRIBUTION, {9: 25})
-        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 0)
-        self.assertTrue(src.BASELINE_PENDING_NOTE)
+        self.assertEqual(src.EXPECTED_FEATURETYPE_LABELS, {9: "External Connection"})
+        for pin in ("EXPECTED_COUNT", "EXPECTED_IDS_SHA256", "EXPECTED_RECORD_SHA256",
+                    "EXPECTED_GEOMETRY_SHA256", "EXPECTED_NULL_GEOMETRY_COUNT",
+                    "EXPECTED_NAN_GEOMETRY_COUNT", "EXPECTED_EMPTY_GEOMETRY_COUNT",
+                    "EXPECTED_OBSERVED_BOUNDS", "EXPECTED_FEATURETYPE_DISTRIBUTION"):
+            self.assertFalse(hasattr(src, pin), pin)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
                             for key in keys))
@@ -295,7 +292,8 @@ class NhdHydrolocationReachCodeExternalConnectionTests(unittest.TestCase):
         }
         for expected_error, geometry in cases.items():
             with self.subTest(expected_error):
-                with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError, expected_error):
+                with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                            expected_error):
                     src._point_wkb(geometry)
 
     def test_complete_fixture_capture_materializes_and_repeats(self):
@@ -342,20 +340,23 @@ class NhdHydrolocationReachCodeExternalConnectionTests(unittest.TestCase):
             with fixture_mode(schema_sha, transport):
                 with DagsterInstance.from_config(str(instance_dir)) as instance:
                     result = materialize(
-                        [nhd_hydrolocation_reach_code_external_connection, nhd_hydrolocation_reach_code_external_connection_complete],
+                        [nhd_hydrolocation_reach_code_external_connection,
+                         nhd_hydrolocation_reach_code_external_connection_complete],
                         resources={"staging_storage": _staging(root)},
                         instance=instance,
-                        run_config={"ops": {"ingest__nhd_hydrolocation_reach_code_external_connection__"
-                                            "nhd_hydrolocation_reach_code_external_connection":
-                                            {"config": {"capture_directory":
-                                                        str(capture_root)}}}},
+                        run_config={"ops": {
+                            "ingest__nhd_hydrolocation_reach_code_external_connection__"
+                            "nhd_hydrolocation_reach_code_external_connection":
+                            {"config": {"capture_directory": str(capture_root)}}}},
                     )
                     self.assertTrue(result.success)
                     checks = {check.check_name: check
                               for check in result.get_asset_check_evaluations()}
-                    self.assertTrue(checks["nhd_hydrolocation_reach_code_external_connection_complete"].passed)
+                    self.assertTrue(checks[
+                        "nhd_hydrolocation_reach_code_external_connection_complete"].passed)
                     candidate = result.output_for_node(
-                        "ingest__nhd_hydrolocation_reach_code_external_connection__nhd_hydrolocation_reach_code_external_connection")
+                        "ingest__nhd_hydrolocation_reach_code_external_connection__"
+                        "nhd_hydrolocation_reach_code_external_connection")
                     self.assertEqual(candidate["feature_count"], FIXTURE_COUNT)
                     self.assertTrue(candidate["reused"])
 
@@ -420,7 +421,8 @@ class NhdHydrolocationReachCodeExternalConnectionTests(unittest.TestCase):
             with fixture_mode(schema_sha, transport):
                 with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
                                             "source_single_feature_unservable"):
-                    src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(root / "capture")
+                    src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(
+                        root / "capture")
                 self.assertTrue(sorted((root / "capture").glob("page_*.error-*.body")))
 
     def test_drift_and_provenance_failures_are_quarantined(self):
@@ -458,7 +460,7 @@ class NhdHydrolocationReachCodeExternalConnectionTests(unittest.TestCase):
                                           "xmax": 1.0,
                                           "spatialReference": {
                                               "latestWkid": src.NATIVE_LAYER_SR["latestWkid"]}}}),
-            "source_id_population_drift": dict(ids=list(FIXTURE_OBJECTIDS)[:-1]),
+            "source_id_population_drift": dict(ids=[*FIXTURE_OBJECTIDS[:-1], FIXTURE_OBJECTIDS[0]]),
             "unexpected_source_geometry_members": dict(rows=[
                 {**rows[0], "geometry": {**rows[0]["geometry"], "curves": []}},
                 *rows[1:]]),
@@ -508,62 +510,672 @@ class NhdHydrolocationReachCodeExternalConnectionTests(unittest.TestCase):
                                          .read_bytes())
                     self.assertTrue(failure["reason_code"])
 
-    def test_geometry_gates_are_enforced_once_pinned(self):
+    def test_geometry_gates_are_observed_without_population_pins(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport):
-                src.capture_nhd_hydrolocation_reach_code_external_connection(
+            with fixture_mode(schema_sha, make_responder(rows)):
+                first = src.capture_nhd_hydrolocation_reach_code_external_connection(
                     _staging(root), version="gate-run", capture_directory=str(capture_root))
                 baseline = json.loads((capture_root / "computed_baseline.json").read_bytes())
-                with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0):
-                    with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
-                                                "source_null_geometry_count_drift"):
-                        src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
-                with patch.object(src, "EXPECTED_NAN_GEOMETRY_COUNT", 0):
-                    with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
-                                                "source_nan_geometry_count_drift"):
-                        src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
-                with patch.object(src, "EXPECTED_RECORD_SHA256",
-                                  baseline["source_record_sha256"]):
-                    with patch.object(src, "EXPECTED_GEOMETRY_SHA256",
-                                      baseline["source_geometry_sha256"]):
-                        with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT",
-                                          baseline["source_null_geometry_count"]):
-                            with patch.object(src, "EXPECTED_NAN_GEOMETRY_COUNT",
-                                              baseline["source_nan_geometry_count"]):
-                                with patch.object(
-                                        src, "EXPECTED_OBSERVED_BOUNDS",
-                                        baseline["observed_bounds"]):
-                                    again = src.capture_nhd_hydrolocation_reach_code_external_connection(
-                                        _staging(root), version="gate-run-verify",
-                                        capture_directory=str(capture_root))
-                                    self.assertTrue(again["reused"])
+                self.assertEqual(baseline["source_null_geometry_count"], 1)
+                self.assertEqual(baseline["source_nan_geometry_count"], 1)
+                self.assertEqual(baseline["source_empty_geometry_count"], 0)
+                again = src.capture_nhd_hydrolocation_reach_code_external_connection(
+                    _staging(root), version="gate-run-verify", capture_directory=str(capture_root))
+                self.assertTrue(again["reused"])
+                self.assertEqual({k: v for k, v in first.items() if k != "reused"},
+                                 {k: v for k, v in again.items() if k != "reused"})
 
-    def test_pinned_baseline_drift_is_refused_and_quarantined(self):
+    def test_capture_witness_drift_is_refused_and_quarantined(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, make_responder(rows)):
+                storage = _staging(root)
+                src.capture_nhd_hydrolocation_reach_code_external_connection(
+                    storage, version="witness-run", capture_directory=str(capture_root))
+                _replace_retained_body(capture_root, "ids_before", src._canonical(
+                    {"objectIdFieldName": "OBJECTID", "objectIds": [*FIXTURE_OBJECTIDS[:-1], 99]}))
+                with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                            "source_id_population_drift:ids_seed_vs_before"):
+                    src.capture_nhd_hydrolocation_reach_code_external_connection(
+                        storage, version="witness-drift", capture_directory=str(capture_root))
+                quarantined = sorted(
+                    (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+                self.assertTrue(quarantined)
+                failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+                self.assertEqual(failure["reason_code"],
+                                 "source_id_population_drift:ids_seed_vs_before")
+
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        rows = _fixture_rows()
+        added = {"attributes": {**_fixture_attrs(1), "OBJECTID": 8, "id3dhp": "A88888",
+                                "featuredate": 1709587421999},
+                 "geometry": {"x": 15.5, "y": -30.25, "z": -12.5}}
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, make_responder(rows + [added],
+                                                         ids=[*FIXTURE_OBJECTIDS, 8])):
+                result = src.capture_nhd_hydrolocation_reach_code_external_connection(
+                    _staging(root), version="upstream-edit", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT + 1)
+            self.assertEqual(result["source_reported_count"], FIXTURE_COUNT + 1)
+            self.assertTrue(result["source_population_complete"])
+            from dagster import AssetCheckSeverity
+            from dagster_hifld.assets.nhd_hydrolocation_reach_code_external_connection import (
+                nhd_hydrolocation_reach_code_external_connection_approved_baseline_drift)
+            candidate = {"dataset_slug": src.DATASET_SLUG, "file_slug": src.FILE_SLUG,
+                         "feature_count": result["feature_count"],
+                         "source_id_sha256": result["source_id_sha256"],
+                         "release_accepted": False}
+            drift = nhd_hydrolocation_reach_code_external_connection_approved_baseline_drift(
+                candidate)
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(drift.metadata["comparison_status"].value,
+                             "skipped_no_approved_baseline")
+
+    def test_display_only_layer_drift_between_witnesses_does_not_quarantine(self):
+        # ArcGIS serves drawingInfo color-ramp hints nondeterministically from
+        # the same layer within minutes; display-only drift must not fail the
+        # completeness witnesses (observed live 2026-11-20 on layer 60).
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+
+        def mutate(document):
+            document = dict(document)
+            document["drawingInfo"] = {"renderer": {"authoringInfo": {"colorRamp": {
+                "colorRamps": [{"fromColor": [229, 199, 252], "toColor": [252, 248, 212]}]}}}}
+            return document
+
+        transport = make_responder(rows, layer_after_mutate=mutate)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_hydrolocation_reach_code_external_connection(
+                    _staging(root), version="display-drift", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertFalse((root / "staging" / "_quarantine" / src.DATASET_SLUG).exists())
+
+    def test_layer_contract_drift_between_witnesses_is_quarantined(self):
+        cases = {"maxRecordCount": 2000, "geometryType": "esriGeometryPolyline",
+                 "hasZ": False}
+        for field, value in cases.items():
+            with self.subTest(field=field):
+                rows = _fixture_rows()
+                schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+
+                def mutate(document):
+                    document = dict(document)
+                    document[field] = value
+                    return document
+
+                transport = make_responder(rows, layer_after_mutate=mutate)
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    capture_root = root / "capture"
+                    with fixture_mode(schema_sha, transport):
+                        storage = _staging(root)
+                        with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                                    "source_metadata_or_count_changed_during_capture"):
+                            src.capture_nhd_hydrolocation_reach_code_external_connection(
+                                storage, version="contract-drift", capture_directory=str(capture_root))
+                    quarantined = sorted(
+                        (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+                    self.assertTrue(quarantined)
+                    failure = json.loads((quarantined[0] / "metadata" / "failure.json")
+                                         .read_bytes())
+                    self.assertEqual(failure["reason_code"],
+                                     "source_metadata_or_count_changed_during_capture")
+
+
+def _replace_retained_body(root: Path, name: str, body: bytes, *, retain_wire=False):
+    receipt_path = root / f"{name}.receipt.json"
+    receipt = json.loads(receipt_path.read_bytes())
+    (root / f"{name}.body").write_bytes(body)
+    receipt.update(bytes=len(body), sha256=src._sha(body))
+    if not retain_wire:
+        (root / f"{name}.wire").write_bytes(body)
+        receipt.update(wire_bytes=len(body), wire_sha256=src._sha(body), content_encoding="identity")
+        if receipt.get("content_length") is not None:
+            receipt["content_length"] = len(body)
+    receipt_path.write_bytes(src._canonical(receipt) + b"\n")
+
+
+class NhdHydrolocationReachCodeExternalConnectionWitnessTests(unittest.TestCase):
+    def _capture(self, root, capture_root, transport, version="witness"):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with fixture_mode(schema_sha, transport, real_provenance=True):
+            return src.capture_nhd_hydrolocation_reach_code_external_connection(
+                _staging(root), version=version, capture_directory=str(capture_root))
+
+    def _inventory(self, root):
+        return {str(path.relative_to(root)): src._sha(path.read_bytes())
+                for path in root.rglob("*") if path.is_file()}
+
+    def _offline(self, requests):
+        def reject(request):
+            requests.append(str(request.url))
+            raise AssertionError("HTTP forbidden during replay")
+        return httpx.MockTransport(reject)
+
+    def test_completeness_check_uses_capture_facts_not_an_old_population(self):
+        candidate = {"feature_count": 1, "source_reported_count": 1,
+                     "source_population_complete": True, "source_id_sha256": "a" * 64,
+                     "source_schema_sha256": src.EXPECTED_SCHEMA_SHA256}
+        self.assertTrue(nhd_hydrolocation_reach_code_external_connection_complete(candidate).passed)
+        for changes in ({"source_reported_count": 2}, {"source_reported_count": True},
+                        {"feature_count": True}, {"source_population_complete": False},
+                        {"source_id_sha256": ""}, {"source_schema_sha256": ""}):
+            with self.subTest(changes=changes):
+                self.assertFalse(nhd_hydrolocation_reach_code_external_connection_complete(
+                    {**candidate, **changes}).passed)
+
+    def test_invalid_or_unstable_witnesses_and_incomplete_pages_cannot_seal(self):
+        for attack in ("duplicate_ids", "nonpositive_ids", "boolean_ids", "boolean_count",
+                       "changed_closing_ids", "changed_closing_count", "missing_row", "reordered_rows"):
+            with self.subTest(attack=attack), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                rows = _fixture_rows()
+                ids = list(FIXTURE_OBJECTIDS)
+                count = len(ids)
+                if attack == "duplicate_ids":
+                    ids[-1] = ids[0]
+                elif attack == "nonpositive_ids":
+                    ids[-1] = 0
+                elif attack == "boolean_ids":
+                    ids[0] = True
+                elif attack == "boolean_count":
+                    count = True
+                elif attack == "missing_row":
+                    rows.pop()
+                elif attack == "reordered_rows":
+                    rows[0], rows[1] = rows[1], rows[0]
+                inner = make_responder(rows, ids=ids, count=count)
+                ids_calls = 0
+                count_calls = 0
+
+                def respond(request):
+                    nonlocal ids_calls, count_calls
+                    query = parse_qs(urlparse(str(request.url)).query)
+                    if query.get("returnIdsOnly") == ["true"]:
+                        ids_calls += 1
+                        if attack == "changed_closing_ids" and ids_calls == 3:
+                            return httpx.Response(200, stream=JSONStream({"objectIdFieldName": "OBJECTID",
+                                "objectIds": [*FIXTURE_OBJECTIDS[:-1], 99]}))
+                    if query.get("returnCountOnly") == ["true"]:
+                        count_calls += 1
+                        if attack == "changed_closing_count" and count_calls == 2:
+                            return httpx.Response(200, stream=JSONStream({"count": count + 1}))
+                    return inner.handler(request)
+
+                with self.assertRaises(src.NhdHydrolocationReachCodeExternalConnectionError):
+                    self._capture(root, root / "capture", httpx.MockTransport(respond))
+                self.assertFalse(list((root / "staging").rglob("candidate_ready.json")))
+
+    def test_gapped_added_removed_populations_preserve_native_values_and_cache(self):
+        for count in (7, 6, 8):
+            with self.subTest(count=count), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                rows = _fixture_rows()
+                if count == 6:
+                    rows.pop()
+                elif count == 8:
+                    rows.append({"attributes": {**rows[0]["attributes"], "id3dhp": "A123456",
+                                                "featuredate": 1709587421999},
+                                 "geometry": {"x": 15.123456789, "y": -30.5, "z": -50.125}})
+                ids = [11 + index * 19 for index in range(count)]
+                ids[-1] = 900001
+                for row, oid in zip(rows, ids):
+                    row["attributes"]["OBJECTID"] = oid
+                capture_root = root / "capture"
+                first = self._capture(root, capture_root, make_responder(rows, ids=ids))
+                inventory = self._inventory(root / "staging")
+                requests = []
+                cached = self._capture(root, capture_root, self._offline(requests), "offline")
+                self.assertEqual(requests, [])
+                self.assertFalse(first["reused"])
+                self.assertTrue(cached["reused"])
+                self.assertEqual({k: v for k, v in first.items() if k != "reused"},
+                                 {k: v for k, v in cached.items() if k != "reused"})
+                self.assertEqual(inventory, self._inventory(root / "staging"))
+                self.assertEqual(first["feature_count"], count)
+                self.assertEqual(first["source_reported_count"], count)
+                self.assertTrue(first["source_population_complete"])
+                self.assertEqual(first["source_id_sha256"], src._sha(src._canonical(ids)))
+                self.assertEqual(first["source_null_geometry_count"], 1)
+                self.assertEqual(first["source_nan_geometry_count"], 1)
+                self.assertEqual(first["source_empty_geometry_count"], 0)
+                expected_distribution = {kind: sum(row["attributes"]["featuretype"] == kind
+                                                   for row in rows) for kind, _label in LABEL_PAIRS}
+                self.assertEqual(first["source_featuretype_distribution"], expected_distribution)
+                for key, value in first.items():
+                    if key.endswith(("_accepted", "_approved")):
+                        self.assertIs(value, False, key)
+                table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+                for name, _type, _nullable, _length in src.NATIVE_FIELDS:
+                    self.assertEqual(table.column(name).to_pylist(),
+                                     [row["attributes"][name] for row in rows], name)
+                for row, wkb in zip(rows, table.column("geometry").to_pylist()):
+                    geometry = row["geometry"]
+                    if geometry is None or geometry["x"] == "NaN":
+                        self.assertIsNone(wkb)
+                    else:
+                        self.assertEqual(struct.unpack_from("<3d", wkb, 5),
+                                         (geometry["x"], geometry["y"], geometry["z"]))
+                prefix = root / "staging" / first["candidate_ready"]
+                audit = json.loads((prefix.parent / "source_audit.json").read_bytes())
+                self.assertEqual(audit["source_feature_count"], count)
+                self.assertEqual(audit["source_id_sha256"], first["source_id_sha256"])
+                self.assertEqual(audit["observed_bounds"], first["observed_bounds"])
+                identity = json.loads((prefix.parent / "processing_identity.json").read_bytes())
+                self.assertEqual(identity["code_identity_scheme"], capture_common.CODE_IDENTITY_GIT)
+                self.assertTrue(identity["files"])
+
+    def test_genuine_gzip_replay_and_tamper_cannot_change_sealed_candidate(self):
+        import shutil
+
+        for encoding in ("identity", "gzip"):
+            with self.subTest(encoding=encoding), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture_root = root / "capture"
+                inner = make_responder(_fixture_rows())
+
+                def respond(request):
+                    response = inner.handler(request)
+                    if encoding == "identity":
+                        return response
+                    wire = gzip.compress(response.stream.body, mtime=0)
+                    return httpx.Response(200, stream=JSONStream(wire), headers={
+                        "content-type": response.headers["content-type"],
+                        "content-encoding": "gzip", "content-length": str(len(wire))})
+
+                self._capture(root, capture_root, httpx.MockTransport(respond))
+                inventory = self._inventory(root / "staging")
+                requests = []
+                self.assertTrue(self._capture(root, capture_root, self._offline(requests))["reused"])
+                self.assertEqual(requests, [])
+                for attack in ("decoded_body", "request_url"):
+                    with self.subTest(attack=attack):
+                        attacked_root = root / attack
+                        shutil.copytree(capture_root, attacked_root)
+                        name = src._segment_name(0, 2)
+                        if attack == "decoded_body":
+                            page = json.loads((attacked_root / f"{name}.body").read_bytes())
+                            page["features"][0]["attributes"]["gnisidlabel"] += " forged"
+                            _replace_retained_body(attacked_root, name, src._canonical(page), retain_wire=True)
+                            expected = "retained_capture_wire_body_mismatch"
+                        else:
+                            path = attacked_root / f"{name}.receipt.json"
+                            receipt = json.loads(path.read_bytes())
+                            receipt["url"] = receipt["final_url"] = src._segment_query(1, 2)
+                            path.write_bytes(src._canonical(receipt))
+                            expected = "retained_capture_request_identity_mismatch"
+                        with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError, expected):
+                            src._read_capture(attacked_root, name)
+                        with self.assertRaises(src.NhdHydrolocationReachCodeExternalConnectionError):
+                            self._capture(root, attacked_root, self._offline(requests), "tampered")
+                        after = self._inventory(root / "staging")
+                        self.assertEqual(inventory, {key: after[key] for key in inventory})
+                        self.assertFalse(any(key not in inventory and not key.startswith("_quarantine/")
+                                             for key in after))
+
+    def test_corrupt_closing_count_reacquires_group_and_detects_same_count_id_drift(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            capture_root = Path(tmp) / "capture"
+            inner = make_responder(_fixture_rows())
+            with fixture_mode(schema_sha, inner, real_provenance=True):
+                src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
+            (capture_root / "count_after.body").write_bytes(b"corrupt closing count")
+            originals = {name + suffix: (capture_root / (name + suffix)).read_bytes()
+                         for name in src.AFTER_NAMES for suffix in (".body", ".wire", ".receipt.json")}
+            requests = []
+
+            def changed(request):
+                requests.append(str(request.url))
+                query = parse_qs(urlparse(str(request.url)).query)
+                self.assertNotIn("resultOffset", query)
+                if query.get("returnIdsOnly") == ["true"]:
+                    return httpx.Response(200, stream=JSONStream({"objectIdFieldName": "OBJECTID",
+                        "objectIds": [*FIXTURE_OBJECTIDS[:-1], 99]}))
+                return inner.handler(request)
+
+            with fixture_mode(schema_sha, httpx.MockTransport(changed), real_provenance=True):
+                with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                            "source_id_population_drift:ids_after"):
+                    src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
+            self.assertEqual(requests, [src._document_urls()[name] for name in src.AFTER_NAMES])
+            self.assertIs(src._load_state(capture_root)["complete"], False)
+            for name in src.AFTER_NAMES:
+                for suffix in (".body", ".wire", ".receipt.json"):
+                    self.assertIn(originals[name + suffix],
+                                  [path.read_bytes() for path in capture_root.glob(name + ".error-*" + suffix)])
+
+    def test_interrupted_closing_group_repair_restarts_all_four_on_second_attempt(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            capture_root = Path(tmp) / "capture"
+            inner = make_responder(_fixture_rows())
+            with fixture_mode(schema_sha, inner, real_provenance=True):
+                src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
+            (capture_root / "layer_after.body").unlink()
+            receipt_path = capture_root / "service_after.receipt.json"
+            receipt = json.loads(receipt_path.read_bytes())
+            receipt["sha256"] = "0" * 64
+            receipt_path.write_bytes(src._canonical(receipt))
+            originals = {path.name: path.read_bytes() for name in src.AFTER_NAMES
+                         for suffix in (".body", ".wire", ".receipt.json")
+                         if (path := capture_root / (name + suffix)).exists()}
+            first_requests, pending_states = [], []
+
+            def interrupted(request):
+                first_requests.append(str(request.url))
+                pending_states.append(src._load_state(capture_root)["complete"])
+                if str(request.url) == src.SERVICE_URL + "?f=pjson":
+                    raise httpx.ConnectError("closing service interrupted")
+                response = inner.handler(request)
+                layer = json.loads(response.stream.body)
+                layer["repair_epoch"] = "first attempt"
+                return httpx.Response(200, stream=JSONStream(layer))
+
+            with fixture_mode(schema_sha, httpx.MockTransport(interrupted), real_provenance=True):
+                with self.assertRaises(src.NhdHydrolocationReachCodeExternalConnectionError):
+                    src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
+            self.assertEqual(first_requests, [src.LAYER_URL + "?f=pjson", src.SERVICE_URL + "?f=pjson"])
+            self.assertEqual(pending_states, [False, False])
+            self.assertIs(src._load_state(capture_root)["complete"], False)
+            for name in src.AFTER_NAMES:
+                for suffix in (".body", ".wire", ".receipt.json"):
+                    if name + suffix in originals:
+                        self.assertIn(originals[name + suffix], [path.read_bytes()
+                            for path in capture_root.glob(name + ".error-*" + suffix)])
+            second_requests = []
+
+            def resumed(request):
+                second_requests.append(str(request.url))
+                self.assertIs(src._load_state(capture_root)["complete"], False)
+                return inner.handler(request)
+
+            with fixture_mode(schema_sha, httpx.MockTransport(resumed), real_provenance=True):
+                result = src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
+            self.assertEqual(second_requests, [src._document_urls()[name] for name in src.AFTER_NAMES])
+            self.assertTrue(result["complete"])
+            self.assertIs(src._load_state(capture_root)["complete"], True)
+            self.assertNotIn("repair_epoch", json.loads((capture_root / "layer_after.body").read_bytes()))
+
+    def test_recovered_segment_refreshes_all_closing_witnesses_after_interruption(self):
+        rows = _fixture_rows()
+        ids = [10, 20, 40, 70, 90, 200, 800]
+        for row, oid in zip(rows, ids):
+            row["attributes"]["OBJECTID"] = oid
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, make_responder(rows, ids=ids), real_provenance=True):
+                src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
+            name = src._segment_name(6, 1)
+            previous_digest = src._load_state(capture_root)["segments"][-1]["body_sha256"]
+            (capture_root / f"{name}.body").unlink()
+            rows[-1]["attributes"]["gnisidlabel"] = "changed during segment recovery"
+            inner = make_responder(rows, ids=ids)
+            recovered_requests = []
+
+            def interrupted(request):
+                query = parse_qs(urlparse(str(request.url)).query)
+                recovered_requests.append(query)
+                if query.get("returnCountOnly") == ["true"]:
+                    raise httpx.ConnectError("closing witness interrupted")
+                return inner.handler(request)
+
+            with fixture_mode(schema_sha, httpx.MockTransport(interrupted), real_provenance=True):
+                with self.assertRaises(src.NhdHydrolocationReachCodeExternalConnectionError):
+                    src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
+            state = src._load_state(capture_root)
+            self.assertIs(state["complete"], False)
+            updated_digest = next(entry["body_sha256"] for entry in state["segments"] if entry["name"] == name)
+            self.assertNotEqual(updated_digest, previous_digest)
+            self.assertEqual(updated_digest, src._sha((capture_root / f"{name}.body").read_bytes()))
+            self.assertEqual(recovered_requests[0]["resultOffset"], ["6"])
+            closing_requests = []
+
+            def resume(request):
+                query = parse_qs(urlparse(str(request.url)).query)
+                self.assertNotIn("resultOffset", query)
+                closing_requests.append(str(request.url))
+                return inner.handler(request)
+
+            self._capture(root, capture_root, httpx.MockTransport(resume), "recovered")
+            self.assertEqual(closing_requests, [src.LAYER_URL + "?f=pjson", src.SERVICE_URL + "?f=pjson",
+                                                src._count_url(), src._ids_url()])
+            self.assertIs(src._load_state(capture_root)["complete"], True)
+            for witness in src.AFTER_NAMES:
+                self.assertTrue(list(capture_root.glob(witness + ".error-*.receipt.json")))
+            requests = []
+            self.assertTrue(self._capture(root, capture_root, self._offline(requests))["reused"])
+            self.assertEqual(requests, [])
+
+    def test_replay_preflight_rejects_paths_sizes_and_aggregate_before_content_reads(self):
+        for attack in ("symlink", "directory", "receipt_size", "body_size", "aggregate"):
+            with self.subTest(attack=attack), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture_root = root / "capture"
+                capture_root.mkdir()
+                if attack == "symlink":
+                    (capture_root / "capture_state.json").symlink_to(root / "outside")
+                elif attack == "directory":
+                    (capture_root / "nested").mkdir()
+                else:
+                    name = "bad.receipt.json" if attack == "receipt_size" else "bad.body"
+                    size = src.MAX_RECEIPT_BYTES + 1 if attack == "receipt_size" else src.MAX_BODY_BYTES + 1
+                    if attack == "aggregate":
+                        size = 2
+                    with (capture_root / name).open("wb") as stream:
+                        stream.truncate(size)
+                storage = _staging(root)
+                limit = 1 if attack == "aggregate" else src.MAX_CAPTURE_BYTES
+                with patch.object(src, "MAX_CAPTURE_BYTES", limit), patch.object(
+                        Path, "read_bytes", side_effect=AssertionError("preflight read content")), \
+                        patch.object(src, "_default_client", side_effect=AssertionError("preflight HTTP")):
+                    with self.assertRaises((ValueError, src.NhdHydrolocationReachCodeExternalConnectionError)):
+                        src.capture_nhd_hydrolocation_reach_code_external_connection(
+                            storage, version="preflight", capture_directory=str(capture_root))
+
+
+def _segment_failures_transport(inner: httpx.MockTransport, *, fail_first: int | None):
+    """Fail the first ``fail_first`` (or every) segment-page request with a reset.
+
+    Returns the wrapped transport and the count of segment-page requests seen,
+    so a test can assert the shared retry helper's bounded attempt budget.
+    """
+    seen = {"segment_requests": 0}
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        query = parse_qs(urlparse(str(request.url)).query)
+        if query.get("resultOffset") is not None:
+            seen["segment_requests"] += 1
+            if fail_first is None or seen["segment_requests"] <= fail_first:
+                raise httpx.ConnectError("connection reset by peer")
+        return inner.handler(request)
+
+    return httpx.MockTransport(respond), seen
+
+
+class NhdHydrolocationReachCodeExternalConnectionRetainedStateFailureTests(unittest.TestCase):
+    """Failure paths of the retained-capture primitives this adapter binds.
+
+    The checkpoint/receipt/retry helpers live in
+    ``dagster_hifld.sources.arcgis_layer``; every case here drives them through
+    this adapter's own error type over retained fixtures: corrupt checkpoint
+    JSON, missing and changed segment receipts, incomplete transport captures
+    retried by the shared helper, that helper's bounded retry budget, and a
+    foreign checkpoint whose coverage claims are never trusted.
+    """
+
+    def _first_capture(self, root: Path, capture_root: Path, schema_sha: str,
+                       transport: httpx.MockTransport, version: str) -> None:
+        with fixture_mode(schema_sha, transport):
+            result = src.capture_nhd_hydrolocation_reach_code_external_connection(
+                _staging(root), version=version, capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+
+    def _row_ids(self, capture_root: Path) -> list[int]:
+        table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+        return table.column("OBJECTID").to_pylist()
+
+    def test_corrupt_checkpoint_json_refuses_and_retains_evidence(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         transport = make_responder(rows)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "state-run")
+            corrupted = b'{"segments": [ truncated'
+            (capture_root / "capture_state.json").write_bytes(corrupted)
+            before = sorted(path.name for path in capture_root.iterdir())
             with fixture_mode(schema_sha, transport):
-                storage = _staging(root)
-                src.capture_nhd_hydrolocation_reach_code_external_connection(
-                    storage, version="pin-run", capture_directory=str(capture_root))
-                with patch.object(src, "EXPECTED_IDS_SHA256", "0" * 64):
-                    with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
-                                                "source_id_roster_drift"):
-                        src.capture_nhd_hydrolocation_reach_code_external_connection(
-                            storage, version="pin-run-drift", capture_directory=str(capture_root))
-                quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
-                                     .glob("*"))
-                self.assertTrue(quarantined)
-                failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
-                self.assertTrue(failure["reason_code"].startswith("source_id_roster_drift"))
+                with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                            "capture_state_invalid"):
+                    src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
+            self.assertEqual((capture_root / "capture_state.json").read_bytes(), corrupted)
+            self.assertEqual(sorted(path.name for path in capture_root.iterdir()), before)
+
+    def test_missing_segment_receipt_refuses_read_and_refetch_restores_rows(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "receipt-run")
+            name = src._segment_name(0, 2)
+            (capture_root / f"{name}.receipt.json").unlink()
+            with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                        "retained_capture_receipt_invalid:" + name):
+                src._read_capture(capture_root, name)
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_hydrolocation_reach_code_external_connection(
+                    _staging(root), version="receipt-run-2", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
+            self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.body")))
+            self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.wire")))
+            state = json.loads((capture_root / "capture_state.json").read_bytes())
+            self.assertIn(name, [entry["name"] for entry in state["segments"]])
+
+    def test_changed_segment_receipt_refuses_read_and_refetch_restores_rows(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "tamper-run")
+            name = src._segment_name(2, 2)
+            receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
+            receipt["sha256"] = "0" * 64
+            (capture_root / f"{name}.receipt.json").write_bytes(json.dumps(receipt).encode())
+            with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                        "retained_capture_receipt_invalid:" + name):
+                src._read_capture(capture_root, name)
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_hydrolocation_reach_code_external_connection(
+                    _staging(root), version="tamper-run-2", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
+            self.assertEqual(len(self._row_ids(capture_root)), len(set(self._row_ids(capture_root))))
+            for suffix in ("body", "wire", "receipt.json"):
+                self.assertTrue(sorted(capture_root.glob(f"{name}.error-*.{suffix}")))
+
+    def test_incomplete_transport_capture_is_retried_with_retained_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport, seen = _segment_failures_transport(make_responder(rows), fail_first=1)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_nhd_hydrolocation_reach_code_external_connection(
+                    _staging(root), version="retry-run", capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            name = src._segment_name(0, 2)
+            attempt_receipt = json.loads(
+                (capture_root / f"{name}.attempt-01.receipt.json").read_bytes())
+            self.assertFalse(attempt_receipt["complete_body"])
+            self.assertIsNone(attempt_receipt["status"])
+            self.assertEqual(attempt_receipt["error_code"], "request_error")
+            for suffix in ("body", "wire", "receipt.json"):
+                self.assertTrue((capture_root / f"{name}.attempt-01.{suffix}").exists())
+            self.assertFalse(list(capture_root.glob(f"{name}.attempt-02.*")))
+            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
+
+    def test_retry_budget_exhaustion_is_bounded_and_retains_failure_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport, seen = _segment_failures_transport(make_responder(rows), fail_first=None)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                            "source_capture_failed:ValueError"):
+                    src.fetch_nhd_hydrolocation_reach_code_external_connection_pages(capture_root)
+            self.assertEqual(seen["segment_requests"],
+                             src.SEGMENT_PROBE_ATTEMPTS + src.DOC_CAPTURE_ATTEMPTS)
+            segment = src._segment_name(0, 2)
+            self.assertTrue((capture_root / f"{segment}.attempt-01.receipt.json").exists())
+            self.assertTrue((capture_root / f"{segment}.attempt-02.receipt.json").exists())
+            self.assertFalse(list(capture_root.glob(f"{segment}.attempt-03.*")))
+            single = src._segment_name(0, 1)
+            for attempt in range(1, src.DOC_CAPTURE_ATTEMPTS):
+                for suffix in ("body", "wire", "receipt.json"):
+                    self.assertTrue(
+                        (capture_root / f"{single}.attempt-{attempt:02d}.{suffix}").exists(),
+                        f"missing attempt evidence {single}.attempt-{attempt:02d}.{suffix}")
+            self.assertFalse(
+                list(capture_root.glob(f"{single}.attempt-{src.DOC_CAPTURE_ATTEMPTS:02d}.*")))
+            final = json.loads((capture_root / f"{single}.receipt.json").read_bytes())
+            self.assertFalse(final["complete_body"])
+            self.assertEqual(final["error_code"], "request_error")
+            self.assertFalse((capture_root / "capture_state.json").exists())
+            self.assertFalse((capture_root / "computed_baseline.json").exists())
+
+    def test_foreign_checkpoint_coverage_is_never_trusted(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "foreign-run")
+            foreign = {"segments": [{"name": "foreign_product_segment", "offset": 0,
+                                     "count": FIXTURE_COUNT, "features": FIXTURE_COUNT,
+                                     "captured_at": "1999-01-01T00:00:00+00:00",
+                                     "body_sha256": "0" * 64}], "complete": True}
+            (capture_root / "capture_state.json").write_bytes(json.dumps(foreign).encode())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(src.NhdHydrolocationReachCodeExternalConnectionError,
+                                            "source_capture_roster_incomplete_or_unexpected"):
+                    src.capture_nhd_hydrolocation_reach_code_external_connection(
+                        _staging(root), version="foreign-run-2",
+                        capture_directory=str(capture_root))
+            self.assertTrue(sorted(capture_root.glob("page_*.error-*.body")))
+            quarantined = sorted(
+                (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"],
+                             "source_capture_roster_incomplete_or_unexpected")
 
 
 if __name__ == "__main__":

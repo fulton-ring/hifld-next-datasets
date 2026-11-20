@@ -12,13 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.nhd_area_large_scale import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_nhd_area_large_scale,
 )
@@ -34,13 +33,12 @@ class NhdAreaLargeScaleConfig(Config):
     compute_kind="http",
     description=(
         "USGS 3DHP_all FeatureServer layer 60 Waterbody rows with featuretype<>3 "
-        "(River, Canal, Ocean or Great Lake; 95,423 roster ids live-verified) as the "
-        "maintained successor of the retired NHD high-resolution NHDArea layer "
-        "(HIFLD inventory nhd/area-large-scale-2). Complete non-Lake areal "
-        "hydrography with producer-refused records' attributes staged and their "
-        "geometry explicitly gated to null (pinned refused set); unapproved "
-        "faithful candidate. Succession coverage, freshness, "
-        "schema/ID contract, rights and release decisions remain pending."
+        "(River, Canal, Ocean or Great Lake) as the maintained successor of the "
+        "retired NHD high-resolution NHDArea layer (HIFLD inventory "
+        "nhd/area-large-scale-2). Complete non-Lake areal hydrography with "
+        "producer-refused records' attributes staged and their geometry explicitly "
+        "gated to null; unapproved faithful candidate. Succession coverage, "
+        "freshness, schema/ID contract, rights and release decisions remain pending."
     ),
 )
 def nhd_area_large_scale(
@@ -63,14 +61,15 @@ def nhd_area_large_scale(
 
 @asset_check(asset=nhd_area_large_scale, blocking=True)
 def nhd_area_large_scale_complete(candidate: dict) -> AssetCheckResult:
-    passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
-    )
+    count = candidate.get("source_reported_count")
+    passed = (candidate.get("source_population_complete") is True
+              and type(count) is int and count > 0
+              and candidate.get("feature_count") == count)
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": count if count is not None else "missing",
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
             "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_release_accepted": False,
@@ -86,6 +85,10 @@ def nhd_area_large_scale_complete(candidate: dict) -> AssetCheckResult:
     )
 
 
+nhd_area_large_scale_drift = register_approved_baseline_drift(
+    nhd_area_large_scale, "nhd_area_large_scale_drift")
+
+
 nhd_area_large_scale_draft_job = define_asset_job(
     "nhd_area_large_scale_draft_refresh",
     selection=AssetSelection.assets(nhd_area_large_scale),
@@ -99,6 +102,6 @@ nhd_area_large_scale_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [nhd_area_large_scale]
-ASSET_CHECKS = [nhd_area_large_scale_complete]
+ASSET_CHECKS = [nhd_area_large_scale_complete, nhd_area_large_scale_drift]
 JOBS = [nhd_area_large_scale_draft_job]
 SCHEDULES = [nhd_area_large_scale_draft_schedule]

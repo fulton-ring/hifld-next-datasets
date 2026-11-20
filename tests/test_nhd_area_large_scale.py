@@ -122,75 +122,18 @@ def _fixture():
     return fields, features, captures, schema, windows
 
 
-def _bounds(features):
-    values = []
-    for feature in features:
-        geometry = feature.get("geometry")
-        if not geometry or "rings" not in geometry:
-            continue
-        for ring in geometry["rings"]:
-            for vertex in ring:
-                if type(vertex[0]) in (int, float) and type(vertex[1]) in (int, float):
-                    values.extend((vertex[0], vertex[1]))
-    return {"xmin": min(values[0::2]), "ymin": min(values[1::2]),
-            "xmax": max(values[0::2]), "ymax": max(values[1::2])}
-
-
-def _geometry_records(features, windows):
-    records = []
-    for window in windows:
-        window_features = [feature for feature in features
-                           if feature["attributes"]["OBJECTID"] in window]
-        records.extend([feature["attributes"]["OBJECTID"],
-                        feature["geometry"]["rings"] if feature.get("geometry") else None][0:1]
-                       + [feature["geometry"]["rings"] if feature.get("geometry") else None][1:]
-                       for feature in window_features)
-    # Explicit per-feature records: [oid, rings-or-None]
-    out = []
-    for window in windows:
-        for feature in [item for item in features if item["attributes"]["OBJECTID"] in window]:
-            geometry = feature.get("geometry")
-            out.append([feature["attributes"]["OBJECTID"],
-                        geometry["rings"] if geometry else None])
-    return out
-
-
-def _pins(features, schema, windows):
-    attrs = sorted((feature["attributes"] for feature in features),
-                   key=lambda row: row["OBJECTID"])
-    distribution = {}
-    for feature in features:
-        if feature.get("geometry") is not None:
-            code = feature["attributes"]["featuretype"]
-            distribution[code] = distribution.get(code, 0) + 1
-    # Boundary-independent geometry digest: one canonical stream over the whole
-    # record sequence in window order (windows partition the roster ascending).
-    geometry_sha = hashlib.sha256(_canonical(
-        [[feature["attributes"]["OBJECTID"],
-          feature["geometry"]["rings"] if feature.get("geometry") else None]
-         for window in windows
-         for feature in sorted((f for f in features
-                                if f["attributes"]["OBJECTID"] in window),
-                               key=lambda f: f["attributes"]["OBJECTID"])]))
-    return dict(EXPECTED_COUNT=5, EXPECTED_NULL_GEOMETRY_COUNT=1,
-                EXPECTED_REFUSED_IDS=frozenset(),
-                EXPECTED_UNUSABLE_GEOMETRY_COUNTS={},
-                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),
-                EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(attrs)).hexdigest(),
-                EXPECTED_GEOMETRY_SHA256=geometry_sha.hexdigest(),
-                EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
-                EXPECTED_FEATURETYPE_DISTRIBUTION=distribution,
+def _pins(schema):
+    return dict(EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
                 EXPECTED_SERVICE_LAYERS=[(60, "Waterbody"), (50, "Flowline")],
                 EXPECTED_ALIAS_SERVICE_LAYERS=[(60, "Waterbody"), (50, "Flowline")],
                 EXPECTED_LAYER_EXTENT={"xmin": -19951755.68, "ymin": -1622985.37,
-                                       "xmax": 20021551.75, "ymax": 11575301.96},
-                EXPECTED_OBSERVED_BOUNDS=_bounds(features))
+                                       "xmax": 20021551.75, "ymax": 11575301.96})
 
 
 class NhdAreaLargeScaleTests(unittest.TestCase):
     def test_native_rings_z_and_null_geometry_preserved_in_parquet(self):
         fields, features, captures, schema, windows = _fixture()
-        with patch.multiple(source, **_pins(features, schema, windows)):
+        with patch.multiple(source, **_pins(schema)):
             original_fields, extracted = source._validate_captures(captures)
             body = source._parquet_bytes(original_fields, extracted["attributes"], extracted["wkbs"])
         with tempfile.NamedTemporaryFile(suffix=".parquet") as stream:
@@ -254,8 +197,90 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         self.assertEqual(extracted["audit"]["null_geometry_count"], 1)
 
     def _validated(self, features, captures, schema, windows):
-        with patch.multiple(source, **_pins(features, schema, windows)):
+        with patch.multiple(source, **_pins(schema)):
             return source._validate_captures(captures)
+
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        _, features, captures, schema, windows = _fixture()
+        added = {"attributes": _attrs(15, id3dhp="AB015X"),
+                 "geometry": {"hasZ": True, "rings": [RING_B]}}
+        ids = [10, 11, 12, 13, 14, 15]
+        for name in ("ids_seed", "ids_before", "ids_after"):
+            doc = json.loads(captures[name][0])
+            doc["objectIds"] = ids
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
+        for name in ("count_before", "count_after"):
+            doc = json.loads(captures[name][0])
+            doc["count"] = 6
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
+        url = source._window_url([15])
+        captures["page_0000015"] = (
+            json.dumps({"features": [added],
+                        "spatialReference": {"wkid": 4326, "latestWkid": 4326},
+                        "hasZ": True, "geometryType": "esriGeometryPolygon",
+                        "exceededTransferLimit": False},
+                       separators=(",", ":")).encode(),
+            {"status": 200, "url": url, "final_url": url})
+        with patch.multiple(source, **_pins(schema)):
+            _, extracted = source._validate_captures(captures)
+        self.assertEqual(len(extracted["ids"]), 6)
+        self.assertEqual(extracted["audit"]["source_reported_count"], 6)
+        from dagster import AssetCheckSeverity
+        from dagster_hifld.assets.nhd_area_large_scale import nhd_area_large_scale_drift
+        candidate = {"dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+                     "feature_count": 6,
+                     "source_id_sha256": source._sha(source._canonical(extracted["ids"])),
+                     "release_accepted": False}
+        drift = nhd_area_large_scale_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(drift.metadata["comparison_status"].value,
+                         "skipped_no_approved_baseline")
+
+    def test_display_only_layer_drift_between_witnesses_is_not_capture_drift(self):
+        # ArcGIS serves drawingInfo color-ramp hints nondeterministically from
+        # the same layer within minutes; display-only drift must not fail the
+        # completeness witnesses (observed live 2026-11-20 on layer 60).
+        _, features, captures, schema, windows = _fixture()
+        layer_after = json.loads(captures["layer_after"][0])
+        layer_after["drawingInfo"] = {"renderer": {"authoringInfo": {"colorRamp": {
+            "colorRamps": [{"fromColor": [229, 199, 252], "toColor": [252, 248, 212]}]}}}}
+        captures["layer_after"] = (json.dumps(layer_after, separators=(",", ":")).encode(),
+                                   captures["layer_after"][1])
+        _, extracted = self._validated(features, captures, schema, windows)
+        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14])
+
+    def test_layer_contract_drift_between_witnesses_is_still_rejected(self):
+        cases = {
+            "maxRecordCount": 2000,
+            "geometryType": "esriGeometryPolyline",
+            "extent": {"xmin": -1.0, "ymin": -2.0, "xmax": 1.0, "ymax": 2.0,
+                       "spatialReference": {"wkid": 102100, "latestWkid": 3857}},
+            "hasZ": False,
+        }
+        for field, value in cases.items():
+            with self.subTest(field=field):
+                _, features, captures, schema, windows = _fixture()
+                layer_after = json.loads(captures["layer_after"][0])
+                layer_after[field] = value
+                captures["layer_after"] = (json.dumps(layer_after, separators=(",", ":")).encode(),
+                                           captures["layer_after"][1])
+                with self.assertRaisesRegex(ValueError,
+                                            "source_layer_metadata_changed_during_capture"):
+                    self._validated(features, captures, schema, windows)
+
+    def test_blocking_check_uses_capture_reported_count(self):
+        from dagster_hifld.assets.nhd_area_large_scale import nhd_area_large_scale_complete
+        passed = nhd_area_large_scale_complete({"feature_count": 5, "source_reported_count": 5,
+                                                "source_population_complete": True})
+        self.assertTrue(passed.passed)
+        self.assertEqual(passed.metadata["source_reported_count"].value, 5)
+        missing = nhd_area_large_scale_complete({"feature_count": 5, "source_reported_count": 5,
+                                                 "source_population_complete": False})
+        self.assertFalse(missing.passed)
+        mismatch = nhd_area_large_scale_complete({"feature_count": 4, "source_reported_count": 5,
+                                                  "source_population_complete": True})
+        self.assertFalse(mismatch.passed)
 
     def test_missing_service_documentation_link_is_rejected(self):
         _, features, captures, schema, windows = _fixture()
@@ -315,23 +340,35 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_reordered"):
             self._validated(features, captures, schema, windows)
 
-    def test_record_value_change_is_detected(self):
+    def test_record_value_change_is_captured_as_current_source(self):
         _, features, captures, schema, windows = _fixture()
         name = _window_name([10, 11])
         page = json.loads(captures[name][0])
         page["features"][0]["attributes"]["areasqkm"] = 9.9
         captures[name] = (json.dumps(page, separators=(",", ":")).encode(), captures[name][1])
-        with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-            self._validated(features, captures, schema, windows)
+        _, extracted = self._validated(features, captures, schema, windows)
+        self.assertEqual(extracted["attributes"][0]["areasqkm"], 9.9)
+        self.assertEqual(extracted["audit"]["source_record_sha256"],
+                         source._sha(source._canonical(extracted["attributes"])))
 
-    def test_vertex_change_is_detected(self):
+    def test_vertex_change_is_captured_and_bounds_follow_capture(self):
         _, features, captures, schema, windows = _fixture()
         name = _window_name([10, 11])
         page = json.loads(captures[name][0])
-        page["features"][0]["geometry"]["rings"][0][1] = [-158.501, 68.1, 246.0]
+        page["features"][0]["geometry"]["rings"][0][1] = [-159.501, 68.1, 246.0]
         captures[name] = (json.dumps(page, separators=(",", ":")).encode(), captures[name][1])
-        with self.assertRaisesRegex(ValueError, "source_geometry_or_coverage_drift"):
-            self._validated(features, captures, schema, windows)
+        _, extracted = self._validated(features, captures, schema, windows)
+        polygon = shapely.from_wkb(extracted["wkbs"][0])
+        self.assertEqual(list(polygon.exterior.coords)[1], (-159.501, 68.1, 246.0))
+        xs, ys = [], []
+        for wkb in extracted["wkbs"]:
+            if wkb is None:
+                continue
+            xmin, ymin, xmax, ymax = shapely.from_wkb(wkb).bounds
+            xs.extend((xmin, xmax))
+            ys.extend((ymin, ymax))
+        self.assertEqual(extracted["audit"]["observed_bounds"],
+                         {"xmin": min(xs), "ymin": min(ys), "xmax": max(xs), "ymax": max(ys)})
 
     def test_featuretype_label_mismatch_is_rejected(self):
         _, features, captures, schema, windows = _fixture()
@@ -374,33 +411,12 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
             {"status": 200, "url": attrs_url, "final_url": attrs_url})
         return fields, features, captures, schema, windows
 
-    def _refusal_pins(self, features, schema):
-        attrs_10, attrs_11, attrs_12, attrs_14, attrs_13 = (
-            _attrs(10), _attrs(11), _attrs(12, featuretype=2, featuretypelabel="Canal",
-                                           id3dhp="CD00012"),
-            _attrs(14, featuretype=4, featuretypelabel="Ocean or Great Lake", id3dhp="OC00014"),
-            _attrs(13, id3dhp="NUL0013"))
-        ordered = [attrs_10, attrs_11, attrs_12, attrs_14, attrs_13]
-        geometry_sha = hashlib.sha256(_canonical([
-            [10, [RING_A]], [11, [RING_A, HOLE_A]], [12, [RING_A, RING_B, HOLE_B]],
-            [14, [RING_B]], [13, None]]))
-        return dict(EXPECTED_COUNT=5, EXPECTED_NULL_GEOMETRY_COUNT=1,
-                    EXPECTED_REFUSED_IDS=frozenset({13}),
-                    EXPECTED_UNUSABLE_GEOMETRY_COUNTS={},
-                    EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12, 13, 14])).hexdigest(),
-                    EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(ordered)).hexdigest(),
-                    EXPECTED_GEOMETRY_SHA256=geometry_sha.hexdigest(),
-                    EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
-                    EXPECTED_FEATURETYPE_DISTRIBUTION={1: 2, 2: 1, 4: 1},
-                    EXPECTED_SERVICE_LAYERS=[(60, "Waterbody"), (50, "Flowline")],
-                    EXPECTED_ALIAS_SERVICE_LAYERS=[(60, "Waterbody"), (50, "Flowline")],
-                    EXPECTED_LAYER_EXTENT={"xmin": -19951755.68, "ymin": -1622985.37,
-                                           "xmax": 20021551.75, "ymax": 11575301.96},
-                    EXPECTED_OBSERVED_BOUNDS=_bounds(features))
+    def _refusal_pins(self, schema):
+        return _pins(schema)
 
     def test_refused_record_row_is_staged_with_gated_null_geometry(self):
         fields, features, captures, schema, windows = self._refusal_fixture()
-        with patch.multiple(source, **self._refusal_pins(features, schema)):
+        with patch.multiple(source, **self._refusal_pins(schema)):
             _, extracted = source._validate_captures(captures)
         audit = extracted["audit"]
         self.assertEqual(audit["source_feature_count"], 5)
@@ -411,19 +427,26 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         self.assertIsNone(extracted["wkbs"][4])
         self.assertEqual(extracted["attributes"][4]["OBJECTID"], 13)
 
-    def test_unpinned_refused_record_fails_closed(self):
+    def test_refused_record_outside_roster_is_rejected(self):
         fields, features, captures, schema, windows = self._refusal_fixture()
-        pins = self._refusal_pins(features, schema)
-        pins["EXPECTED_REFUSED_IDS"] = frozenset()
-        with patch.multiple(source, **pins):
+        ids = [10, 11, 12, 14]
+        for name in ("ids_seed", "ids_before", "ids_after"):
+            doc = json.loads(captures[name][0])
+            doc["objectIds"] = ids
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
+        for name in ("count_before", "count_after"):
+            doc = json.loads(captures[name][0])
+            doc["count"] = 4
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
+        with patch.multiple(source, **self._refusal_pins(schema)):
             with self.assertRaisesRegex(ValueError, "source_refused_ids_drift"):
                 source._validate_captures(captures)
 
     def test_missing_refused_attrs_capture_fails_closed(self):
         fields, features, captures, schema, windows = self._refusal_fixture()
         del captures["refused_attrs_0000013"]
-        with patch.multiple(source, **self._refusal_pins(features, schema)):
-            with self.assertRaisesRegex(ValueError, "source_capture_roster_incomplete_or_unexpected"):
+        with patch.multiple(source, **self._refusal_pins(schema)):
+            with self.assertRaisesRegex(ValueError, "source_feature_population_incomplete"):
                 source._validate_captures(captures)
 
     def test_single_id_window_refusal_is_gated_with_evidence(self):
@@ -587,7 +610,7 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         from urllib.parse import parse_qs, urlsplit
 
         fields, features, fixture_captures, schema, windows = _fixture()
-        pins = self._refusal_pins(features, schema)
+        pins = self._refusal_pins(schema)
         bodies = {name: body for name, (body, _) in fixture_captures.items()}
         error_body = (b'{"error":{"code":500,"message":"Error performing query operation",'
                       b'"details":[]}}')
@@ -723,9 +746,7 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         page["features"][0]["geometry"]["rings"] = [degenerate]
         captures[name] = (json.dumps(page, separators=(",", ":"), ensure_ascii=False).encode(),
                           captures[name][1])
-        pins = _pins(features, schema, windows)
-        pins["EXPECTED_UNUSABLE_GEOMETRY_COUNTS"] = {}
-        with patch.multiple(source, **pins):
+        with patch.multiple(source, **_pins(schema)):
             _, extracted = source._validate_captures(captures)
         audit = extracted["audit"]
         self.assertEqual(audit["unusable_geometry_feature_counts"], {})
@@ -737,7 +758,7 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         self.assertEqual(audit["null_geometry_count"], 1)
         self.assertEqual(audit["source_feature_count"], 5)
 
-    def test_unusable_pin_stays_enforced_against_the_retired_family(self):
+    def test_degenerate_rings_are_retained_not_gated(self):
         fields, features, captures, schema, windows = _fixture()
         degenerate = [[-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0],
                       [-158.2, 67.8, 247.0], [-158.2, 67.8, 247.0]]
@@ -747,25 +768,24 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         page["features"][0]["geometry"]["rings"] = [degenerate]
         captures[name] = (json.dumps(page, separators=(",", ":"), ensure_ascii=False).encode(),
                           captures[name][1])
-        pins = _pins(features, schema, windows)
-        with patch.multiple(source, **pins):
-            # The retired quarantine family pins to an empty census: the
-            # shared converter retains and counts these rows instead.
+        with patch.multiple(source, **_pins(schema)):
             _, extracted = source._validate_captures(captures)
         self.assertEqual(extracted["audit"]["unusable_geometry_feature_counts"], {})
         self.assertEqual(extracted["audit"]["ogc_invalid_geometry_sample_objectids"], [12, 14])
 
-    def test_observed_coverage_drift_is_detected(self):
+    def test_count_change_during_capture_is_rejected(self):
         _, features, captures, schema, windows = _fixture()
-        pins = _pins(features, schema, windows)
-        pins["EXPECTED_OBSERVED_BOUNDS"] = {"xmin": -158.7, "ymin": 67.8, "xmax": -158.1, "ymax": 68.2}
-        with patch.multiple(source, **pins):
-            with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
+        doc = json.loads(captures["count_after"][0])
+        doc["count"] = 6
+        captures["count_after"] = (json.dumps(doc, separators=(",", ":")).encode(),
+                                   captures["count_after"][1])
+        with patch.multiple(source, **_pins(schema)):
+            with self.assertRaisesRegex(ValueError, "source_count_changed_during_capture"):
                 source._validate_captures(captures)
 
     def test_capture_budget_is_enforced_before_requests(self):
         _, features, captures, schema, windows = _fixture()
-        pins = _pins(features, schema, windows)
+        pins = _pins(schema)
         with patch.multiple(source, **pins), patch.object(source, "MAX_CAPTURE_BYTES", 0), \
                 tempfile.TemporaryDirectory(prefix="nhd-area-budget-") as temporary:
             from dagster_hifld.resources import StagingStorageResource
@@ -832,7 +852,7 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="nhd-area-large-scale-e2e-") as temporary:
             root = __import__("pathlib").Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
-            with patch.multiple(source, **_pins(features, schema, windows)), \
+            with patch.multiple(source, **_pins(schema)), \
                     patch.object(source, "MIN_FREE_BYTES", 0), \
                     patch.object(source, "PAGE_IDS", 2), \
                     patch.object(source, "capture_get", side_effect=fake_capture_get), \

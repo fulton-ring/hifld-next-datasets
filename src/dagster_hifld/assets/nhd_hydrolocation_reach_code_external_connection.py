@@ -13,12 +13,11 @@ from dagster import (
 )
 
 from dagster_hifld.download import build_version_id
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.nhd_hydrolocation_reach_code_external_connection import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_nhd_hydrolocation_reach_code_external_connection,
 )
@@ -34,11 +33,9 @@ class NhdHydrolocationReachCodeExternalConnectionConfig(Config):
     compute_kind="http",
     description=(
         "USGS 3DHP_all FeatureServer layer 40 'HydroLocation - External "
-        "Connection' (25 source features observed 2026-11-15; the producer "
-        "layer grouping for the External Connection and Reach Code hydrolocation "
-        "categories named by the HIFLD inventory entry "
-        "nhd/hydrolocation-reach-code-external-connection, whose Reachcode "
-        "Start/End categories are currently unpopulated). Resumable "
+        "Connection' (the producer layer grouping for the External Connection "
+        "and Reach Code hydrolocation categories named by the HIFLD inventory "
+        "entry nhd/hydrolocation-reach-code-external-connection). Resumable "
         "roster-segmented complete capture; unapproved faithful candidate. "
         "Succession coverage, freshness, schema/ID contract, rights and release "
         "decisions remain pending."
@@ -65,14 +62,19 @@ def nhd_hydrolocation_reach_code_external_connection(
 @asset_check(asset=nhd_hydrolocation_reach_code_external_connection, blocking=True)
 def nhd_hydrolocation_reach_code_external_connection_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and (EXPECTED_NULL_GEOMETRY_COUNT is None
-             or candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT)
+        candidate.get("source_population_complete") is True
+        and type(candidate.get("feature_count")) is int
+        and type(candidate.get("source_reported_count")) is int
+        and candidate["feature_count"] > 0
+        and candidate["feature_count"] == candidate.get("source_reported_count")
+        and bool(candidate.get("source_id_sha256"))
+        and bool(candidate.get("source_schema_sha256"))
     )
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": candidate.get("source_reported_count", 0),
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
             "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_release_accepted": False,
@@ -88,6 +90,12 @@ def nhd_hydrolocation_reach_code_external_connection_complete(candidate: dict) -
     )
 
 
+nhd_hydrolocation_reach_code_external_connection_approved_baseline_drift = register_approved_baseline_drift(
+    nhd_hydrolocation_reach_code_external_connection,
+    "nhd_hydrolocation_reach_code_external_connection_approved_baseline_drift",
+)
+
+
 nhd_hydrolocation_reach_code_external_connection_draft_job = define_asset_job(
     "nhd_hydrolocation_reach_code_external_connection_draft_refresh",
     selection=AssetSelection.assets(nhd_hydrolocation_reach_code_external_connection),
@@ -101,6 +109,7 @@ nhd_hydrolocation_reach_code_external_connection_draft_schedule = ScheduleDefini
 )
 
 INGEST_ASSETS = [nhd_hydrolocation_reach_code_external_connection]
-ASSET_CHECKS = [nhd_hydrolocation_reach_code_external_connection_complete]
+ASSET_CHECKS = [nhd_hydrolocation_reach_code_external_connection_complete,
+                nhd_hydrolocation_reach_code_external_connection_approved_baseline_drift]
 JOBS = [nhd_hydrolocation_reach_code_external_connection_draft_job]
 SCHEDULES = [nhd_hydrolocation_reach_code_external_connection_draft_schedule]
