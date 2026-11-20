@@ -17,3 +17,8 @@ def census_elementary_districts(context,config:CensusElementaryDistrictsConfig,s
 elsd_source_integrity_job=define_asset_job('elsd_source_integrity',selection=AssetSelection.assets(census_elementary_districts))
 elsd_source_integrity_schedule=ScheduleDefinition(name='elsd_source_integrity_monthly',job=elsd_source_integrity_job,
     cron_schedule='0 9 1 * *',execution_timezone='America/New_York',default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [census_elementary_districts]
+ASSET_CHECKS = []
+JOBS = [elsd_source_integrity_job]
+SCHEDULES = [elsd_source_integrity_schedule]

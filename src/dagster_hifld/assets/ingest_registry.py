@@ -12,19 +12,15 @@ from dagster_hifld.assets.usace import usace_administrative_areas_usace_ienc
 from dagster_hifld.assets.usace import usace_navigation_marks_areas_usace_ienc
 from dagster_hifld.assets.usace_obstruction_lines import usace_obstruction_lines_usace_ienc
 
-from dagster_hifld.assets.ibc import ibc_canada_us_border
 from dagster_hifld.assets.usace_crane_locations import usace_crane_locations_ienc
 from dagster_hifld.assets.epa_frs_sic_powerplants import epa_frs_sic_powerplants
-from dagster_hifld.assets.census_elementary_districts import census_elementary_districts
 
 
 hifld_ingest_assets = [
-    census_elementary_districts,
     national_transit_map_stops,
     usace_administrative_areas_usace_ienc,
     usace_navigation_marks_areas_usace_ienc,
     usace_obstruction_lines_usace_ienc,
-    ibc_canada_us_border,
     usace_crane_locations_ienc,
     epa_frs_sic_powerplants,
 ]
