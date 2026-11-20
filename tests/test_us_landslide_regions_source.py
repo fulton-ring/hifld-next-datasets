@@ -14,11 +14,15 @@ from urllib.parse import parse_qs, urlparse, urlsplit
 
 import httpx
 import pyarrow.parquet as pq
+import shapely
 
+from dagster import AssetCheckSeverity
 from dagster_hifld.assets.us_landslide_regions import (
     us_landslide_regions,
+    us_landslide_regions_approved_baseline_drift,
     us_landslide_regions_complete,
 )
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import capture_common
@@ -27,6 +31,10 @@ from dagster_hifld.sources.esri_geometry import to_wkb
 
 FIXTURE_COUNT = 8
 FIXTURE_OBJECTIDS = (2, 3, 5, 8, 13, 21, 34, 55)
+# Fixture stand-in for the layer document's declared extent; the source only
+# requires a structurally valid extent in the native SR, not a pinned one.
+FIXTURE_LAYER_EXTENT = {"xmin": -17_337_802.24197813, "ymin": 2_031_850.1690669723,
+                        "xmax": -7_339_708.080696905, "ymax": 9_269_118.005589234}
 
 
 def _shell(x: float, y: float) -> list[list[float]]:
@@ -105,7 +113,7 @@ def _fixture_layer_doc() -> dict:
             "geometryType": src.GEOMETRY_TYPE, "hasZ": True, "hasM": True,
             "maxRecordCount": src.MAX_RECORD_COUNT,
             "advancedQueryCapabilities": {"supportsPagination": True},
-            "extent": {**src.EXPECTED_LAYER_EXTENT,
+            "extent": {**FIXTURE_LAYER_EXTENT,
                        "spatialReference": {**src.NATIVE_LAYER_SR}},
             "fields": _fixture_layer_fields()}
 
@@ -192,28 +200,14 @@ def make_responder(rows: list[dict], *, count=None, ids=None, service=None, laye
 
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_size=4,
-                 mock_construction_validators=True):
-    import dagster_hifld.assets.us_landslide_regions as asset_module
+                  mock_construction_validators=True):
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(src, "EXPECTED_IDS_SHA256", ""),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
-        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
-        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
-        patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_INVALID_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_TOTAL_VERTEX_COUNT", None),
-        patch.object(src, "EXPECTED_RINGS_PER_FEATURE_DISTRIBUTION", None),
-        patch.object(src, "EXPECTED_OBSERVED_BOUNDS", None),
         patch.object(src, "PAGE_START_RECORDS", segment_size),
         patch.object(src, "PAGE_PROBE_BASE_DELAY_SECONDS", 0.0),
         patch.object(src, "DOC_CAPTURE_BASE_DELAY_SECONDS", 0.0),
-        patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", None),
-        patch.object(asset_module, "EXPECTED_INVALID_GEOMETRY_COUNT", None),
         patch.object(src, "_default_client",
-                     side_effect=lambda: httpx.Client(transport=transport)),
+                      side_effect=lambda: httpx.Client(transport=transport)),
     ]
     if mock_construction_validators:
         contexts.extend([
@@ -562,16 +556,18 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
         self.assertEqual(src.LAYER_ID, 12)
         self.assertEqual(src.LAYER_NAME, "US_Landslide_v3poly")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPolygon")
-        self.assertEqual(src.EXPECTED_COUNT, 680_497)
         self.assertEqual(src.MAX_RECORD_COUNT, 2000)
         self.assertEqual(src.PAGE_START_RECORDS, 1000)
         self.assertEqual(src.EXPECTED_SERVICE_DESCRIPTION,
-                         "USGS US Landslide version 3 polygons")
-        self.assertTrue(src.EXPECTED_IDS_SHA256)
+                          "USGS US Landslide version 3 polygons")
         self.assertTrue(src.EXPECTED_SCHEMA_SHA256)
-        self.assertTrue(src.EXPECTED_RECORD_SHA256)
-        self.assertTrue(src.EXPECTED_GEOMETRY_SHA256)
-        self.assertTrue(src.BASELINE_PENDING_NOTE)
+        for removed in ("EXPECTED_COUNT", "EXPECTED_LAYER_EXTENT", "EXPECTED_IDS_SHA256",
+                        "EXPECTED_RECORD_SHA256", "EXPECTED_GEOMETRY_SHA256",
+                        "EXPECTED_NULL_GEOMETRY_COUNT", "EXPECTED_EMPTY_GEOMETRY_COUNT",
+                        "EXPECTED_INVALID_GEOMETRY_COUNT", "EXPECTED_TOTAL_VERTEX_COUNT",
+                        "EXPECTED_RINGS_PER_FEATURE_DISTRIBUTION",
+                        "EXPECTED_OBSERVED_BOUNDS"):
+            self.assertFalse(hasattr(src, removed), removed)
         self.assertEqual(src.EXPECTED_ATTRIBUTE_NAMES,
                          ("OBJECTID", "fid_1", "USGS_ID", "Date_Min", "Date_Max",
                           "Fatalities", "Confidence", "LS_Type", "Inventory",
@@ -580,6 +576,10 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.FILE_SLUG]
                             for key in keys))
+        import dagster_hifld.assets.us_landslide_regions as asset_module
+        self.assertEqual(asset_module.ASSET_CHECKS,
+                         [us_landslide_regions_complete,
+                          us_landslide_regions_approved_baseline_drift])
         schedule = defs.get_schedule_def(
             "us_landslide_regions_draft_refresh_schedule")
         from dagster import DefaultScheduleStatus
@@ -763,7 +763,8 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
             with fixture_mode(schema_sha, transport):
                 with DagsterInstance.from_config(str(instance_dir)) as instance:
                     result = materialize(
-                        [us_landslide_regions, us_landslide_regions_complete],
+                        [us_landslide_regions, us_landslide_regions_complete,
+                         us_landslide_regions_approved_baseline_drift],
                         resources={"staging_storage": _staging(root)},
                         instance=instance,
                         run_config={"ops": {
@@ -774,65 +775,35 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                     checks = {check.check_name: check
                               for check in result.get_asset_check_evaluations()}
                     self.assertTrue(checks["us_landslide_regions_complete"].passed)
+                    warning = checks["us_landslide_regions_approved_baseline_drift"]
+                    self.assertFalse(warning.passed)
+                    self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+                    self.assertEqual(warning.metadata["comparison_status"].value,
+                                     "skipped_no_approved_baseline")
                     candidate = result.output_for_node(
                         "ingest__us_landslide_regions__us_landslide_regions")
                     self.assertEqual(candidate["feature_count"], FIXTURE_COUNT)
+                    self.assertEqual(candidate["source_reported_count"], FIXTURE_COUNT)
+                    self.assertTrue(candidate["source_population_complete"])
                     self.assertTrue(candidate["reused"])
 
-    def test_blocking_check_passes_on_reuse_with_pinned_gates(self):
-        rows = _fixture_rows()
-        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport):
-                storage = _staging(root)
-                src.capture_us_landslide_regions(
-                    storage, version="pin-reuse-run", capture_directory=str(capture_root))
-                baseline = json.loads((capture_root / "computed_baseline.json")
-                                      .read_bytes())
-                import dagster_hifld.assets.us_landslide_regions as asset_module
-                with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT",
-                                  baseline["source_null_geometry_count"]), \
-                        patch.object(src, "EXPECTED_INVALID_GEOMETRY_COUNT",
-                                     baseline["source_invalid_geometry_count"]), \
-                        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT",
-                                     baseline["source_null_geometry_count"]), \
-                        patch.object(asset_module, "EXPECTED_INVALID_GEOMETRY_COUNT",
-                                     baseline["source_invalid_geometry_count"]):
-                    second = src.capture_us_landslide_regions(
-                        storage, version="pin-reuse-run-2",
-                        capture_directory=str(capture_root))
-                    self.assertTrue(second["reused"])
-                    self.assertEqual(second["source_invalid_geometry_count"],
-                                     baseline["source_invalid_geometry_count"])
-                    self.assertEqual(second["source_null_geometry_count"],
-                                     baseline["source_null_geometry_count"])
-                    instance_dir = root / "dagster"
-                    instance_dir.mkdir()
-                    (instance_dir / "dagster.yaml").write_text(
-                        "telemetry:\n  enabled: false\n")
-                    from dagster import DagsterInstance, materialize
-                    with DagsterInstance.from_config(str(instance_dir)) as instance:
-                        result = materialize(
-                            [us_landslide_regions, us_landslide_regions_complete],
-                            resources={"staging_storage": storage},
-                            instance=instance,
-                            run_config={"ops": {
-                                "ingest__us_landslide_regions__us_landslide_regions":
-                                    {"config": {"capture_directory":
-                                                str(capture_root)}}}},
-                        )
-                        self.assertTrue(result.success)
-                        checks = {check.check_name: check
-                                  for check in result.get_asset_check_evaluations()}
-                        self.assertTrue(checks["us_landslide_regions_complete"].passed)
-                        candidate = result.output_for_node(
-                            "ingest__us_landslide_regions__us_landslide_regions")
-                        self.assertTrue(candidate["reused"])
-                        self.assertEqual(candidate["source_invalid_geometry_count"],
-                                         baseline["source_invalid_geometry_count"])
+    def test_completeness_check_uses_capture_facts_not_an_old_population(self):
+        candidate = {"feature_count": FIXTURE_COUNT,
+                     "source_reported_count": FIXTURE_COUNT,
+                     "source_population_complete": True,
+                     "source_id_sha256": "a" * 64,
+                     "source_schema_sha256": src.EXPECTED_SCHEMA_SHA256}
+        self.assertTrue(us_landslide_regions_complete(candidate).passed)
+        for changes in ({"source_reported_count": FIXTURE_COUNT + 1},
+                        {"source_reported_count": True},
+                        {"feature_count": True},
+                        {"feature_count": 0, "source_reported_count": 0},
+                        {"source_population_complete": False},
+                        {"source_id_sha256": ""},
+                        {"source_schema_sha256": ""}):
+            with self.subTest(changes=changes):
+                self.assertFalse(
+                    us_landslide_regions_complete({**candidate, **changes}).passed)
 
     def test_sealed_candidate_manifest_and_audit_are_unapproved(self):
         rows = _fixture_rows()
@@ -848,11 +819,14 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
             staged = root / "staging" / prefix
             audit = json.loads((staged / "metadata" / "source_audit.json").read_bytes())
             self.assertEqual(audit["source_feature_count"], FIXTURE_COUNT)
+            self.assertEqual(audit["source_reported_count"], FIXTURE_COUNT)
+            self.assertTrue(audit["source_population_complete"])
+            self.assertEqual(audit["unique_source_id_count"], FIXTURE_COUNT)
             self.assertEqual(audit["null_geometry_count"], 1)
             self.assertEqual(audit["rings_per_feature_distribution"],
                              {str(ring_count): count
                               for ring_count, count in {1: 5, 2: 2}.items()})
-            self.assertTrue(audit["baseline_pending_complete_capture"])
+            self.assertEqual(audit["declared_layer_extent_3857"], FIXTURE_LAYER_EXTENT)
             self.assertIsNone(audit["crosswalk_layer_row"])
             self.assertEqual(audit["pagination"]["mode"],
                              "enumerated_roster_bisected_resultoffset_segments")
@@ -987,9 +961,10 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                        "advancedQueryCapabilities": {"supportsPagination": False}}),
             "source_layer_extent_drift": dict(
                 layer={**_fixture_layer_doc(),
-                       "extent": {**src.EXPECTED_LAYER_EXTENT, "xmax": 1.0,
+                       "extent": {**FIXTURE_LAYER_EXTENT, "xmax": -20_000_000.0,
                                   "spatialReference": {**src.NATIVE_LAYER_SR}}}),
-            "source_id_population_drift": dict(ids=list(FIXTURE_OBJECTIDS)[:-1]),
+            "source_id_population_drift": dict(
+                ids=[*FIXTURE_OBJECTIDS[:-1], FIXTURE_OBJECTIDS[0]]),
             "unexpected_source_geometry_members": dict(rows=[
                 {**rows[0], "geometry": {**rows[0]["geometry"], "curves": []}},
                 *rows[1:]]),
@@ -1040,74 +1015,628 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                                          .read_bytes())
                     self.assertTrue(failure["reason_code"])
 
-    def test_geometry_gates_are_enforced_once_pinned(self):
+    def test_geometry_gates_are_observed_without_population_pins(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport):
-                src.capture_us_landslide_regions(
+            with fixture_mode(schema_sha, make_responder(rows)):
+                first = src.capture_us_landslide_regions(
                     _staging(root), version="gate-run", capture_directory=str(capture_root))
                 baseline = json.loads((capture_root / "computed_baseline.json").read_bytes())
-                with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0):
-                    with self.assertRaisesRegex(src.UsLandslideRegionsError,
-                                                "source_null_geometry_count_drift"):
-                        src.fetch_us_landslide_regions_pages(capture_root)
-                with patch.object(src, "EXPECTED_INVALID_GEOMETRY_COUNT", 5):
-                    with self.assertRaisesRegex(src.UsLandslideRegionsError,
-                                                "source_invalid_geometry_count_drift"):
-                        src.fetch_us_landslide_regions_pages(capture_root)
-                with patch.object(src, "EXPECTED_RECORD_SHA256",
-                                  baseline["source_record_sha256"]):
-                    with patch.object(src, "EXPECTED_GEOMETRY_SHA256",
-                                      baseline["source_geometry_sha256"]):
-                        with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT",
-                                          baseline["source_null_geometry_count"]):
-                            with patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT",
-                                              baseline["source_empty_geometry_count"]):
-                                with patch.object(src, "EXPECTED_INVALID_GEOMETRY_COUNT",
-                                                  baseline["source_invalid_geometry_count"]):
-                                    with patch.object(src, "EXPECTED_TOTAL_VERTEX_COUNT",
-                                                      baseline["source_total_vertex_count"]):
-                                        with patch.object(
-                                                src,
-                                                "EXPECTED_RINGS_PER_FEATURE_DISTRIBUTION",
-                                                {int(key): value for key, value in
-                                                 baseline["source_rings_per_feature_distribution"].items()}):
-                                            with patch.object(
-                                                    src, "EXPECTED_OBSERVED_BOUNDS",
-                                                    baseline["observed_bounds"]):
-                                                again = src.capture_us_landslide_regions(
-                                                    _staging(root),
-                                                    version="gate-run-verify",
-                                                    capture_directory=str(capture_root))
-                                                self.assertTrue(again["reused"])
+                self.assertEqual(baseline["source_null_geometry_count"], 1)
+                self.assertEqual(baseline["source_empty_geometry_count"], 0)
+                self.assertEqual(baseline["source_invalid_geometry_count"], 0)
+                self.assertEqual(baseline["source_total_vertex_count"], 45)
+                self.assertEqual(
+                    {int(key): value
+                     for key, value in baseline["source_rings_per_feature_distribution"]
+                     .items()},
+                    {1: 5, 2: 2})
+                again = src.capture_us_landslide_regions(
+                    _staging(root), version="gate-run-verify",
+                    capture_directory=str(capture_root))
+                self.assertTrue(again["reused"])
+                self.assertEqual({k: v for k, v in first.items() if k != "reused"},
+                                 {k: v for k, v in again.items() if k != "reused"})
 
-    def test_pinned_baseline_drift_is_refused_and_quarantined(self):
+    def test_capture_witness_drift_is_refused_and_quarantined(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport):
+            with fixture_mode(schema_sha, make_responder(rows)):
                 storage = _staging(root)
                 src.capture_us_landslide_regions(
-                    storage, version="pin-run", capture_directory=str(capture_root))
-                with patch.object(src, "EXPECTED_IDS_SHA256", "0" * 64):
-                    with self.assertRaisesRegex(src.UsLandslideRegionsError,
-                                                "source_id_roster_drift"):
-                        src.capture_us_landslide_regions(
-                            storage, version="pin-run-drift",
-                            capture_directory=str(capture_root))
-                quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
-                                     .glob("*"))
+                    storage, version="witness-run", capture_directory=str(capture_root))
+                _replace_retained_body(
+                    capture_root, "ids_before",
+                    src._canonical({"objectIdFieldName": "OBJECTID",
+                                    "objectIds": [*FIXTURE_OBJECTIDS[:-1], 99]}))
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "source_id_population_drift:ids_seed_vs_before"):
+                    src.capture_us_landslide_regions(
+                        storage, version="witness-drift",
+                        capture_directory=str(capture_root))
+                quarantined = sorted(
+                    (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
                 self.assertTrue(quarantined)
                 failure = json.loads((quarantined[0] / "metadata" / "failure.json")
                                      .read_bytes())
-                self.assertTrue(failure["reason_code"].startswith("source_id_roster_drift"))
+                self.assertEqual(failure["reason_code"],
+                                 "source_id_population_drift:ids_seed_vs_before")
+
+
+def _replace_retained_body(root: Path, name: str, body: bytes, *, retain_wire=False):
+    receipt_path = root / f"{name}.receipt.json"
+    receipt = json.loads(receipt_path.read_bytes())
+    (root / f"{name}.body").write_bytes(body)
+    receipt.update(bytes=len(body), sha256=src._sha(body))
+    if not retain_wire:
+        (root / f"{name}.wire").write_bytes(body)
+        receipt.update(wire_bytes=len(body), wire_sha256=src._sha(body),
+                       content_encoding="identity")
+        if receipt.get("content_length") is not None:
+            receipt["content_length"] = len(body)
+    receipt_path.write_bytes(src._canonical(receipt) + b"\n")
+
+
+class UsLandslideRegionsWitnessTests(unittest.TestCase):
+    def _capture(self, root, capture_root, transport, version="witness"):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with fixture_mode(schema_sha, transport):
+            return src.capture_us_landslide_regions(
+                _staging(root), version=version, capture_directory=str(capture_root))
+
+    def _inventory(self, root):
+        return {str(path.relative_to(root)): src._sha(path.read_bytes())
+                for path in root.rglob("*") if path.is_file()}
+
+    def _offline(self, requests):
+        def reject(request):
+            requests.append(str(request.url))
+            raise AssertionError("HTTP forbidden during replay")
+        return httpx.MockTransport(reject)
+
+    def _after_urls(self):
+        return {"layer_after": src.LAYER_URL + "?f=pjson",
+                "service_after": src.SERVICE_URL + "?f=pjson",
+                "count_after": src._count_url(), "ids_after": src._ids_url(),
+                "item_after": src.AGOL_ITEM_URL}
+
+    def test_invalid_or_unstable_witnesses_and_incomplete_pages_cannot_seal(self):
+        for attack in ("duplicate_ids", "nonpositive_ids", "boolean_ids", "boolean_count",
+                       "changed_closing_ids", "changed_closing_count", "missing_row",
+                       "reordered_rows"):
+            with self.subTest(attack=attack), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                rows = _fixture_rows()
+                ids = list(FIXTURE_OBJECTIDS)
+                count = len(ids)
+                if attack == "duplicate_ids":
+                    ids[-1] = ids[0]
+                elif attack == "nonpositive_ids":
+                    ids[-1] = 0
+                elif attack == "boolean_ids":
+                    ids[0] = True
+                elif attack == "boolean_count":
+                    count = True
+                elif attack == "missing_row":
+                    rows.pop()
+                elif attack == "reordered_rows":
+                    rows[0], rows[1] = rows[1], rows[0]
+                inner = make_responder(rows, ids=ids, count=count)
+                ids_calls = 0
+                count_calls = 0
+
+                def respond(request):
+                    nonlocal ids_calls, count_calls
+                    query = parse_qs(urlparse(str(request.url)).query)
+                    if query.get("returnIdsOnly") == ["true"]:
+                        ids_calls += 1
+                        if attack == "changed_closing_ids" and ids_calls == 3:
+                            return _json_response({"objectIdFieldName": "OBJECTID",
+                                                   "objectIds": [*FIXTURE_OBJECTIDS[:-1],
+                                                                 99]})
+                    if query.get("returnCountOnly") == ["true"]:
+                        count_calls += 1
+                        if attack == "changed_closing_count" and count_calls == 2:
+                            return _json_response({"count": count + 1})
+                    return inner.handler(request)
+
+                with self.assertRaises(src.UsLandslideRegionsError):
+                    self._capture(root, root / "capture", httpx.MockTransport(respond))
+                self.assertFalse(list((root / "staging").rglob("candidate_ready.json")))
+
+    def test_gapped_added_removed_populations_preserve_native_values_and_cache(self):
+        for count in (8, 7, 6):
+            with self.subTest(count=count), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                rows = _fixture_rows()
+                for _ in range(FIXTURE_COUNT - count):
+                    rows.pop()
+                ids = [11 + index * 19 for index in range(count)]
+                ids[-1] = 900001
+                for row, oid in zip(rows, ids):
+                    row["attributes"]["OBJECTID"] = oid
+                capture_root = root / "capture"
+                first = self._capture(root, capture_root, make_responder(rows, ids=ids))
+                inventory = self._inventory(root / "staging")
+                requests = []
+                cached = self._capture(root, capture_root, self._offline(requests),
+                                       "offline")
+                self.assertEqual(requests, [])
+                self.assertFalse(first["reused"])
+                self.assertTrue(cached["reused"])
+                self.assertEqual({k: v for k, v in first.items() if k != "reused"},
+                                 {k: v for k, v in cached.items() if k != "reused"})
+                self.assertEqual(inventory, self._inventory(root / "staging"))
+                self.assertEqual(first["feature_count"], count)
+                self.assertEqual(first["source_reported_count"], count)
+                self.assertIs(first["source_population_complete"], True)
+                self.assertEqual(first["source_id_sha256"],
+                                 src._sha(src._canonical(ids)))
+                self.assertEqual(first["source_null_geometry_count"], 1)
+                self.assertEqual(first["source_empty_geometry_count"], 0)
+                self.assertEqual(first["source_invalid_geometry_count"], 0)
+                for key, value in first.items():
+                    if key.endswith(("_accepted", "_approved")):
+                        self.assertIs(value, False, key)
+                table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+                for name, _type, _length in src.NATIVE_FIELDS:
+                    self.assertEqual(table.column(name).to_pylist(),
+                                     [row["attributes"][name] for row in rows], name)
+                self.assertEqual(table.column("OBJECTID").to_pylist(), ids)
+                for row, wkb in zip(rows, table.column("geometry").to_pylist()):
+                    geometry = row["geometry"]
+                    if geometry is None:
+                        self.assertIsNone(wkb)
+                        continue
+                    shape = shapely.wkb.loads(wkb)
+                    parts = [shape] if shape.geom_type == "Polygon" else list(shape.geoms)
+                    xy = lambda ring: sorted((round(x, 9), round(y, 9))
+                                             for x, y, *_ in ring[:-1])
+                    decoded_rings = [xy(part.exterior.coords) for part in parts]
+                    for part in parts:
+                        for interior in part.interiors:
+                            decoded_rings.append(xy(interior.coords))
+                    expected_rings = [xy(ring) for ring in geometry["rings"]]
+                    self.assertEqual(sorted(decoded_rings), sorted(expected_rings))
+                prefix = root / "staging" / first["candidate_ready"]
+                audit = json.loads((prefix.parent / "source_audit.json").read_bytes())
+                self.assertEqual(audit["source_feature_count"], count)
+                self.assertEqual(audit["source_id_sha256"], first["source_id_sha256"])
+                self.assertEqual(audit["source_reported_count"], count)
+                self.assertIs(audit["source_population_complete"], True)
+                self.assertEqual(audit["observed_bounds"], first["observed_bounds"])
+                identity = json.loads(
+                    (prefix.parent / "processing_identity.json").read_bytes())
+                self.assertEqual(identity["code_identity_scheme"], "test")
+
+    def test_upstream_added_feature_passes_completeness_and_warns_on_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows = _fixture_rows()
+            first = self._capture(root, root / "capture-1", make_responder(rows))
+            self.assertEqual(first["feature_count"], FIXTURE_COUNT)
+            added = {"attributes": {**rows[0]["attributes"], "OBJECTID": 900001,
+                                    "USGS_ID": "ply900001", "Shape__Area": 90000.0,
+                                    "Shape__Length": 4500.0},
+                     "geometry": {"rings": [_shell(-7_000_000.0, 5_000_000.0)],
+                                  "hasZ": True}}
+            new_rows = [*rows, added]
+            new_ids = [*FIXTURE_OBJECTIDS, 900001]
+            second = self._capture(root, root / "capture-2",
+                                   make_responder(new_rows, ids=new_ids, count=9))
+            self.assertFalse(second["reused"])
+            self.assertEqual(second["feature_count"], 9)
+            self.assertEqual(second["source_reported_count"], 9)
+            self.assertIs(second["source_population_complete"], True)
+            self.assertEqual(second["source_id_sha256"],
+                             src._sha(src._canonical(new_ids)))
+            table = pq.read_table(root / "capture-2" / f"{src.FILE_SLUG}.parquet")
+            self.assertEqual(table.column("OBJECTID").to_pylist(), new_ids)
+            self.assertTrue(us_landslide_regions_complete(second).passed)
+            baseline = {**first, "release_accepted": True}
+            warning = approved_baseline_drift(second, baseline)
+            self.assertFalse(warning.passed)
+            self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(warning.metadata["comparison_status"].value,
+                             "compared_approved_release")
+            self.assertEqual(warning.metadata["feature_count_delta"].value, 1)
+            self.assertIs(warning.metadata["native_id_roster_changed"].value, True)
+            skip = us_landslide_regions_approved_baseline_drift(second)
+            self.assertFalse(skip.passed)
+            self.assertEqual(skip.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(skip.metadata["comparison_status"].value,
+                             "skipped_no_approved_baseline")
+
+    def test_reacquired_closing_group_detects_id_roster_drift(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            capture_root = Path(tmp) / "capture"
+            inner = make_responder(_fixture_rows())
+            with fixture_mode(schema_sha, inner):
+                src.fetch_us_landslide_regions_pages(capture_root)
+            # Simulate a crash between the closing witnesses being witnessed aside
+            # and the completed state being written: the retained corpus is still
+            # valid, so the next admission re-acquires the whole closing group.
+            state = src._load_state(capture_root)
+            src._save_state(capture_root, {**state, "complete": False})
+            originals = {name + suffix: (capture_root / (name + suffix)).read_bytes()
+                         for name in src.AFTER_NAMES
+                         for suffix in (".body", ".wire", ".receipt.json")}
+            requests = []
+
+            def changed(request):
+                requests.append(str(request.url))
+                query = parse_qs(urlparse(str(request.url)).query)
+                self.assertNotIn("resultOffset", query)
+                if query.get("returnIdsOnly") == ["true"]:
+                    return _json_response({"objectIdFieldName": "OBJECTID",
+                                           "objectIds": [*FIXTURE_OBJECTIDS[:-1], 99]})
+                return inner.handler(request)
+
+            with fixture_mode(schema_sha, httpx.MockTransport(changed)):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "source_id_population_drift:ids_after"):
+                    src.fetch_us_landslide_regions_pages(capture_root)
+            self.assertEqual(requests,
+                             [self._after_urls()[name] for name in src.AFTER_NAMES])
+            self.assertIs(src._load_state(capture_root)["complete"], False)
+            for name in src.AFTER_NAMES:
+                for suffix in (".body", ".wire", ".receipt.json"):
+                    self.assertIn(
+                        originals[name + suffix],
+                        [path.read_bytes()
+                         for path in capture_root.glob(name + ".error-*" + suffix)])
+
+    def test_interrupted_closing_group_repair_restarts_all_five_on_second_attempt(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            capture_root = Path(tmp) / "capture"
+            inner = make_responder(_fixture_rows())
+            with fixture_mode(schema_sha, inner):
+                src.fetch_us_landslide_regions_pages(capture_root)
+            # Simulate a crash between the closing witnesses being witnessed aside
+            # and the completed state being written: the retained corpus is still
+            # valid, so the next admission restarts the whole closing group.
+            state = src._load_state(capture_root)
+            src._save_state(capture_root, {**state, "complete": False})
+            originals = {path.name: path.read_bytes() for name in src.AFTER_NAMES
+                         for suffix in (".body", ".wire", ".receipt.json")
+                         if (path := capture_root / (name + suffix)).exists()}
+            first_requests, pending_states = [], []
+
+            def interrupted(request):
+                first_requests.append(str(request.url))
+                pending_states.append(src._load_state(capture_root)["complete"])
+                if str(request.url) == src.SERVICE_URL + "?f=pjson":
+                    raise httpx.ConnectError("closing service interrupted")
+                response = inner.handler(request)
+                document = json.loads(response.stream.body)
+                document["repair_epoch"] = "first attempt"
+                return _json_response(document)
+
+            with fixture_mode(schema_sha, httpx.MockTransport(interrupted)):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "source_capture_failed:ValueError"):
+                    src.fetch_us_landslide_regions_pages(capture_root)
+            self.assertEqual(first_requests,
+                             [src.LAYER_URL + "?f=pjson", src.SERVICE_URL + "?f=pjson"])
+            self.assertEqual(pending_states, [False, False])
+            self.assertIs(src._load_state(capture_root)["complete"], False)
+            for name in src.AFTER_NAMES:
+                for suffix in (".body", ".wire", ".receipt.json"):
+                    if name + suffix in originals:
+                        self.assertIn(
+                            originals[name + suffix],
+                            [path.read_bytes()
+                             for path in capture_root.glob(name + ".error-*" + suffix)])
+            self.assertIn(
+                "repair_epoch",
+                json.loads((capture_root / "layer_after.body").read_bytes()))
+            second_requests = []
+
+            def resumed(request):
+                second_requests.append(str(request.url))
+                self.assertIs(src._load_state(capture_root)["complete"], False)
+                return inner.handler(request)
+
+            with fixture_mode(schema_sha, httpx.MockTransport(resumed)):
+                result = src.fetch_us_landslide_regions_pages(capture_root)
+            self.assertEqual(second_requests,
+                             [self._after_urls()[name] for name in src.AFTER_NAMES])
+            self.assertTrue(result["complete"])
+            self.assertIs(src._load_state(capture_root)["complete"], True)
+            self.assertNotIn(
+                "repair_epoch",
+                json.loads((capture_root / "layer_after.body").read_bytes()))
+
+    def test_interrupted_closing_resume_reacquires_all_five_and_retains_failed_evidence(self):
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            inner = make_responder(_fixture_rows())
+            with fixture_mode(schema_sha, inner):
+                src.fetch_us_landslide_regions_pages(capture_root)
+            # Simulate a crash between the closing witnesses being witnessed aside
+            # and the completed state being written: the retained corpus is still
+            # valid, so the next admission restarts the whole closing group.
+            state = src._load_state(capture_root)
+            src._save_state(capture_root, {**state, "complete": False})
+            first_requests = []
+
+            def interrupted(request):
+                first_requests.append(str(request.url))
+                query = parse_qs(urlparse(str(request.url)).query)
+                self.assertNotIn("resultOffset", query)
+                if query.get("returnCountOnly") == ["true"]:
+                    raise httpx.ConnectError("closing witness interrupted")
+                return inner.handler(request)
+
+            with fixture_mode(schema_sha, httpx.MockTransport(interrupted)):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "source_capture_failed:ValueError"):
+                    src.fetch_us_landslide_regions_pages(capture_root)
+            self.assertEqual(first_requests[:3],
+                             [self._after_urls()[name]
+                              for name in src.AFTER_NAMES[:3]])
+            self.assertIs(src._load_state(capture_root)["complete"], False)
+            failed = json.loads(
+                (capture_root / "count_after.receipt.json").read_bytes())
+            self.assertIs(failed["complete_body"], False)
+            self.assertEqual(failed["error_code"], "request_error")
+            closing_requests = []
+
+            def resume(request):
+                query = parse_qs(urlparse(str(request.url)).query)
+                self.assertNotIn("resultOffset", query)
+                closing_requests.append(str(request.url))
+                return inner.handler(request)
+
+            self._capture(root, capture_root, httpx.MockTransport(resume), "recovered")
+            self.assertEqual(closing_requests,
+                             [self._after_urls()[name] for name in src.AFTER_NAMES])
+            self.assertIs(src._load_state(capture_root)["complete"], True)
+            for witness in src.AFTER_NAMES:
+                self.assertTrue(
+                    list(capture_root.glob(witness + ".error-*.receipt.json")))
+            requests = []
+            self.assertTrue(self._capture(root, capture_root,
+                                          self._offline(requests))["reused"])
+            self.assertEqual(requests, [])
+
+
+def _page_failures_transport(inner: httpx.MockTransport, *, fail_first: int | None):
+    """Fail the first ``fail_first`` (or every) page request with a reset.
+
+    Returns the wrapped transport and the count of page requests seen, so a
+    test can assert the shared retry helper's bounded attempt budget.
+    """
+    seen = {"page_requests": 0}
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        query = parse_qs(urlparse(str(request.url)).query)
+        if query.get("resultOffset") is not None:
+            seen["page_requests"] += 1
+            if fail_first is None or seen["page_requests"] <= fail_first:
+                raise httpx.ConnectError("connection reset by peer")
+        return inner.handler(request)
+
+    return httpx.MockTransport(respond), seen
+
+
+class UsLandslideRegionsRetainedStateFailureTests(unittest.TestCase):
+    """Failure paths of the retained-capture primitives this adapter binds.
+
+    The checkpoint/receipt/retry helpers live in
+    ``dagster_hifld.sources.arcgis_layer`` and ``capture_common``; every case
+    here drives them through this adapter's own error type over retained
+    fixtures: corrupt checkpoint JSON, missing and changed page receipts,
+    incomplete transport captures retried by the shared helper, that
+    helper's bounded retry budget, and a foreign checkpoint whose coverage
+    claims are never trusted.
+    """
+
+    def _first_capture(self, root: Path, capture_root: Path, schema_sha: str,
+                       transport: httpx.MockTransport, version: str) -> None:
+        with fixture_mode(schema_sha, transport):
+            result = src.capture_us_landslide_regions(
+                _staging(root), version=version, capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+
+    def _row_ids(self, capture_root: Path) -> list[int]:
+        table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+        return table.column("OBJECTID").to_pylist()
+
+    def test_corrupt_checkpoint_json_refuses_and_retains_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "state-run")
+            corrupted = b'{"pages": [ truncated'
+            (capture_root / "capture_state.json").write_bytes(corrupted)
+            before = sorted(path.name for path in capture_root.iterdir())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(src.UsLandslideRegionsError,
+                                            "capture_state_invalid"):
+                    src.fetch_us_landslide_regions_pages(capture_root)
+            self.assertEqual((capture_root / "capture_state.json").read_bytes(),
+                             corrupted)
+            self.assertEqual(sorted(path.name for path in capture_root.iterdir()),
+                             before)
+
+    def test_missing_page_receipt_refuses_and_retains_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "receipt-run")
+            name = src._page_name(0, 4)
+            (capture_root / f"{name}.receipt.json").unlink()
+            with self.assertRaisesRegex(
+                    src.UsLandslideRegionsError,
+                    "retained_capture_receipt_invalid:" + name):
+                src._read_capture(capture_root, name)
+            before = sorted(path.name for path in capture_root.iterdir())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "retained_capture_artifact_missing:" + name):
+                    src.capture_us_landslide_regions(
+                        _staging(root), version="receipt-run-2",
+                        capture_directory=str(capture_root))
+            self.assertEqual(sorted(path.name for path in capture_root.iterdir()),
+                             before)
+
+    def test_changed_page_receipt_refuses_and_retains_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "tamper-run")
+            name = src._page_name(4, 4)
+            receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
+            receipt["sha256"] = "0" * 64
+            (capture_root / f"{name}.receipt.json").write_bytes(
+                json.dumps(receipt).encode())
+            with self.assertRaisesRegex(
+                    src.UsLandslideRegionsError,
+                    "retained_capture_receipt_invalid:" + name):
+                src._read_capture(capture_root, name)
+            before = sorted(path.name for path in capture_root.iterdir())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "retained_capture_receipt_invalid:" + name):
+                    src.capture_us_landslide_regions(
+                        _staging(root), version="tamper-run-2",
+                        capture_directory=str(capture_root))
+            self.assertEqual(sorted(path.name for path in capture_root.iterdir()),
+                             before)
+
+    def test_corrupt_closing_count_is_refused_at_admission(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "closing-run")
+            (capture_root / "count_after.body").write_bytes(b"corrupt closing count")
+            before = sorted(path.name for path in capture_root.iterdir())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "retained_capture_receipt_invalid:count_after"):
+                    src.fetch_us_landslide_regions_pages(capture_root)
+            self.assertEqual((capture_root / "count_after.body").read_bytes(),
+                             b"corrupt closing count")
+            self.assertEqual(sorted(path.name for path in capture_root.iterdir()),
+                             before)
+
+    def test_incomplete_transport_capture_is_retried_with_retained_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport, _seen = _page_failures_transport(make_responder(rows), fail_first=1)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                result = src.capture_us_landslide_regions(
+                    _staging(root), version="retry-run",
+                    capture_directory=str(capture_root))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            name = src._page_name(0, 4)
+            attempt_receipt = json.loads(
+                (capture_root / f"{name}.attempt-01.receipt.json").read_bytes())
+            self.assertFalse(attempt_receipt["complete_body"])
+            self.assertIsNone(attempt_receipt["status"])
+            self.assertEqual(attempt_receipt["error_code"], "request_error")
+            for suffix in ("body", "wire", "receipt.json"):
+                self.assertTrue((capture_root / f"{name}.attempt-01.{suffix}").exists())
+            self.assertFalse(list(capture_root.glob(f"{name}.attempt-02.*")))
+            self.assertEqual(self._row_ids(capture_root), list(FIXTURE_OBJECTIDS))
+
+    def test_retry_budget_exhaustion_is_bounded_and_retains_failure_evidence(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport, seen = _page_failures_transport(make_responder(rows), fail_first=None)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "source_capture_failed:ValueError"):
+                    src.fetch_us_landslide_regions_pages(capture_root)
+            self.assertEqual(seen["page_requests"],
+                             2 * src.PAGE_PROBE_ATTEMPTS + src.DOC_CAPTURE_ATTEMPTS)
+            probe = src._page_name(0, 4)
+            half = src._page_name(0, 2)
+            single = src._page_name(0, 1)
+            self.assertTrue((capture_root / f"{probe}.attempt-01.receipt.json").exists())
+            self.assertTrue((capture_root / f"{probe}.attempt-02.receipt.json").exists())
+            self.assertFalse(list(capture_root.glob(f"{probe}.attempt-03.*")))
+            self.assertTrue((capture_root / f"{half}.attempt-01.receipt.json").exists())
+            self.assertTrue((capture_root / f"{half}.attempt-02.receipt.json").exists())
+            self.assertFalse(list(capture_root.glob(f"{half}.attempt-03.*")))
+            for attempt in range(1, src.DOC_CAPTURE_ATTEMPTS):
+                for suffix in ("body", "wire", "receipt.json"):
+                    self.assertTrue(
+                        (capture_root / f"{single}.attempt-{attempt:02d}.{suffix}").exists(),
+                        f"missing attempt evidence {single}.attempt-{attempt:02d}.{suffix}")
+            self.assertFalse(
+                list(capture_root.glob(f"{single}.attempt-{src.DOC_CAPTURE_ATTEMPTS:02d}.*")))
+            final = json.loads((capture_root / f"{single}.receipt.json").read_bytes())
+            self.assertFalse(final["complete_body"])
+            self.assertEqual(final["error_code"], "request_error")
+            self.assertFalse((capture_root / "capture_state.json").exists())
+            self.assertFalse((capture_root / "computed_baseline.json").exists())
+
+    def test_foreign_checkpoint_coverage_is_never_trusted(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            self._first_capture(root, capture_root, schema_sha, transport, "foreign-run")
+            foreign = {"pages": [{"name": "foreign_product_page", "offset": 0,
+                                  "count": FIXTURE_COUNT, "features": FIXTURE_COUNT,
+                                  "captured_at": "1999-01-01T00:00:00+00:00",
+                                  "body_sha256": "0" * 64}], "complete": True}
+            (capture_root / "capture_state.json").write_bytes(
+                json.dumps(foreign).encode())
+            with fixture_mode(schema_sha, transport):
+                with self.assertRaisesRegex(
+                        src.UsLandslideRegionsError,
+                        "source_capture_roster_incomplete_or_unexpected"):
+                    src.capture_us_landslide_regions(
+                        _staging(root), version="foreign-run-2",
+                        capture_directory=str(capture_root))
+            self.assertTrue(sorted(capture_root.glob("page_*.error-*.body")))
+            quarantined = sorted(
+                (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"],
+                             "source_capture_roster_incomplete_or_unexpected")
 
 
 if __name__ == "__main__":
