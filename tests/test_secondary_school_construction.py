@@ -95,7 +95,7 @@ class SecondarySchoolConstructionTests(unittest.TestCase):
     def test_cold_replay_is_network_free_and_preserves_real_transfer_evidence(self):
         first, _, before, receipt = self.first_capture()
         cold = StagingStorageResource(local_dir=str(self.root / "cold"), prefix="isolated")
-        with patch.object(source._shared.httpx, "Client", side_effect=AssertionError("replay used HTTP")):
+        with self.guarded(), patch.object(source._shared.httpx, "Client", side_effect=AssertionError("replay used HTTP")):
             result = source.replay_retained_capture(cold, first["version"], self.archive, receipt)
         self.assertEqual(result["version"], first["version"])
         self.assertFalse(result["reused"])
@@ -108,7 +108,7 @@ class SecondarySchoolConstructionTests(unittest.TestCase):
         self.assertEqual(report["capture_replay"], {
             "mode": "retained_transfer_replay", "new_network_retrieval_performed": False,
             "original_retrieved_at": json.loads(receipt)["observed_at"]})
-        with patch.object(source._shared.httpx, "Client", side_effect=AssertionError("replay used HTTP")):
+        with self.guarded(), patch.object(source._shared.httpx, "Client", side_effect=AssertionError("replay used HTTP")):
             reused = source.replay_retained_capture(cold, first["version"], self.archive, receipt)
         self.assertTrue(reused["reused"])
         self.assertEqual(snapshot(target), after)
