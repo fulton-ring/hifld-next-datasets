@@ -17,9 +17,11 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.secondary_school_districts import DATASET_SLUG, FILE_SLUG, capture
 
 _DESCRIPTION = (
-    "Draft extraction of the 2024 U.S. Census TIGER/Line School_District_Secondary "
-    "layer. The full official source layer is retained in raw/ with request receipts; "
-    "HIFLD archive equivalence and release approval remain unresolved."
+    "Draft extraction of the complete U.S. Census TIGER/Line School_District_Secondary "
+    "layer. The newest published national school geodatabase edition is resolved from "
+    "the producer listing at capture time; the full official source layer is retained "
+    "in raw/ with request receipts. HIFLD archive equivalence and release approval "
+    "remain unresolved."
 )
 
 
