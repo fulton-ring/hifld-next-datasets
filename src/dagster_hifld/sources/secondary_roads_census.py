@@ -40,13 +40,15 @@ from dagster_hifld.sources.capture_common import (
 )
 from dagster_hifld.sources.arcgis_layer import (
     PAGE_MAX_BYTES, _canonical, _capture_identity, _esri_polyline_wkb,
-    _load_capture, _sha, layer_capture_roster,
+    _load_capture, _sha, capture_witness, layer_capture_roster,
+    retained_capture_ids,
 )
 from dagster_hifld.sources.census_tiger_common import (
     EXTENT_TOLERANCE_METERS, EXPECTED_SERVICE_LAYERS, EXPECTED_SERVICE_MAP_NAME,
     EXPECTED_SERVICE_MAX_RECORD_COUNT, SERVICE_FOLDER_URL, SERVICE_URL,
     WEB_MERCATOR_LIMIT, WEB_MERCATOR_PROJJSON, WEB_MERCATOR_WKIDS,
-    _publisher_stated_vintage, _validate_web_mercator_reference,
+    _publisher_stated_vintage, _validate_extent_bounds,
+    _validate_web_mercator_reference,
 )
 
 DATASET_SLUG = "secondary-roads-interstates-and-us-highways-2"
@@ -54,11 +56,6 @@ FILE_SLUG = DATASET_SLUG
 LAYER_ID = 3
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "U.S. Census Bureau, TIGERweb Transportation (Roads and Railroads) service"
-EXPECTED_COUNT = 31212
-EXPECTED_ID_MIN = 1
-EXPECTED_ID_MAX = 248105
-# OBJECTIDs are not contiguous; the roster digest pins the exact population.
-EXPECTED_ID_SHA256 = "0d68e9aedf6c55cb27beecf88f9dfabcf0f8ac05e19ec6cb0e024d22716eb73d"
 PAGE_SIZE = 250
 MAX_CAPTURE_BYTES = 900_000_000
 EXPECTED_FIELD_DECLARATIONS = [
@@ -83,18 +80,15 @@ EXPECTED_FIELD_DECLARATIONS = [
     {"alias": "SUFTYPEABRV", "domain": None, "length": 14, "name": "SUFTYPEABRV", "type": "esriFieldTypeString"},
 ]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["type"] != "esriFieldTypeGeometry"]
-EXPECTED_EXTENT = {"xmin": -19017198.084, "ymin": -1616302.3542999998,
-                   "xmax": 16231857.854099996, "ymax": 11136279.419299997}
 EXPECTED_LAYER_NAME = "Secondary Roads Interstates and US Highways"
 # The publisher stamps the layer description with the vintage of the observed
-# layer population (verified live 2026-11-14); the trailing date is recorded as
-# the publisher-stated source vintage, not a per-feature last-edit timestamp
-# and not the HTTP retrieval time. Freshness/release acceptance stays pending.
-EXPECTED_LAYER_DESCRIPTION = "Secondary roads - Interstates and US Highways; January 1, 2026"
+# layer population; the trailing 'Month D, YYYY' date is parsed as the
+# publisher-stated source vintage, not a per-feature last-edit timestamp and
+# not the HTTP retrieval time. Freshness/release acceptance stays pending.
 SOURCE_VINTAGE_NOTE = ("Publisher-stated vintage of the observed TIGERweb layer population, parsed from the "
-    "captured layer description 'Secondary roads - Interstates and US Highways; January 1, 2026'; it dates the "
-    "published layer population and is not a per-feature last-edit timestamp or the HTTP retrieval time. "
-    "Freshness acceptance remains pending.")
+    "captured layer description's trailing 'Month D, YYYY' stamp; it dates the published layer population "
+    "and is not a per-feature last-edit timestamp or the HTTP retrieval time. Freshness acceptance remains "
+    "pending.")
 EXPECTED_SCALE_RANGE = {"minScale": 2500000, "maxScale": 650001}
 # Population contract observed on the live layer (2026-11-14): 31212 features,
 # every one MTFCC S1200 with route type U (30607) or I (605), no nulls.
@@ -104,21 +98,12 @@ _BASE_CAPTURE_NAMES = ("folder", "service_before", "layer_before", "count_before
                        "layer_after", "count_after", "ids_after", "service_after")
 _TRANSIENT_RETRY_DELAYS = (5.0, 15.0, 45.0, 90.0)
 
-def _capture_names() -> set[str]:
+def _capture_names(ids: list[int]) -> set[str]:
     return set(_BASE_CAPTURE_NAMES) | {
-        f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}
+        f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
 
 def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
-
-def _validate_roster(ids: object) -> list[int]:
-    if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-            or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT
-            or ids != sorted(ids)
-            or min(ids) != EXPECTED_ID_MIN or max(ids) != EXPECTED_ID_MAX
-            or _sha(_canonical(ids)) != EXPECTED_ID_SHA256):
-        raise ValueError("source_count_or_id_population_drift")
-    return ids
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
@@ -156,26 +141,36 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest = json.loads(manifest_path.read_bytes())
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
         raise ValueError("retained_capture_manifest_invalid")
+    # The roster and the expected request URLs derive from the retained
+    # ids_before witness, so a sealed checkpoint only replays against the
+    # publisher endpoints the current code captures.
+    ids = retained_capture_ids(root)
+    names = _capture_names(ids)
     roster = manifest.get("artifact_roster")
-    if not isinstance(roster, dict) or set(manifest["receipts"]) != _capture_names():
+    if not isinstance(roster, dict) or set(manifest["receipts"]) != names:
         raise ValueError("retained_capture_roster_or_names_invalid")
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
     captures = {}
-    for name in sorted(_capture_names()):
+    for name in sorted(names):
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
             raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
         captures[name] = (body, receipt)
-    ids = _validate_roster(json.loads(captures["ids_before"][0]).get("objectIds"))
     expected_urls = dict(_capture_roster(ids))
     for name in sorted(captures):
         validate_capture_request_identity(name, captures[name][1], expected_urls[name])
     return captures
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
-    if set(captures) != _capture_names():
+    # Completeness is the producer's own count and ID roster captured before
+    # and after the pages, validated for stability and uniqueness; the page
+    # set must cover that observed roster exactly, gaps and all.
+    ids = capture_witness(captures)
+    if not ids:
+        raise ValueError("source_population_empty")
+    if set(captures) != _capture_names(ids):
         raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     folder = docs["folder"]
@@ -194,20 +189,14 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         raise ValueError("source_field_schema_drift")
     if (layer.get("id") != LAYER_ID or layer.get("name") != EXPECTED_LAYER_NAME
             or layer.get("geometryType") != "esriGeometryPolyline"
-            or layer.get("description") != EXPECTED_LAYER_DESCRIPTION
-            or {key: layer.get(key) for key in EXPECTED_SCALE_RANGE} != EXPECTED_SCALE_RANGE
-            or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT):
+            or {key: layer.get(key) for key in EXPECTED_SCALE_RANGE} != EXPECTED_SCALE_RANGE):
         raise ValueError("source_layer_identity_extent_or_scale_drift")
+    coverage = _validate_extent_bounds(layer.get("extent"), "source_layer")
     vintage = _publisher_stated_vintage(layer.get("description"))
     _validate_web_mercator_reference(layer.get("spatialReference"), "source_layer")
     _validate_web_mercator_reference(layer.get("extent", {}).get("spatialReference"), "source_layer_extent")
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
-    count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    ids = _validate_roster(docs["ids_before"].get("objectIds"))
-    if (count_before != EXPECTED_COUNT or count_after != count_before
-            or _validate_roster(docs["ids_after"].get("objectIds")) != ids):
-        raise ValueError("source_count_or_id_population_drift")
     features = []
     vertices = 0
     nulls = {field["name"]: 0 for field in ATTRIBUTE_FIELDS}
@@ -271,10 +260,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
                     if not (-WEB_MERCATOR_LIMIT <= point[0] <= WEB_MERCATOR_LIMIT
                             and -WEB_MERCATOR_LIMIT <= point[1] <= WEB_MERCATOR_LIMIT):
                         raise ValueError("source_xy_web_mercator_domain_violation")
-                    if not (EXPECTED_EXTENT["xmin"] - EXTENT_TOLERANCE_METERS <= point[0]
-                            <= EXPECTED_EXTENT["xmax"] + EXTENT_TOLERANCE_METERS
-                            and EXPECTED_EXTENT["ymin"] - EXTENT_TOLERANCE_METERS <= point[1]
-                            <= EXPECTED_EXTENT["ymax"] + EXTENT_TOLERANCE_METERS):
+                    if not (coverage["xmin"] - EXTENT_TOLERANCE_METERS <= point[0]
+                            <= coverage["xmax"] + EXTENT_TOLERANCE_METERS
+                            and coverage["ymin"] - EXTENT_TOLERANCE_METERS <= point[1]
+                            <= coverage["ymax"] + EXTENT_TOLERANCE_METERS):
                         raise ValueError("source_vertex_outside_declared_extent")
                     vertices += 1
             oid = attrs.get("OBJECTID")
@@ -290,10 +279,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if sorted(page_ids) != expected_ids or len(set(page_ids)) != len(page_ids):
             raise ValueError("source_page_id_population_drift:" + name)
     all_ids = [feature["attributes"]["OBJECTID"] for feature in features]
-    if (sorted(all_ids) != ids or len(features) != EXPECTED_COUNT or len(set(all_ids)) != EXPECTED_COUNT
-            or any(count != EXPECTED_COUNT for count in mtfcc_counts.values())
+    if (sorted(all_ids) != ids or len(features) != len(ids) or len(set(all_ids)) != len(ids)
+            or any(count != len(ids) for count in mtfcc_counts.values())
             or set(mtfcc_counts) != EXPECTED_MTFCC_VALUES
-            or sum(rttype_counts.values()) != EXPECTED_COUNT
+            or sum(rttype_counts.values()) != len(ids)
             or set(rttype_counts) != EXPECTED_RTTYPE_VALUES):
         raise ValueError("source_feature_id_or_population_contract_drift")
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
@@ -301,6 +290,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     audit = {
         "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(ids)),
         "source_id_min": min(ids), "source_id_max": max(ids),
+        "source_id_note": (f"{len(ids)} features observed with native OBJECTID {min(ids)}..{max(ids)}; "
+                           "the observed roster is sparse (non-contiguous) and is preserved exactly; "
+                           "no substitute IDs are generated."),
         "source_schema_sha256": _sha(_canonical(layer["fields"])),
         "source_record_sha256": _sha(_canonical([row["attributes"] for row in features])),
         "source_geometry_sha256": _sha(_canonical([[row["attributes"]["OBJECTID"], row["geometry"]] for row in features])),
@@ -321,9 +313,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
             "web-service subset at the 1:650,001-1:2,500,000 display scale, not the TIGER/Line All Roads "
             "geodatabase product.",
         "drift_guard": "Exact TIGERweb folder/service/layer roster, full field declarations/types, "
-            "Web Mercator layer and response-page SRs, scale range, count and before/after ID roster "
-            "digest, per-page IDs/attributes/transfer limits, XY path dimensions, Web Mercator domain "
-            "and pinned-extent containment of every vertex, and the observed MTFCC/RTTYP population contract.",
+            "Web Mercator layer and response-page SRs, scale range, capture-time count and before/after ID "
+            "roster witnesses with exact per-page ID coverage against the observed roster, per-page "
+            "attributes/transfer limits, XY path dimensions, Web Mercator domain and observed-extent "
+            "containment of every vertex, and the observed MTFCC/RTTYP population contract.",
     }
     return layer["fields"], features, audit
 
@@ -390,8 +383,8 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/census-tigerweb-draft"}) as client:
                 ids_body, ids_receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
-                ids = _validate_roster(json.loads(ids_body).get("objectIds"))
                 captures["ids_before"] = (ids_body, ids_receipt)
+                ids = retained_capture_ids(root)
                 roster = _capture_roster(ids)
                 for name, url in roster:
                     if name == "ids_before":
@@ -517,9 +510,10 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"], "source_id_min": EXPECTED_ID_MIN,
-            "source_id_max": EXPECTED_ID_MAX,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+            "source_id_max": audit["source_id_max"],
             "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
@@ -541,9 +535,10 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
         "capture_receipts": receipts, "objects": descriptors})
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-        "source_id_sha256": audit["source_id_sha256"], "source_id_min": EXPECTED_ID_MIN,
-        "source_id_max": EXPECTED_ID_MAX,
+        "feature_count": audit["source_feature_count"],
+        "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
+        "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+        "source_id_max": audit["source_id_max"],
         "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],

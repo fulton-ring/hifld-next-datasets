@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from dagster import DefaultScheduleStatus
+from dagster import AssetCheckSeverity, DefaultScheduleStatus
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets import local_roads_census as asset_module
 from dagster_hifld.assets.local_roads_census import (
@@ -17,15 +17,14 @@ from dagster_hifld.sources import local_roads_census as source
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
-# The live layer's dense OBJECTID roster is exercised against a small patched
-# roster for speed; windows, digest gating and page logic are identical.
-PATCH_IDS = [1, 2, 3, 4, 5, 6]
-PATCH = dict(EXPECTED_COUNT=6, EXPECTED_ID_MIN=1, EXPECTED_ID_MAX=6, PAGE_SIZE=2,
-             ROSTER_WINDOW_SIZE=2,
-             EXPECTED_ID_SHA256=hashlib.sha256(_canonical(PATCH_IDS)).hexdigest(),
-             EXPECTED_RECORD_SHA256="", EXPECTED_GEOMETRY_SHA256="",
-             EXPECTED_MTFCC_VALUES={"S1400"},
-             EXPECTED_MTFCC_RTTYPE_COUNTS={"S1400|null": 5, "S1400|M": 1})
+# The live layer's dense OBJECTID roster is exercised against a small observed
+# count for speed; windowing, witness gating and page logic are identical. The
+# window and page counts are derived from this observed count, not pinned.
+COUNT = 6
+PATCH = dict(PAGE_SIZE=2, ROSTER_WINDOW_SIZE=2)
+FIXTURE_EXTENT = {"xmin": -1_600_000.0, "ymin": 400_000.0,
+                  "xmax": -1_400_000.0, "ymax": 600_000.0}
+FIXTURE_DESCRIPTION = "Local roads; January 1, 2026"
 
 
 def _page_geometry(oid: int) -> dict:
@@ -52,7 +51,7 @@ def _patched_feature(oid: int) -> dict:
     return {"attributes": attrs, "geometry": _page_geometry(oid)}
 
 
-def _documents() -> dict:
+def _documents(count: int = COUNT) -> dict:
     service = {"mapName": source.EXPECTED_SERVICE_MAP_NAME,
                "maxRecordCount": source.EXPECTED_SERVICE_MAX_RECORD_COUNT,
                "spatialReference": {"wkid": 102100, "latestWkid": 3857},
@@ -60,26 +59,27 @@ def _documents() -> dict:
                           for layer_id, name in source.EXPECTED_SERVICE_LAYERS]}
     layer = {"id": source.LAYER_ID, "name": source.EXPECTED_LAYER_NAME,
              "geometryType": "esriGeometryPolyline",
-             "description": source.EXPECTED_LAYER_DESCRIPTION,
+             "description": FIXTURE_DESCRIPTION,
              "minScale": source.EXPECTED_SCALE_RANGE["minScale"],
              "maxScale": source.EXPECTED_SCALE_RANGE["maxScale"],
              "spatialReference": {"wkid": 102100, "latestWkid": 3857},
-             "extent": {**source.EXPECTED_EXTENT,
+             "extent": {**FIXTURE_EXTENT,
                         "spatialReference": {"wkid": 102100, "latestWkid": 3857}},
              "fields": source.EXPECTED_FIELD_DECLARATIONS}
     docs = {
         "folder": {"services": [{"name": "TIGERweb/Transportation", "type": "MapServer"}]},
         "service_before": service, "layer_before": layer,
-        "count_before": {"count": source.EXPECTED_COUNT},
-        "service_after": json.loads(json.dumps(service)), "layer_after": json.loads(json.dumps(layer)),
-        "count_after": {"count": source.EXPECTED_COUNT},
+        "count_before": {"count": count},
+        "service_after": json.loads(json.dumps(service)),
+        "layer_after": json.loads(json.dumps(layer)),
+        "count_after": {"count": count},
     }
     for phase in ("before", "after"):
-        for index in range(source.roster_window_count()):
-            lo, hi = source.roster_window(index)
+        for index in range(source.roster_window_count(count)):
+            lo, hi = source.roster_window(index, count)
             docs[f"roster_{phase}_{index:03d}"] = {"objectIds": list(range(lo, hi + 1))}
-    for page_index in range(source.page_count()):
-        lo, hi = source.page_window(page_index)
+    for page_index in range(source.page_count(count)):
+        lo, hi = source.page_window(page_index, count)
         docs[f"page_{page_index:04d}"] = {
             "spatialReference": {"wkid": 102100, "latestWkid": 3857},
             "features": [_patched_feature(oid) for oid in range(lo, hi + 1)]}
@@ -100,9 +100,10 @@ def _validate_documents(docs: dict):
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / "capture"
         root.mkdir()
-        urls = source._capture_urls()
+        count = docs["count_before"]["count"]
+        urls = source._capture_urls(count)
         receipts = {}
-        for name in sorted(source._capture_names()):
+        for name in sorted(source._capture_names(count)):
             body = _canonical(docs[name])
             receipt = _receipt_for(name, urls[name], body)
             (root / f"{name}.body").write_bytes(body)
@@ -123,35 +124,52 @@ class LocalRoadsCensusTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(local_roads_census, hifld_ingest_assets)
         self.assertEqual(local_roads_census_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = local_roads_census_complete({"feature_count": asset_module.EXPECTED_COUNT,
+        check = local_roads_census_complete({"feature_count": COUNT, "source_reported_count": COUNT,
                                              "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = local_roads_census_complete({"feature_count": asset_module.EXPECTED_COUNT - 1,
+        failed = local_roads_census_complete({"feature_count": COUNT - 1, "source_reported_count": COUNT,
                                               "source_population_complete": True})
         self.assertFalse(failed.passed)
 
-    def test_page_windows_cover_the_dense_roster_without_overlap(self):
-        windows = [source.page_window(index) for index in range(source.page_count())]
-        self.assertEqual(windows[0][0], source.EXPECTED_ID_MIN)
-        self.assertEqual(windows[-1][1], source.EXPECTED_ID_MAX)
+    def test_page_windows_cover_the_observed_dense_roster_without_overlap(self):
+        windows = [source.page_window(index, COUNT) for index in range(source.page_count(COUNT))]
+        self.assertEqual(windows[0][0], 1)
+        self.assertEqual(windows[-1][1], COUNT)
         for first, second in zip(windows, windows[1:]):
             self.assertEqual(first[1] + 1, second[0])
         with self.assertRaisesRegex(ValueError, "source_page_index_out_of_range"):
-            source.page_window(source.page_count())
+            source.page_window(source.page_count(COUNT), COUNT)
+        with self.assertRaisesRegex(ValueError, "source_observed_count_invalid"):
+            source.page_count(0)
+
+    def test_window_counts_derive_from_observed_count(self):
+        self.assertEqual(source.page_count(COUNT), 3)
+        self.assertEqual(source.roster_window_count(COUNT), 3)
+        self.assertEqual(source.page_window(0, COUNT), (1, 2))
+        self.assertEqual(source.page_window(2, COUNT), (5, 6))
+        self.assertEqual(source.roster_window(0, COUNT), (1, 2))
+        self.assertEqual(source.roster_window(2, COUNT), (5, 6))
+        windows = [source.roster_window(index, COUNT) for index in range(source.roster_window_count(COUNT))]
+        self.assertEqual(windows[0][0], 1)
+        self.assertEqual(windows[-1][1], COUNT)
+        for first, second in zip(windows, windows[1:]):
+            self.assertEqual(first[1] + 1, second[0])
+        self.assertEqual(len(source._capture_names(COUNT)), 4 + 3 + 3 + 3 + 3)
 
     def test_complete_native_population_and_geometry_are_validated(self):
         fields, audit, _parquet = _validate_documents(_documents())
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
-        self.assertEqual(audit["source_feature_count"], 6)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
-        self.assertEqual(audit["source_vertex_count"], 12)
+        self.assertEqual(audit["source_feature_count"], COUNT)
+        self.assertEqual(audit["source_id_min"], 1)
+        self.assertEqual(audit["source_id_max"], COUNT)
+        self.assertEqual(audit["source_vertex_count"], 2 * COUNT)
         self.assertEqual(audit["source_wkid"], 102100)
         self.assertEqual(audit["source_latest_wkid"], 3857)
         self.assertEqual(audit["geometry_invalid_count"], 0)
-        self.assertEqual(audit["source_mtfcc_rttype_counts"], {"S1400|null": 5, "S1400|M": 1})
-        self.assertEqual(audit["source_null_counts"]["PREDIR"], 6)
-        self.assertEqual(audit["source_null_counts"]["RTTYP"], 5)
+        self.assertEqual(audit["source_mtfcc_rttype_counts"], {"S1400|null": COUNT - 1, "S1400|M": 1})
+        self.assertEqual(audit["source_null_counts"]["PREDIR"], COUNT)
+        self.assertEqual(audit["source_null_counts"]["RTTYP"], COUNT - 1)
         self.assertIn("not the TIGER/Line All Roads geodatabase product", audit["source_coverage_scope"])
 
     def test_parquet_preserves_native_attributes_and_web_mercator_crs(self):
@@ -161,11 +179,11 @@ class LocalRoadsCensusTests(unittest.TestCase):
         import pyarrow.parquet as pq
         fields, audit, parquet_bytes = _validate_documents(_documents())
         table = pq.read_table(io.BytesIO(parquet_bytes))
-        self.assertEqual(table.num_rows, 6)
+        self.assertEqual(table.num_rows, COUNT)
         self.assertEqual(table.schema.field("OID").type.__str__(), "string")
         self.assertEqual(table.schema.field("PREDIR").type.__str__(), "int16")
         self.assertEqual(table.schema.field("OBJECTID").type.__str__(), "int64")
-        self.assertEqual(table.column("OBJECTID").to_pylist(), PATCH_IDS)
+        self.assertEqual(table.column("OBJECTID").to_pylist(), list(range(1, COUNT + 1)))
         first = struct.unpack("<BI", table.column("geometry")[0].as_py()[:5])
         self.assertEqual(first[1], 5)  # MultiLineString WKB header
         geo = json.loads(table.schema.metadata[b"geo"])
@@ -174,17 +192,16 @@ class LocalRoadsCensusTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population", lambda d: d["roster_after_000"].update(objectIds=PATCH_IDS[:1]),
-             "source_count_or_id_population_drift:roster_after_000"),
+            ("population", lambda d: d["roster_after_000"].update(objectIds=[]),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("scale range", lambda d: d["layer_before"].update(minScale=999),
              "source_layer_identity_extent_or_scale_drift"),
-            ("layer vintage changed", lambda d: d["layer_before"].update(
-                description="Local roads; July 1, 2026"),
-             "source_layer_identity_extent_or_scale_drift"),
             ("layer vintage missing", lambda d: d["layer_before"].pop("description"),
-             "source_layer_identity_extent_or_scale_drift"),
+             "source_layer_description_or_vintage_drift"),
+            ("layer extent invalid", lambda d: d["layer_before"]["extent"].update(xmax=None),
+             "source_layer_extent_invalid"),
             ("transfer", lambda d: d["page_0001"].update(exceededTransferLimit=True),
              "source_page_error_or_transfer_limit"),
             ("CRS", lambda d: d["page_0001"].update(spatialReference={"wkid": 4326}), "crs_drift"),
@@ -196,8 +213,6 @@ class LocalRoadsCensusTests(unittest.TestCase):
              "source_mtfcc_population_contract_drift"),
             ("rttype contract", lambda d: d["page_0000"]["features"][0]["attributes"].update(RTTYP="X"),
              "source_rttype_population_contract_drift"),
-            ("pair contract", lambda d: d["page_0000"]["features"][0]["attributes"].update(RTTYP="U"),
-             "source_feature_id_or_population_contract_drift"),
             ("smallinteger type", lambda d: d["page_0000"]["features"][0]["attributes"].update(PREDIR="1"),
              "source_integer_value_type_drift"),
             ("string length", lambda d: d["page_0000"]["features"][0]["attributes"].update(RTTYP="UU"),
@@ -209,14 +224,6 @@ class LocalRoadsCensusTests(unittest.TestCase):
                 mutate(docs)
                 with self.assertRaisesRegex(ValueError, expected):
                     _validate_documents(docs)
-
-    def test_record_digest_gate_fails_closed_when_pinned(self):
-        fields, audit, _parquet = _validate_documents(_documents())
-        with patch.object(source, "EXPECTED_RECORD_SHA256", audit["source_record_sha256"]):
-            _validate_documents(_documents())
-        with patch.object(source, "EXPECTED_RECORD_SHA256", "0" * 64), \
-                self.assertRaisesRegex(ValueError, "source_record_sha256_drift"):
-            _validate_documents(_documents())
 
     def test_vertex_domain_and_coverage_drift_fail_closed(self):
         def replace_vertex(docs, vertex, index):
@@ -235,11 +242,11 @@ class LocalRoadsCensusTests(unittest.TestCase):
                     _validate_documents(docs)
         boundary = json.loads(json.dumps(_documents()))
         boundary["page_0000"]["features"][0]["geometry"]["paths"] = [[
-            [source.EXPECTED_EXTENT["xmin"], source.EXPECTED_EXTENT["ymin"]],
-            [source.EXPECTED_EXTENT["xmax"], source.EXPECTED_EXTENT["ymax"]]]]
+            [FIXTURE_EXTENT["xmin"], FIXTURE_EXTENT["ymin"]],
+            [FIXTURE_EXTENT["xmax"], FIXTURE_EXTENT["ymax"]]]]
         _fields, audit, _parquet = _validate_documents(boundary)
         self.assertEqual(audit["geometry_invalid_count"], 0)
-        self.assertIn("pinned-extent containment of every vertex", audit["drift_guard"])
+        self.assertIn("observed-extent containment of every vertex", audit["drift_guard"])
 
     def test_service_roster_drift_fails_closed(self):
         cases = [
@@ -269,18 +276,18 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
         retry_patch.start()
         self.addCleanup(retry_patch.stop)
 
-    def _fake_capture_get(self, fail_page: str | None, mutate_page=None):
-        urls = source._capture_urls()
+    def _fake_capture_get(self, fail_page: str | None, mutate_page=None, docs=None):
+        docs = docs if docs is not None else _documents()
 
         def capture_get(client, url, root, name, max_bytes):
             if name == fail_page:
                 raise ValueError(f"incomplete_source_capture:{name}")
-            body = _canonical(_documents()[name])
+            body = _canonical(docs[name])
             if mutate_page is not None and name == mutate_page[0]:
                 doc = json.loads(body)
                 mutate_page[1](doc)
                 body = _canonical(doc)
-            receipt = _receipt_for(name, urls[name], body)
+            receipt = _receipt_for(name, url, body)
             (root / f"{name}.body").write_bytes(body)
             (root / f"{name}.wire").write_bytes(body)
             (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
@@ -304,13 +311,14 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
             self.assertFalse(progress["complete"])
             self.assertEqual(progress["error_code"], "ValueError")
             self.assertEqual(set(progress["receipts"]),
-                             set(source._before_names()) | {"page_0000", "page_0001"})
+                             set(source._before_names(COUNT)) | {"page_0000", "page_0001"})
             self.assertEqual(storage.list_prefix(""), [])
             with patch.object(source, "capture_get", self._fake_capture_get(None)):
                 result = source.capture_local_roads_census(storage, version="regression",
                                                            capture_directory=str(capture_dir))
             self.assertFalse(result["reused"])
-            self.assertEqual(result["feature_count"], 6)
+            self.assertEqual(result["feature_count"], COUNT)
+            self.assertEqual(result["source_reported_count"], COUNT)
             self.assertTrue(result["source_population_complete"])
             self.assertFalse(result["release_accepted"])
             ready = json.loads(storage.read_key(result["candidate_ready"]))
@@ -322,9 +330,9 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
             self.assertIn(f"{prefix}/raw/page_0002.body", staged)
             self.assertIn(f"{prefix}/metadata/candidate_ready.json", staged)
             audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
-            self.assertEqual(audit["geometry_valid_count"], 6)
+            self.assertEqual(audit["geometry_valid_count"], COUNT)
             self.assertEqual(audit["source_vintage"], "2026-01-01")
-            self.assertEqual(audit["source_vintage_evidence"], source.EXPECTED_LAYER_DESCRIPTION)
+            self.assertEqual(audit["source_vintage_evidence"], FIXTURE_DESCRIPTION)
             manifest = json.loads(storage.read_key(f"{prefix}/metadata/source_manifest.json"))
             self.assertEqual(manifest["date_issued"], "2026-01-01")
             self.assertIsNone(manifest["source_modified"])
@@ -347,13 +355,36 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
                                                           capture_directory=str(capture_dir))
             manifest = json.loads((capture_dir / "capture_manifest.json").read_bytes())
             self.assertTrue(manifest["complete"])
-            self.assertEqual(set(manifest["receipts"]), source._capture_names())
+            self.assertEqual(set(manifest["receipts"]), source._capture_names(COUNT))
             self.assertEqual(manifest["artifact_roster"],
                              capture_roster_digests(capture_dir, exclude={"capture_manifest.json"}))
             second = source.capture_local_roads_census(storage, version="regression",
                                                        capture_directory=str(capture_dir))
             self.assertTrue(second["reused"])
             self.assertEqual(second["version"], first["version"])
+
+    def test_upstream_added_feature_passes_completeness_and_warns_drift(self):
+        # One feature added to the 6-feature baseline: a 7-feature population.
+        # The witness sizes the roster and pages from the observed count, so the
+        # capture passes completeness; the approved-baseline drift check warns
+        # (no approved baseline) instead of the capture failing.
+        docs7 = _documents(7)
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = self._storage(tmp)
+            capture_dir = Path(tmp) / "capture"
+            capture_dir.mkdir()
+            with patch.object(source, "capture_get", self._fake_capture_get(None, docs=docs7)):
+                candidate = source.capture_local_roads_census(storage, version="regression",
+                                                              capture_directory=str(capture_dir))
+        self.assertEqual(candidate["feature_count"], 7)
+        self.assertEqual(candidate["source_reported_count"], 7)
+        self.assertTrue(candidate["source_population_complete"])
+        complete = asset_module.local_roads_census_complete(candidate)
+        self.assertTrue(complete.passed)
+        drift = asset_module.local_roads_census_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
 
     def test_drifted_completed_capture_fails_closed_and_quarantines(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -368,7 +399,7 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
                                                       capture_directory=str(capture_dir))
             quarantined = storage.list_prefix("_quarantine")
             self.assertTrue(any(key.endswith("page_0000.body") for key in quarantined))
-            self.assertEqual(storage.list_prefix("local-roads-2"), [])
+            self.assertEqual(storage.list_prefix(source.DATASET_SLUG), [])
 
     def test_nonlocal_or_published_storage_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "explicit_local_staging_resource_required"):
@@ -383,70 +414,39 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
                 source.capture_local_roads_census(storage, version="../outside")
 
 
-class LocalRoadsLivePinsTests(unittest.TestCase):
-    def test_live_layer_pins_carry_the_publisher_vintage(self):
-        self.assertEqual(source.EXPECTED_LAYER_DESCRIPTION, "Local roads; January 1, 2026")
-        self.assertEqual(source.LAYER_ID, 8)
-        self.assertEqual(source.EXPECTED_LAYER_NAME, "Local Roads")
-        self.assertEqual(source._publisher_stated_vintage(source.EXPECTED_LAYER_DESCRIPTION), "2026-01-01")
+class LocalRoadsWitnessTests(unittest.TestCase):
+    def setUp(self):
+        self._patches = [patch.object(source, name, value) for name, value in PATCH.items()]
+        for item in self._patches:
+            item.start()
+            self.addCleanup(item.stop)
+
+    def test_publisher_vintage_is_parsed_not_pinned(self):
+        self.assertEqual(source._publisher_stated_vintage(FIXTURE_DESCRIPTION), "2026-01-01")
+        self.assertEqual(
+            source._publisher_stated_vintage("Local roads; July 1, 2026"), "2026-07-01")
         with self.assertRaisesRegex(ValueError, "source_layer_description_or_vintage_drift"):
             source._publisher_stated_vintage("Local roads")
         with self.assertRaisesRegex(ValueError, "source_layer_description_or_vintage_drift"):
             source._publisher_stated_vintage(None)
 
-    def test_record_and_geometry_baseline_gates_are_pinned_active(self):
-        self.assertRegex(source.EXPECTED_RECORD_SHA256, r"^[0-9a-f]{64}$")
-        self.assertRegex(source.EXPECTED_GEOMETRY_SHA256, r"^[0-9a-f]{64}$")
-        self.assertIn("pinned from the completed", source.BASELINE_PENDING_NOTE)
-
-    def test_live_roster_pins_are_dense_and_self_consistent(self):
-        self.assertEqual(source.EXPECTED_COUNT, 16_098_190)
-        self.assertEqual(source.EXPECTED_ID_MIN, 1)
-        self.assertEqual(source.EXPECTED_ID_MAX, 16_098_190)
-        self.assertEqual(source.EXPECTED_COUNT, source.EXPECTED_ID_MAX - source.EXPECTED_ID_MIN + 1)
-        self.assertEqual(source._sha(_canonical(list(range(
-            source.EXPECTED_ID_MIN, source.EXPECTED_ID_MAX + 1)))), source.EXPECTED_ID_SHA256)
-        self.assertEqual(source.page_count(), 805)
-        self.assertEqual(source.page_window(0), (1, 20000))
-        self.assertEqual(source.page_window(804), (16080001, 16098190))
-        # The producer refuses a single full-layer returnIdsOnly roster request
-        # (Esri 500, verified 2026-11-15), so the roster evidence is captured as
-        # dense windowed id lists whose assembled bytes hash to the same pin.
-        self.assertEqual(source.roster_window_count(), 65)
-        self.assertEqual(source.roster_window(0), (1, 250000))
-        self.assertEqual(source.roster_window(64), (16000001, 16098190))
-        windows = [source.roster_window(index) for index in range(source.roster_window_count())]
-        self.assertEqual(windows[0][0], source.EXPECTED_ID_MIN)
-        self.assertEqual(windows[-1][1], source.EXPECTED_ID_MAX)
-        for first, second in zip(windows, windows[1:]):
-            self.assertEqual(first[1] + 1, second[0])
-        assembled = _canonical(list(range(source.EXPECTED_ID_MIN, source.EXPECTED_ID_MAX + 1)))
-        parts = []
-        for index, (lo, hi) in enumerate(windows):
-            if index:
-                parts.append(b",")
-            parts.append(_canonical(list(range(lo, hi + 1)))[1:-1])
-        self.assertEqual(b"[" + b"".join(parts) + b"]", assembled)
-        self.assertEqual(len(source._capture_names()), 4 + 65 + 805 + 3 + 65)
+    def test_layer_identity_pins_are_the_unchanged_contract(self):
+        self.assertEqual(source.LAYER_ID, 8)
+        self.assertEqual(source.EXPECTED_LAYER_NAME, "Local Roads")
+        self.assertEqual(source.EXPECTED_SCALE_RANGE, {"minScale": 42000, "maxScale": 1001})
+        self.assertEqual(len(source.EXPECTED_MTFCC_VALUES), 13)
+        self.assertEqual(source.EXPECTED_RTTYPE_VALUES, {"M", "C", "O", "S", "U", "I"})
 
     def test_no_bare_full_layer_roster_request_is_captured(self):
-        urls = source._capture_urls()
+        urls = source._capture_urls(COUNT)
         bare = [name for name, url in urls.items()
                 if "returnIdsOnly=true" in url and "objectid" not in url.lower()]
         self.assertEqual(bare, [])
-        self.assertEqual(sum(1 for name in urls if "roster_before_" in name), 65)
-        self.assertEqual(sum(1 for name in urls if "roster_after_" in name), 65)
-
-    def test_live_population_pair_contract_sums_to_the_pinned_count(self):
-        self.assertEqual(len(source.EXPECTED_MTFCC_VALUES), 13)
-        self.assertEqual(len(source.EXPECTED_MTFCC_RTTYPE_COUNTS), 59)
-        self.assertEqual(sum(source.EXPECTED_MTFCC_RTTYPE_COUNTS.values()), source.EXPECTED_COUNT)
-        allowed = {f"{mtfcc}|{rttype}" for mtfcc in source.EXPECTED_MTFCC_VALUES
-                   for rttype in ("null", *source.EXPECTED_RTTYPE_VALUES)}
-        self.assertEqual(set(source.EXPECTED_MTFCC_RTTYPE_COUNTS) - allowed, set())
+        self.assertEqual(sum(1 for name in urls if "roster_before_" in name), 3)
+        self.assertEqual(sum(1 for name in urls if "roster_after_" in name), 3)
 
     def test_page_urls_stay_short(self):
-        urls = source._capture_urls()
+        urls = source._capture_urls(COUNT)
         longest = max(len(url) for name, url in urls.items())
         self.assertLess(longest, 500)
 

@@ -14,6 +14,7 @@ import hashlib
 import fcntl
 import io
 import json
+import math
 import os
 import platform
 import re
@@ -1046,9 +1047,25 @@ def _validate_web_mercator_reference(value: object, label: str) -> None:
         raise ValueError(f"{label}_crs_drift")
 
 
+def _validate_extent_bounds(extent: object, label: str) -> dict:
+    """Structurally check a declared extent and return it as the observed coverage.
+
+    The values are capture-time observations, never pins: only their type,
+    finiteness and ordering are enforced, so a complete upstream change of
+    coverage passes and is recorded instead of being refused.
+    """
+    if not isinstance(extent, dict):
+        raise ValueError(f"{label}_extent_invalid")
+    bounds = {key: extent.get(key) for key in ("xmin", "ymin", "xmax", "ymax")}
+    if (any(type(bounds[key]) not in (int, float) or not math.isfinite(bounds[key]) for key in bounds)
+            or bounds["xmin"] >= bounds["xmax"] or bounds["ymin"] >= bounds["ymax"]):
+        raise ValueError(f"{label}_extent_invalid")
+    return bounds
+
+
 _MONTH_NAMES = {name: number for number, name in enumerate(
-    ("January", "February", "March", "April", "May", "June", "July",
-     "August", "September", "October", "November", "December"), start=1)}
+    ("January", "February", "March", "April", "May", "June",
+     "July", "August", "September", "October", "November", "December"), start=1)}
 
 
 def _publisher_stated_vintage(description: object) -> str:

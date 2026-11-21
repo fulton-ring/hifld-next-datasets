@@ -4,20 +4,20 @@ The DHS HIFLD Open crosswalk (row 304, Agency Census, DOI 10.3886/E241367V1)
 points the retired HIFLD Open item 003cb563461a4129a5042f340dabea58 at the
 producer's maintained TIGERweb Transportation (Roads and Railroads) MapServer
 layer 8, whose name is exactly "Local Roads". Its observed population is the
-full local-road class (16098190 segments across MTFCC S1400/S1500/S1630/S1640/
-S1710/S1720/S1730/S1740/S1750/S1780/S1810/S1820/S1830). The layer serves
-20_000 features per response (a 100_000-feature request fails with the
-service's Esri 500 "Error performing query operation"), so pages are ordered
-OBJECTID range windows; the OBJECTID roster is dense 1..16098190, which the
-roster digest pin enforces. A single full-layer returnIdsOnly roster request
-fails with the same producer Esri 500 (verified twice 2026-11-15, retained
-80-byte error evidence), so the roster evidence is captured as dense 250_000-id
-windowed returnIdsOnly responses whose assembled canonical digest is gated
-against the pin. The capture is resumable: per-page receipts are
-checkpointed atomically in the capture manifest, so a restarted attempt
-continues instead of repeating completed pages. The inventory row's Download
-pin (the Census TIGER/Line All Roads national geodatabase) holds the general
-roads product and is recorded as lineage context, never fetched.
+full local-road class across MTFCC S1400/S1500/S1630/S1640/S1710/S1720/S1730/
+S1740/S1750/S1780/S1810/S1820/S1830. The layer serves 20_000 features per
+response (a 100_000-feature request fails with the service's Esri 500 "Error
+performing query operation"), so pages are ordered OBJECTID range windows.
+Completeness comes from the producer's own count and ID roster captured before
+and after the pages: the count_before witness sizes the dense windowed
+returnIdsOnly roster evidence and the page set (a single full-layer
+returnIdsOnly request fails with the same producer Esri 500), and the assembled
+roster is validated for stable count and unique native IDs with exact page
+coverage. The capture is resumable: per-page receipts are checkpointed
+atomically in the capture manifest, so a restarted attempt continues instead of
+repeating completed pages. The inventory row's Download pin (the Census
+TIGER/Line All Roads national geodatabase) holds the general roads product and
+is recorded as lineage context, never fetched.
 """
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ from uuid import uuid4
 import httpx
 from shapely import from_wkb
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -52,7 +53,8 @@ from dagster_hifld.sources.census_tiger_common import (
     EXTENT_TOLERANCE_METERS, EXPECTED_SERVICE_LAYERS, EXPECTED_SERVICE_MAP_NAME,
     EXPECTED_SERVICE_MAX_RECORD_COUNT, SERVICE_FOLDER_URL, SERVICE_URL,
     WEB_MERCATOR_LIMIT, WEB_MERCATOR_PROJJSON,
-    _publisher_stated_vintage, _validate_web_mercator_reference,
+    _publisher_stated_vintage, _validate_extent_bounds,
+    _validate_web_mercator_reference,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -61,12 +63,11 @@ FILE_SLUG = DATASET_SLUG
 LAYER_ID = 8
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "U.S. Census Bureau, TIGERweb Transportation (Roads and Railroads) service"
-EXPECTED_COUNT = 16_098_190
-EXPECTED_ID_MIN = 1
-EXPECTED_ID_MAX = 16_098_190
-# The live layer roster (probed 2026-11-15) is dense 1..16098190; the digest
-# pins the exact population and rejects sparsity drift.
-EXPECTED_ID_SHA256 = "24aa30d5f04afb174716e3d06cb7f4f4c1b5dd5b8d6ff0f29f90926fa7aaedba"
+# Transport: the layer serves 20_000 features per response (a 100_000-feature
+# request fails with the service's Esri 500), so pages are 20_000-feature
+# OBJECTID range windows and the dense roster evidence is 250_000-id windows.
+# The window and page counts are derived from the observed count_before
+# witness, not pinned.
 PAGE_SIZE = 20_000
 ROSTER_WINDOW_SIZE = 250_000
 MAX_PAGE_BYTES = 64_000_000
@@ -93,159 +94,141 @@ EXPECTED_FIELD_DECLARATIONS = [
     {"alias": "SUFTYPEABRV", "domain": None, "length": 14, "name": "SUFTYPEABRV", "type": "esriFieldTypeString"},
 ]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["type"] != "esriFieldTypeGeometry"]
-EXPECTED_EXTENT = {"xmin": -19698975.6412, "ymin": -1615788.0086999983,
-                   "xmax": 19976614.354900002, "ymax": 11535623.297200002}
 EXPECTED_LAYER_NAME = "Local Roads"
 # The publisher stamps the layer description with the vintage of the observed
-# layer population (verified live 2026-11-15); the trailing date is recorded as
-# the publisher-stated source vintage, not a per-feature last-edit timestamp
-# and not the HTTP retrieval time. Freshness/release acceptance stays pending.
-EXPECTED_LAYER_DESCRIPTION = "Local roads; January 1, 2026"
+# layer population; the trailing 'Month D, YYYY' stamp is parsed as the
+# publisher-stated source vintage, not a per-feature last-edit timestamp and
+# not the HTTP retrieval time. The description string itself is not pinned, so
+# an annual refresh to a new vintage passes and is recorded.
 SOURCE_VINTAGE_NOTE = ("Publisher-stated vintage of the observed TIGERweb layer population, parsed from the "
-    "captured layer description 'Local roads; January 1, 2026'; it dates the published layer population and is "
-    "not a per-feature last-edit timestamp or the HTTP retrieval time. Freshness acceptance remains pending.")
+    "captured layer description's trailing 'Month D, YYYY' stamp; it dates the published layer population "
+    "and is not a per-feature last-edit timestamp or the HTTP retrieval time. Freshness acceptance remains "
+    "pending.")
 EXPECTED_SCALE_RANGE = {"minScale": 42000, "maxScale": 1001}
 # Population contract observed on the live layer (2026-11-15 group-by probe):
-# 16098190 features across 13 road MTFCC classes and 59 exact (MTFCC, RTTYP)
-# pairs; RTTYP is nullable for the local class (the "null" key).
+# the local-road class is drawn from these 13 MTFCC road classes with these
+# route types; RTTYP is nullable for the local class. This is the allowed-value
+# contract, not a per-pair count, so an upstream refresh that changes pair
+# counts still passes as long as the allowed values hold.
 EXPECTED_MTFCC_VALUES = {"S1400", "S1500", "S1630", "S1640", "S1710", "S1720", "S1730",
-                         "S1740", "S1750", "S1780", "S1810", "S1820", "S1830"}
+                          "S1740", "S1750", "S1780", "S1810", "S1820", "S1830"}
 EXPECTED_RTTYPE_VALUES = {"M", "C", "O", "S", "U", "I"}
-EXPECTED_MTFCC_RTTYPE_COUNTS = {
-    "S1400|C": 347353, "S1400|I": 62, "S1400|M": 8589911, "S1400|O": 93657,
-    "S1400|S": 103771, "S1400|U": 1803, "S1400|null": 4766510,
-    "S1500|C": 3488, "S1500|M": 37613, "S1500|O": 3046, "S1500|S": 104,
-    "S1500|U": 15, "S1500|null": 258592,
-    "S1630|M": 3, "S1630|null": 199521,
-    "S1640|C": 66, "S1640|I": 155, "S1640|M": 51282, "S1640|O": 1803,
-    "S1640|S": 253, "S1640|U": 182, "S1640|null": 81034,
-    "S1710|C": 9, "S1710|M": 5650, "S1710|O": 64, "S1710|S": 3, "S1710|null": 10281,
-    "S1720|M": 177, "S1720|null": 76,
-    "S1730|C": 5, "S1730|M": 15238, "S1730|O": 17, "S1730|S": 20,
-    "S1730|U": 6, "S1730|null": 57077,
-    "S1740|C": 2597, "S1740|M": 66878, "S1740|O": 1039, "S1740|S": 127,
-    "S1740|U": 15, "S1740|null": 1150794,
-    "S1750|C": 10, "S1750|M": 464, "S1750|O": 1, "S1750|null": 198513,
-    "S1780|C": 135, "S1780|M": 7836, "S1780|O": 71, "S1780|S": 8,
-    "S1780|U": 2, "S1780|null": 36081,
-    "S1810|M": 143, "S1810|null": 275,
-    "S1820|C": 1, "S1820|M": 1223, "S1820|O": 3, "S1820|null": 3104,
-    "S1830|M": 4, "S1830|null": 19,
-}
-# Baseline digests of the complete decoded record and geometry streams,
-# pinned 2026-11-15 from the completed resumable capture of the
-# 16098190-feature layer (805 pages plus 130 windowed roster captures,
-# 309402610 vertices, zero invalid and zero empty geometries) and exercised
-# by the replay pass that re-seals the candidate with these gates active.
-EXPECTED_RECORD_SHA256 = "9365f52cb3c3d73451a84daf2a4f09d29e4f5d5decca53838bc42c2b2ce5d024"
-EXPECTED_GEOMETRY_SHA256 = "ba1ae8f09791298e76ada1a83db4c1a75d43721e0230062f959937a26032e805"
-BASELINE_PENDING_NOTE = (
-    "The record and geometry stream digests are pinned from the completed "
-    "resumable capture of the 16098190-feature layer; every capture and "
-    "replay recomputes them and fails closed on any drift of the decoded "
-    "record or geometry content.")
 _TRANSIENT_RETRY_DELAYS = (5.0, 15.0, 45.0, 90.0)
 
 
-def page_count() -> int:
-    return (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
+def _window_count(count: int, window_size: int) -> int:
+    if type(count) is not int or count <= 0:
+        raise ValueError("source_observed_count_invalid")
+    return (count + window_size - 1) // window_size
 
 
-def page_window(index: int) -> tuple[int, int]:
-    """Inclusive OBJECTID window for page index over the dense pinned roster."""
-    if not 0 <= index < page_count():
+def page_count(count: int) -> int:
+    return _window_count(count, PAGE_SIZE)
+
+
+def roster_window_count(count: int) -> int:
+    return _window_count(count, ROSTER_WINDOW_SIZE)
+
+
+def page_window(index: int, count: int) -> tuple[int, int]:
+    """Inclusive OBJECTID window for page index over the observed dense 1..count roster."""
+    if not 0 <= index < page_count(count):
         raise ValueError("source_page_index_out_of_range")
-    start = EXPECTED_ID_MIN + index * PAGE_SIZE
-    return start, min(start + PAGE_SIZE - 1, EXPECTED_ID_MAX)
+    start = 1 + index * PAGE_SIZE
+    return start, min(start + PAGE_SIZE - 1, count)
 
 
-def roster_window_count() -> int:
-    return (EXPECTED_COUNT + ROSTER_WINDOW_SIZE - 1) // ROSTER_WINDOW_SIZE
-
-
-def roster_window(index: int) -> tuple[int, int]:
+def roster_window(index: int, count: int) -> tuple[int, int]:
     """Inclusive OBJECTID window for one dense windowed returnIdsOnly roster capture."""
-    if not 0 <= index < roster_window_count():
+    if not 0 <= index < roster_window_count(count):
         raise ValueError("source_roster_window_index_out_of_range")
-    start = EXPECTED_ID_MIN + index * ROSTER_WINDOW_SIZE
-    return start, min(start + ROSTER_WINDOW_SIZE - 1, EXPECTED_ID_MAX)
+    start = 1 + index * ROSTER_WINDOW_SIZE
+    return start, min(start + ROSTER_WINDOW_SIZE - 1, count)
 
 
-def _roster_names(phase: str) -> tuple[str, ...]:
-    return tuple(f"roster_{phase}_{index:03d}" for index in range(roster_window_count()))
+def _roster_names(phase: str, count: int) -> tuple[str, ...]:
+    return tuple(f"roster_{phase}_{index:03d}" for index in range(roster_window_count(count)))
 
 
-def _before_names() -> tuple[str, ...]:
-    return ("folder", "service_before", "layer_before", "count_before") + _roster_names("before")
+def _before_names(count: int) -> tuple[str, ...]:
+    return ("folder", "service_before", "layer_before", "count_before") + _roster_names("before", count)
 
 
-def _after_names() -> tuple[str, ...]:
-    return ("layer_after", "count_after") + _roster_names("after") + ("service_after",)
+def _after_names(count: int) -> tuple[str, ...]:
+    return ("layer_after", "count_after") + _roster_names("after", count) + ("service_after",)
 
 
-def _capture_names() -> set[str]:
+def _capture_names(count: int) -> set[str]:
     return ({"folder", "service_before", "layer_before", "count_before",
              "layer_after", "count_after", "service_after"}
-            | set(_roster_names("before")) | set(_roster_names("after"))
-            | {f"page_{index:04d}" for index in range(page_count())})
+            | set(_roster_names("before", count)) | set(_roster_names("after", count))
+            | {f"page_{index:04d}" for index in range(page_count(count))})
 
 
 def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
 
-def _capture_urls() -> dict[str, str]:
-    urls = {
+def _fixed_urls() -> dict[str, str]:
+    """Count-independent endpoint URLs captured before and after the pages."""
+    return {
         "folder": SERVICE_FOLDER_URL,
         "service_before": SERVICE_URL + "?f=pjson",
         "layer_before": LAYER_URL + "?f=pjson",
         "count_before": _query({"where": "1=1", "returnCountOnly": "true", "f": "json"}),
+        "layer_after": LAYER_URL + "?f=pjson",
+        "count_after": _query({"where": "1=1", "returnCountOnly": "true", "f": "json"}),
+        "service_after": SERVICE_URL + "?f=pjson",
     }
-    for index in range(roster_window_count()):
-        lo, hi = roster_window(index)
+
+
+def _count_dependent_urls(count: int) -> dict[str, str]:
+    """Roster and page window URLs derived from the observed count witness."""
+    urls = {}
+    for index in range(roster_window_count(count)):
+        lo, hi = roster_window(index, count)
         urls[f"roster_before_{index:03d}"] = _query({"where": f"(objectid>={lo}) AND (objectid<={hi})",
             "returnIdsOnly": "true", "f": "json"})
-    for index in range(page_count()):
-        lo, hi = page_window(index)
+    for index in range(page_count(count)):
+        lo, hi = page_window(index, count)
         urls[f"page_{index:04d}"] = _query({"where": f"(objectid>={lo}) AND (objectid<={hi})",
             "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
             "orderByFields": "OBJECTID ASC", "f": "json"})
-    urls.update({
-        "layer_after": LAYER_URL + "?f=pjson",
-        "count_after": _query({"where": "1=1", "returnCountOnly": "true", "f": "json"}),
-    })
-    for index in range(roster_window_count()):
-        lo, hi = roster_window(index)
+    for index in range(roster_window_count(count)):
+        lo, hi = roster_window(index, count)
         urls[f"roster_after_{index:03d}"] = _query({"where": f"(objectid>={lo}) AND (objectid<={hi})",
             "returnIdsOnly": "true", "f": "json"})
-    urls["service_after"] = SERVICE_URL + "?f=pjson"
     return urls
 
 
-def _validate_roster_windows(root: Path, phase: str) -> None:
-    """Gate the dense roster: exact windows plus the assembled roster digest pin.
+def _capture_urls(count: int) -> dict[str, str]:
+    return {**_fixed_urls(), **_count_dependent_urls(count)}
+
+
+def _count_from_body(body: bytes) -> int:
+    count = json.loads(body).get("count")
+    if type(count) is not int or count <= 0:
+        raise ValueError("source_observed_count_invalid")
+    return count
+
+
+def _assembled_roster(root: Path, phase: str, count: int) -> list[int]:
+    """Assemble the dense windowed returnIdsOnly roster into one ordered ID list.
 
     A single full-layer returnIdsOnly request is refused by the producer (Esri
-    500), so the roster evidence is the concatenation of the dense windowed
-    id lists; contiguous exact windows make the assembled list the full dense
-    roster, and the digest pins its exact canonical bytes.
+    500), so the roster evidence is the concatenation of the dense windowed id
+    lists over the observed 1..count space; :func:`validate_capture_witness`
+    then gates the assembled roster for a stable count and unique native IDs.
     """
-    digest = hashlib.sha256()
-    digest.update(b"[")
-    for index in range(roster_window_count()):
+    ids: list[int] = []
+    for index in range(roster_window_count(count)):
         name = f"roster_{phase}_{index:03d}"
         body = (root / f"{name}.body").read_bytes()
-        ids = json.loads(body).get("objectIds")
-        lo, hi = roster_window(index)
-        if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-                or ids != list(range(lo, hi + 1))):
-            raise ValueError(f"source_count_or_id_population_drift:{name}")
-        if index:
-            digest.update(b",")
-        digest.update(_canonical(ids)[1:-1])
-    digest.update(b"]")
-    if digest.hexdigest() != EXPECTED_ID_SHA256:
-        raise ValueError(f"source_count_or_id_population_drift:roster_{phase}")
+        window_ids = json.loads(body).get("objectIds")
+        if not isinstance(window_ids, list) or any(type(oid) is not int or oid <= 0 for oid in window_ids):
+            raise ValueError(f"source_count_or_id_roster_drift:{name}")
+        ids.extend(window_ids)
+    return ids
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str, *, max_bytes: int) -> tuple[bytes, dict]:
@@ -298,8 +281,9 @@ def _read_progress(root: Path) -> dict[str, dict]:
 
 
 def _write_complete_manifest(root: Path, audit: dict[str, object]) -> None:
+    count = audit["source_feature_count"]
     receipts = {}
-    for name in sorted(_capture_names()):
+    for name in sorted(_capture_names(count)):
         _body, _wire, receipt = _load_capture(root, name)
         receipts[name] = receipt
     manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat(),
@@ -320,13 +304,18 @@ def _read_replay(root: Path) -> dict[str, dict]:
     manifest = json.loads(manifest_path.read_bytes())
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
         raise ValueError("retained_capture_manifest_invalid")
+    # The roster and page names derive from the retained count_before witness,
+    # so a sealed checkpoint only replays against the publisher endpoints the
+    # current code captures for that observed count.
+    count = _count_from_body(_load_capture(root, "count_before")[0])
+    names = _capture_names(count)
     roster = manifest.get("artifact_roster")
-    if not isinstance(roster, dict) or set(manifest["receipts"]) != _capture_names():
+    if not isinstance(roster, dict) or set(manifest["receipts"]) != names:
         raise ValueError("retained_capture_roster_or_names_invalid")
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    urls = _capture_urls()
+    urls = _capture_urls(count)
     for name in sorted(manifest["receipts"]):
         _body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"][name]:
@@ -335,8 +324,8 @@ def _read_replay(root: Path) -> dict[str, dict]:
     return manifest["receipts"]
 
 
-def _validate_ids_page(page_ids: list[int], index: int) -> None:
-    lo, hi = page_window(index)
+def _validate_ids_page(page_ids: list[int], index: int, count: int) -> None:
+    lo, hi = page_window(index, count)
     if page_ids != list(range(lo, hi + 1)):
         raise ValueError(f"source_page_id_population_drift:page_{index:04d}")
 
@@ -357,9 +346,11 @@ def _streaming_candidate_writer(fields: list[dict], path: Path):
 
 def _validate_stream(root: Path, receipts: dict[str, dict]) -> tuple[list[dict], Path, dict]:
     """One streaming pass over the retained pages: validate, digest, parquet."""
-    if set(receipts) != _capture_names():
+    # The roster and page names derive from the observed count_before witness.
+    count_before = _count_from_body(_load_capture(root, "count_before")[0])
+    if set(receipts) != _capture_names(count_before):
         raise ValueError("source_capture_name_roster_drift")
-    urls = _capture_urls()
+    urls = _capture_urls(count_before)
     for name in sorted(receipts):
         _validate_capture_request_identity(name, receipts[name], urls[name])
     docs: dict[str, object] = {}
@@ -383,17 +374,22 @@ def _validate_stream(root: Path, receipts: dict[str, dict]) -> tuple[list[dict],
         raise ValueError("source_field_schema_drift")
     if (layer.get("id") != LAYER_ID or layer.get("name") != EXPECTED_LAYER_NAME
             or layer.get("geometryType") != "esriGeometryPolyline"
-            or layer.get("description") != EXPECTED_LAYER_DESCRIPTION
-            or {key: layer.get(key) for key in EXPECTED_SCALE_RANGE} != EXPECTED_SCALE_RANGE
-            or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT):
+            or {key: layer.get(key) for key in EXPECTED_SCALE_RANGE} != EXPECTED_SCALE_RANGE):
         raise ValueError("source_layer_identity_extent_or_scale_drift")
+    coverage = _validate_extent_bounds(layer.get("extent"), "source_layer")
     vintage = _publisher_stated_vintage(layer.get("description"))
     _validate_web_mercator_reference(layer.get("spatialReference"), "source_layer")
     _validate_web_mercator_reference(layer.get("extent", {}).get("spatialReference"), "source_layer_extent")
-    _validate_roster_windows(root, "before")
-    _validate_roster_windows(root, "after")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_or_id_population_drift")
+    # Completeness is the producer's own count and ID roster captured before and
+    # after the pages. Both rosters are assembled from the dense windowed
+    # evidence over the count_before windowing (a single full-layer returnIdsOnly
+    # request is refused by the producer), then gated for a stable count and
+    # unique native IDs with exact page coverage.
+    count_after = docs["count_after"].get("count")
+    ids = validate_capture_witness(count_before, _assembled_roster(root, "before", count_before),
+                                   count_after, _assembled_roster(root, "after", count_before))
+    if not ids:
+        raise ValueError("source_population_empty")
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
 
@@ -410,12 +406,13 @@ def _validate_stream(root: Path, receipts: dict[str, dict]) -> tuple[list[dict],
     pair_counts: dict[str, int] = {}
     attribute_names = {field["name"] for field in ATTRIBUTE_FIELDS}
     feature_count = 0
+    all_page_ids: list[int] = []
     try:
         import pyarrow as pa
         record_digest.update(b"[")
         geometry_digest.update(b"[")
         first = True
-        for index in range(page_count()):
+        for index in range(page_count(count_before)):
             name = f"page_{index:04d}"
             body, _wire, _receipt = _load_capture(root, name)
             page = json.loads(body)
@@ -477,10 +474,10 @@ def _validate_stream(root: Path, receipts: dict[str, dict]) -> tuple[list[dict],
                         if not (-WEB_MERCATOR_LIMIT <= point[0] <= WEB_MERCATOR_LIMIT
                                 and -WEB_MERCATOR_LIMIT <= point[1] <= WEB_MERCATOR_LIMIT):
                             raise ValueError("source_xy_web_mercator_domain_violation:" + name)
-                        if not (EXPECTED_EXTENT["xmin"] - EXTENT_TOLERANCE_METERS <= point[0]
-                                <= EXPECTED_EXTENT["xmax"] + EXTENT_TOLERANCE_METERS
-                                and EXPECTED_EXTENT["ymin"] - EXTENT_TOLERANCE_METERS <= point[1]
-                                <= EXPECTED_EXTENT["ymax"] + EXTENT_TOLERANCE_METERS):
+                        if not (coverage["xmin"] - EXTENT_TOLERANCE_METERS <= point[0]
+                                <= coverage["xmax"] + EXTENT_TOLERANCE_METERS
+                                and coverage["ymin"] - EXTENT_TOLERANCE_METERS <= point[1]
+                                <= coverage["ymax"] + EXTENT_TOLERANCE_METERS):
                             raise ValueError("source_vertex_outside_declared_extent:" + name)
                         vertices += 1
                 wkb = _esri_polyline_wkb(geometry)
@@ -491,7 +488,8 @@ def _validate_stream(root: Path, receipts: dict[str, dict]) -> tuple[list[dict],
                 page_geometries.append(_canonical([attrs["OBJECTID"], geometry]))
                 page_wkbs.append(wkb)
                 page_ids.append(attrs["OBJECTID"])
-            _validate_ids_page(page_ids, index)
+            _validate_ids_page(page_ids, index, count_before)
+            all_page_ids.extend(page_ids)
             separator = b"" if first else b","
             record_digest.update(separator + b",".join(page_records))
             geometry_digest.update(separator + b",".join(page_geometries))
@@ -508,16 +506,16 @@ def _validate_stream(root: Path, receipts: dict[str, dict]) -> tuple[list[dict],
     record_digest.update(b"]")
     geometry_digest.update(b"]")
     record_sha, geometry_sha = record_digest.hexdigest(), geometry_digest.hexdigest()
-    if feature_count != EXPECTED_COUNT or pair_counts != EXPECTED_MTFCC_RTTYPE_COUNTS:
+    if (sorted(all_page_ids) != ids or feature_count != len(ids)
+            or len(set(all_page_ids)) != len(ids)):
         raise ValueError("source_feature_id_or_population_contract_drift")
-    if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_record_sha256_drift")
-    if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_sha256_drift")
     audit = {
         "source_feature_count": feature_count,
-        "source_id_sha256": EXPECTED_ID_SHA256, "source_id_min": EXPECTED_ID_MIN,
-        "source_id_max": EXPECTED_ID_MAX,
+        "source_id_sha256": _sha(_canonical(ids)), "source_id_min": min(ids),
+        "source_id_max": max(ids),
+        "source_id_note": (f"{len(ids)} features observed with native OBJECTID {min(ids)}..{max(ids)}; "
+                           "the observed roster is dense (contiguous) and is preserved exactly; "
+                           "no substitute IDs are generated."),
         "source_schema_sha256": _sha(_canonical(layer["fields"])),
         "source_record_sha256": record_sha, "source_geometry_sha256": geometry_sha,
         "source_geometry_type": "esriGeometryPolyline", "source_wkid": 102100, "source_latest_wkid": 3857,
@@ -529,15 +527,17 @@ def _validate_stream(root: Path, receipts: dict[str, dict]) -> tuple[list[dict],
         "source_vintage": vintage, "source_vintage_evidence": layer.get("description"),
         "source_vintage_note": SOURCE_VINTAGE_NOTE,
         "source_coverage_scope": "Complete observed TIGERweb Transportation MapServer layer 8 "
-            "Local Roads (16098190 segments across the local-road MTFCC classes S1400/S1500/S1630/"
-            "S1640/S1710/S1720/S1730/S1740/S1750/S1780/S1810/S1820/S1830) from the directly queried "
-            "U.S. Census Bureau service; the full-detail continuously maintained national layer at its "
-            "1:1001-1:42000 display scale, not the TIGER/Line All Roads geodatabase product.",
+            "Local Roads (the full local-road class across the local-road MTFCC classes "
+            "S1400/S1500/S1630/S1640/S1710/S1720/S1730/S1740/S1750/S1780/S1810/S1820/S1830) "
+            "from the directly queried U.S. Census Bureau service; the full-detail continuously "
+            "maintained national layer at its 1:1001-1:42000 display scale, not the TIGER/Line "
+            "All Roads geodatabase product.",
         "drift_guard": "Exact TIGERweb folder/service/layer roster, full field declarations/types, "
-            "Web Mercator layer and response-page SRs, scale range, count and before/after dense-roster "
-            "digest, per-page OBJECTID windows against the pinned dense roster, per-feature attributes/"
-            "types/transfer limits, XY path dimensions, Web Mercator domain and pinned-extent containment "
-            "of every vertex, and the observed MTFCC/RTTYP pair population contract.",
+            "Web Mercator layer and response-page SRs, scale range, capture-time count and before/after "
+            "dense-roster witnesses with exact per-page ID coverage against the observed roster, "
+            "per-feature attributes/types/transfer limits, XY path dimensions, Web Mercator domain and "
+            "observed-extent containment of every vertex, and the allowed MTFCC/RTTYP population "
+            "contract.",
     }
     return layer["fields"], parquet_path, audit
 
@@ -671,7 +671,7 @@ def capture_local_roads_census(storage: StagingStorageResource, *, version: str,
             "attribution": "U.S. Census Bureau, TIGERweb Transportation (Roads and Railroads), layer 8 Local Roads."})
     manifest = {"schema_version": 1, "approved": False, "title": "Local Roads",
         "description": "Complete observed Census TIGERweb Transportation MapServer layer 8 Local Roads: "
-            "16098190 local-class road segments (MTFCC S1400/S1500/S1630/S1640/S1710/S1720/S1730/S1740/"
+            "the full local-road class (MTFCC S1400/S1500/S1630/S1640/S1710/S1720/S1730/S1740/"
             "S1750/S1780/S1810/S1820/S1830) at the layer's 1:1001-1:42000 display scale. Historical "
             "HIFLD Open equivalence, contract, baseline, rights and release remain unaccepted.",
         "publisher": PUBLISHER, "agency": "U.S. Census Bureau", "source_url": LAYER_URL,
@@ -720,9 +720,10 @@ def capture_local_roads_census(storage: StagingStorageResource, *, version: str,
             original.get("objects", {}), original_receipts)
         parquet_path.unlink()
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"], "source_id_min": EXPECTED_ID_MIN,
-            "source_id_max": EXPECTED_ID_MAX,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+            "source_id_max": audit["source_id_max"],
             "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
@@ -765,9 +766,10 @@ def capture_local_roads_census(storage: StagingStorageResource, *, version: str,
         "objects": descriptors})
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-        "source_id_sha256": audit["source_id_sha256"], "source_id_min": EXPECTED_ID_MIN,
-        "source_id_max": EXPECTED_ID_MAX,
+        "feature_count": audit["source_feature_count"],
+        "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
+        "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+        "source_id_max": audit["source_id_max"],
         "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
@@ -778,28 +780,43 @@ def capture_local_roads_census(storage: StagingStorageResource, *, version: str,
 
 
 def _capture_attempt(root: Path) -> dict[str, dict]:
-    """Run one capture attempt over the pinned dense roster, resuming progress."""
-    urls = _capture_urls()
+    """Run one capture attempt over the observed dense roster, resuming progress.
+
+    The roster and page window counts are derived from the producer's own
+    count_before witness (a full returnIdsOnly request is refused by the
+    producer), so the initial documents including count_before are captured
+    first, then the count-dependent roster and page names are enumerated. On
+    resume, a retained count_before is read back to re-derive the same names;
+    the after witnesses are always re-captured after the last page.
+    """
+    retained = _read_progress(root) if _manifest_path(root).exists() else {}
     receipts: dict[str, dict] = {}
-    if _manifest_path(root).exists():
-        retained = _read_progress(root)
-        for name in sorted(_before_names()):
-            if name in retained:
-                _load_capture(root, name)
-                receipts[name] = retained[name]
-        for index in range(page_count()):
-            name = f"page_{index:04d}"
+    count: int | None = None
+    if "count_before" in retained:
+        count = _count_from_body(_load_capture(root, "count_before")[0])
+        resumable = set(_before_names(count)) | {
+            f"page_{index:04d}" for index in range(page_count(count))}
+        for name in sorted(resumable):
             if name in retained:
                 _load_capture(root, name)
                 receipts[name] = retained[name]
     with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(240, connect=15),
                       headers={"User-Agent": "hifld-next-datasets/census-tigerweb-draft"}) as client:
-        for name in _before_names():
+        fixed = _fixed_urls()
+        for name in ("folder", "service_before", "layer_before", "count_before"):
+            if name in receipts:
+                continue
+            _body, receipts[name] = _capture(client, fixed[name], root, name, max_bytes=MAX_PAGE_BYTES)
+            _write_progress(root, receipts)
+        if count is None:
+            count = _count_from_body(_load_capture(root, "count_before")[0])
+        urls = _capture_urls(count)
+        for name in _roster_names("before", count):
             if name in receipts:
                 continue
             _body, receipts[name] = _capture(client, urls[name], root, name, max_bytes=MAX_PAGE_BYTES)
             _write_progress(root, receipts)
-        for index in range(page_count()):
+        for index in range(page_count(count)):
             name = f"page_{index:04d}"
             if name in receipts:
                 continue
@@ -809,6 +826,6 @@ def _capture_attempt(root: Path) -> dict[str, dict]:
                 _write_progress(root, receipts, error_code=type(exc).__name__)
                 raise
             _write_progress(root, receipts)
-        for name in _after_names():
+        for name in _after_names(count):
             _body, receipts[name] = _capture(client, urls[name], root, name, max_bytes=MAX_PAGE_BYTES)
     return receipts
