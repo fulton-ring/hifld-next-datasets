@@ -15,6 +15,7 @@ from dagster_hifld.sources.electric_retail_service_territories_common import (
 
 class ElectricRetailServiceTerritoriesConfig(Config):
     capture_directory: str = ""
+    replay_version: str = ""
 
 
 @asset(
@@ -25,7 +26,9 @@ class ElectricRetailServiceTerritoriesConfig(Config):
         "County-level EIA-861 utility service territories dissolved from current "
         "Census TIGER county equivalents. This is an approximation, not a legal "
         "boundary or a historical HIFLD equivalence; all acceptance and release "
-        "gates remain closed."
+        "gates remain closed. Optional replay_version config replays one retained "
+        "candidate from its staged raw evidence with zero network access; omitted "
+        "runs fetch a fresh snapshot."
     ),
 )
 def electric_retail_service_territories_eia861_candidate(
@@ -34,6 +37,7 @@ def electric_retail_service_territories_eia861_candidate(
 ) -> dict:
     result = capture_electric_retail_service_territories(
         staging_storage, capture_directory=config.capture_directory or None,
+        replay_version=config.replay_version or None,
     )
     context.instance.add_dynamic_partitions(
         PUBLISH_PARTITION_NAME,

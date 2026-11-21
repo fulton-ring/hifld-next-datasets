@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import tempfile
@@ -21,6 +22,9 @@ from dagster_hifld.assets.electric_retail_service_territories import (
     electric_retail_service_territories_geometry_valid,
     electric_retail_service_territories_population_complete,
     electric_retail_service_territories_release_pending,
+)
+from dagster_hifld.resources import (
+    PublishedStorageResource, StagingStorageResource, StorageObjectSnapshot,
 )
 from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import electric_retail_service_territories_common as source
@@ -485,6 +489,222 @@ class ElectricRetailTerritoryTests(unittest.TestCase):
             electric_retail_service_territories_draft_schedule.default_status,
             DefaultScheduleStatus.STOPPED,
         )
+
+
+class _RemoteStorage(StagingStorageResource):
+    """In-memory remote staging double serving the remote storage contract."""
+
+    def __init__(self, objects, prefix=""):
+        super().__init__(bucket="remote-test-bucket", use_local=False, prefix=prefix)
+        self.objects = {self._ensure_prefixed(key): body for key, body in objects.items()}
+        self.writes = 0
+
+    def list_prefix(self, key_prefix=""):
+        physical = self._ensure_prefixed(key_prefix).rstrip("/")
+        return sorted(key for key in self.objects
+                      if not physical or key.startswith(physical + "/"))
+
+    def object_snapshot(self, key):
+        key = self._ensure_prefixed(key)
+        if key not in self.objects:
+            return None
+        body = self.objects[key]
+        return StorageObjectSnapshot(key=key, size=len(body), generation="1",
+                                     md5=hashlib.md5(body, usedforsecurity=False).hexdigest(),
+                                     crc32c=None, sha256=hashlib.sha256(body).hexdigest())
+
+    def read_key(self, key):
+        return self.objects[self._ensure_prefixed(key)]
+
+    def sha256_key(self, key):
+        return hashlib.sha256(self.objects[self._ensure_prefixed(key)]).hexdigest()
+
+    def write_key_if_unchanged(self, key, data, expected_snapshot):
+        self.writes += 1
+        key = self._ensure_prefixed(key)
+        current = self.object_snapshot(key)
+        if current != expected_snapshot:
+            raise RuntimeError(
+                f"destination {'created' if expected_snapshot is None else 'changed'} before write: {key}")
+        self.objects[key] = data
+        return self.object_snapshot(key)
+
+
+def _counting_client(requests):
+    def handle(request):
+        requests.append(str(request.url))
+        return httpx.Response(200, stream=httpx.ByteStream(b"unused-by-replay"))
+    return httpx.Client(transport=httpx.MockTransport(handle))
+
+
+class ElectricRetailTerritoryReplayTests(unittest.TestCase):
+    def test_replay_retained_candidate_uses_zero_network_and_zero_writes(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(source, "MIN_COUNTY_COUNT", 1):
+            storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "stage"))
+            with _client() as client:
+                first = source.capture_electric_retail_service_territories(
+                    storage, client=client, capture_directory=str(Path(tmp) / "capture"))
+            staged = {key: storage.read_key(key) for key in storage.list_prefix()}
+            requests = []
+            with _counting_client(requests) as counting, patch.object(
+                    StagingStorageResource, "write_key_if_unchanged",
+                    side_effect=AssertionError("replay attempted a staged write")):
+                replayed = source.capture_electric_retail_service_territories(
+                    storage, client=counting, replay_version=first["version"])
+            self.assertEqual(requests, [])
+            self.assertEqual(replayed, first)
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix()}, staged)
+
+    def test_replay_fails_closed_without_rewriting_retained_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(source, "MIN_COUNTY_COUNT", 1):
+            stage_root = Path(tmp) / "stage"
+            storage = StagingStorageResource(use_local=True, local_dir=str(stage_root))
+            with _client() as client:
+                first = source.capture_electric_retail_service_territories(
+                    storage, client=client, capture_directory=str(Path(tmp) / "capture"))
+            prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{first['version']}"
+            staged = {key: storage.read_key(key) for key in storage.list_prefix()}
+            zip_body = _eia_zip(added_utility=True)
+            tampered = json.loads(staged[prefix + "/raw/eia861_zip.receipt.json"])
+            tampered.update(bytes=len(zip_body), sha256=hashlib.sha256(zip_body).hexdigest(),
+                            wire_bytes=len(zip_body), wire_sha256=hashlib.sha256(zip_body).hexdigest())
+            cases = [
+                # Forged: receipt names a different endpoint than the producer page.
+                (((prefix + "/raw/eia861_page.receipt.json",
+                   staged[prefix + "/raw/eia861_page.receipt.json"].replace(b"https://", b"http://", 1)),),
+                 "retained_capture_request_identity_mismatch"),
+                # Forged: receipt bytes no longer self-canonicalize.
+                (((prefix + "/raw/eia_reuse_policy.receipt.json",
+                   staged[prefix + "/raw/eia_reuse_policy.receipt.json"] + b" "),),
+                 "retained_capture_receipt_not_canonical"),
+                # Truncated body.
+                (((prefix + "/raw/tiger_county_zip.body",
+                   staged[prefix + "/raw/tiger_county_zip.body"][:-100]),),
+                 "retained_capture_body_mismatch"),
+                # Truncated wire.
+                (((prefix + "/raw/eia861_page.wire",
+                   staged[prefix + "/raw/eia861_page.wire"][:-1]),),
+                 "retained_capture_wire_mismatch"),
+                # Partial: one raw object removed.
+                (((prefix + "/raw/eia861_zip.body", None),),
+                 "electric_territory_replay_roster_changed"),
+                # Partial: the ready seal removed.
+                (((prefix + "/metadata/candidate_ready.json", None),),
+                 "electric_territory_replay_candidate_incomplete"),
+                # Foreign object inside the candidate.
+                (((prefix + "/raw/eia861_page.extra", b"foreign"),),
+                 "electric_territory_replay_roster_changed"),
+                # Conflicting: staged manifest no longer matches the retained evidence.
+                (((prefix + "/metadata/source_manifest.json",
+                   staged[prefix + "/metadata/source_manifest.json"].replace(
+                       b"County-level approximation only", b"Altered coverage claim")),),
+                 "electric_territory_replay_candidate_conflict"),
+                # Conflicting: self-consistent retained evidence that re-derives another version.
+                (((prefix + "/raw/eia861_zip.body", zip_body),
+                  (prefix + "/raw/eia861_zip.wire", zip_body),
+                  (prefix + "/raw/eia861_zip.receipt.json", source._canonical(tampered) + b"\n")),
+                 "electric_territory_replay_version_conflict"),
+            ]
+            for mutations, error in cases:
+                with self.subTest(error=error):
+                    for key, data in mutations:
+                        path = stage_root / key
+                        if data is None:
+                            path.unlink()
+                        else:
+                            path.write_bytes(data)
+                    try:
+                        with patch.object(StagingStorageResource, "write_key_if_unchanged",
+                                side_effect=AssertionError("failed replay attempted a staged write")):
+                            with self.assertRaisesRegex(ValueError, error):
+                                source.capture_electric_retail_service_territories(
+                                    storage, replay_version=first["version"])
+                    finally:
+                        for key, data in mutations:
+                            path = stage_root / key
+                            if key in staged:
+                                path.write_bytes(staged[key])
+                            elif data is not None:
+                                path.unlink(missing_ok=True)
+            self.assertEqual({key: storage.read_key(key) for key in staged}, staged)
+
+    def test_replay_refuses_unsafe_missing_or_conflicting_versions(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(source, "MIN_COUNTY_COUNT", 1):
+            storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "stage"))
+            for bad in ("", ".", "..", "a/b", "v" * 129, "../evil"):
+                with self.subTest(version=repr(bad)):
+                    with self.assertRaisesRegex(ValueError, "unsafe_electric_retail_replay_version"):
+                        source.capture_electric_retail_service_territories(
+                            storage, replay_version=bad)
+            with self.assertRaisesRegex(ValueError, "electric_territory_replay_candidate_incomplete"):
+                source.capture_electric_retail_service_territories(
+                    storage, replay_version="v" + "1" * 32)
+
+    def test_replay_refuses_published_storage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "explicit_staging_resource_required"):
+                source.capture_electric_retail_service_territories(
+                    PublishedStorageResource(use_local=True, local_dir=str(Path(tmp) / "pub")),
+                    replay_version="v" + "0" * 32)
+
+    def test_replay_honours_remote_staging_contract(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(source, "MIN_COUNTY_COUNT", 1):
+            local = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "stage"))
+            with _client() as client:
+                first = source.capture_electric_retail_service_territories(
+                    local, client=client, capture_directory=str(Path(tmp) / "capture"))
+            objects = {key: local.read_key(key) for key in local.list_prefix()}
+            for prefix in ("", "hifld"):
+                with self.subTest(prefix=prefix):
+                    remote = _RemoteStorage(objects, prefix=prefix)
+                    requests = []
+                    with _counting_client(requests) as counting:
+                        replayed = source.capture_electric_retail_service_territories(
+                            remote, client=counting, replay_version=first["version"])
+                    self.assertEqual(requests, [])
+                    self.assertEqual(replayed, first)
+                    self.assertEqual(remote.writes, 0)
+                    self.assertEqual(remote.objects,
+                                     {remote._ensure_prefixed(key): body
+                                      for key, body in objects.items()})
+
+    def test_asset_replay_config_replays_retained_candidate_offline(self):
+        with tempfile.TemporaryDirectory() as tmp, DagsterInstance.ephemeral() as instance, \
+                patch.object(source, "MIN_COUNTY_COUNT", 1):
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            with _client() as client:
+                first = source.capture_electric_retail_service_territories(
+                    storage, client=client, capture_directory=str(Path(tmp) / "capture"))
+            requests = []
+            with patch.object(source.httpx, "Client",
+                    side_effect=lambda *a, **k: _counting_client(requests)):
+                result = materialize(
+                    assets.electric_retail_service_territories_eia861_candidate,
+                    instance=instance, resources={"staging_storage": storage},
+                    run_config={"ops": {
+                        assets.electric_retail_service_territories_eia861_candidate.op.name: {
+                            "config": {"replay_version": first["version"]}}}})
+            self.assertTrue(result.success)
+            self.assertEqual(requests, [])
+            self.assertEqual(
+                result.output_for_node(
+                    assets.electric_retail_service_territories_eia861_candidate.op.name).mapping,
+                first)
+
+    def test_tiger_listing_derivation_matches_live_discovery(self):
+        from dagster_hifld.sources import census_latest
+
+        annual = b'<a href="TIGER2025/">2025</a><a href="TIGER2026/">2026</a>'
+        product = b'<a href="tl_2026_us_county.zip">zip</a>'
+        transport = httpx.MockTransport(lambda request: httpx.Response(
+            200, stream=httpx.ByteStream(
+                annual if str(request.url) == source.TIGER_ROOT else product)))
+        with tempfile.TemporaryDirectory() as tmp, httpx.Client(transport=transport) as client:
+            discovered = census_latest.discover_county_boundaries(client, Path(tmp))
+        derived = census_latest.annual_zip_release_from_listings(
+            annual, product, product="COUNTY")
+        for field in ("edition", "source_url", "listing_url"):
+            self.assertEqual(derived[field], discovered[field])
 
 
 if __name__ == "__main__":

@@ -63,6 +63,13 @@ def candidate_prefix(dataset_slug: str, file_slug: str, version: str) -> str:
     return f"{dataset_slug}/{file_slug}/{version}"
 
 
+def safe_candidate_version(value: str) -> bool:
+    """Whether a version token is safe to use as a candidate storage path segment."""
+    return (isinstance(value, str) and 1 <= len(value) <= 128
+            and all(char.isascii() and (char.isalnum() or char in "._-") for char in value)
+            and value not in {".", ".."})
+
+
 def capture_get(client: httpx.Client, url: str, capture_root: Path, name: str,
                 *, max_bytes: int = 128 * 1024 * 1024,
                 max_wire_block_bytes: int | None = None,

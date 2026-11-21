@@ -51,6 +51,27 @@ def _listing(client: httpx.Client, url: str, root: Path, name: str):
     return body, receipt
 
 
+def annual_zip_release_from_listings(annual_body: bytes, product_body: bytes, *, product: str) -> dict:
+    """Re-derive the exact annual ZIP selection from retained producer listings.
+
+    Applies the same selection rule as ``_discover_annual_zip`` to already
+    captured listing bodies, so retained acquisition evidence can be replayed
+    without network access.
+    """
+    years = [match.group(1) for link in _links(annual_body)
+             if (match := re.fullmatch(r'TIGER(20\d{2})/', link))]
+    if not years:
+        raise ValueError('annual_editions_missing')
+    if len(years) != len(set(years)):
+        raise ValueError('annual_editions_ambiguous')
+    edition = max(years)
+    directory = ROOT + f'TIGER{edition}/{product}/'
+    filename = f'tl_{edition}_us_{product.lower()}.zip'
+    if _links(product_body).count(filename) != 1:
+        raise ValueError('published_archive_missing_or_ambiguous')
+    return {'edition': edition, 'source_url': directory + filename, 'listing_url': directory}
+
+
 def _discover_annual_zip(
     client: httpx.Client, capture_root: Path, *, product: str,
     filename_template: str, annual_name: str, product_name: str,

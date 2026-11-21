@@ -37,6 +37,7 @@ from dagster_hifld.sources.capture_common import (
     capture_get,
     content_derived_version,
     processing_identity,
+    safe_candidate_version,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -484,13 +485,388 @@ def _input(
     }
 
 
+CAPTURE_NAMES = (
+    "eia861_page", "eia861_zip", "eia_reuse_policy",
+    "tiger_annual_listing", "tiger_product_listing", "tiger_county_zip",
+)
+CANDIDATE_OBJECT_NAMES = (
+    f"geoparquet/{FILE_SLUG}.parquet",
+    "metadata/source_manifest.json",
+    "metadata/source_audit.json",
+    "metadata/processing_identity.json",
+    "metadata/candidate_ready.json",
+)
+# Exact key set of the receipts capture_get stages for this adapter's GETs; a
+# retained receipt with any other shape is not original evidence.
+_RECEIPT_KEYS = frozenset((
+    "method", "url", "final_url", "observed_at", "status", "complete_body",
+    "wire_bytes", "wire_sha256", "bytes", "sha256", "content_encoding",
+    "content_length", "error_code", "error_type",
+))
+
+
+def _candidate_hashes(features: list[dict[str, object]], year: int,
+                      tiger_edition: str) -> tuple[str, str, str, str]:
+    id_sha = _sha(_canonical(sorted((row['utility_number'], row['state']) for row in features)))
+    record_sha = _sha(_canonical([
+        {key: value for key, value in row.items() if key != "geometry"} for row in features
+    ]))
+    geometry_hash = hashlib.sha256()
+    for row in features:
+        value = to_wkb(row["geometry"], byte_order=1, output_dimension=2)
+        geometry_hash.update(len(value).to_bytes(8, "little"))
+        geometry_hash.update(value)
+    geometry_sha = geometry_hash.hexdigest()
+    schema_sha = _sha(_canonical({
+        "output_fields": [name for name, _kind in _OUTPUT_FIELDS],
+        "eia861_data_year": year,
+        "tiger_edition": tiger_edition,
+        "state_fips": STATE_FIPS,
+        "county_aliases": {f"{state}:{name}": list(geoids) for (state, name), geoids in COUNTY_ALIASES.items()},
+    }))
+    return id_sha, record_sha, geometry_sha, schema_sha
+
+
+def _candidate_counts(records: list[dict[str, object]],
+                      features: list[dict[str, object]]) -> tuple[int, int, int]:
+    utility_count = len({row["utility_number"] for row in features})
+    county_count = len({geoid for record in records for geoid in record["geoids"]})
+    state_count = len({row["state"] for row in features})
+    return utility_count, county_count, state_count
+
+
+def _candidate_coverage(year: int, tiger_edition: str,
+                        territory_rows: list[dict[str, str]],
+                        join_audit: dict[str, int],
+                        features: list[dict[str, object]],
+                        utility_count: int, county_count: int,
+                        state_count: int) -> dict[str, object]:
+    return {
+        "population_scope": "All EIA-861 utility-by-county service-territory rows for the selected annual release, excluding only the source 'Not Applicable' county sentinel.",
+        "eia861_data_year": year,
+        "tiger_edition": tiger_edition,
+        "territory_row_count": len(territory_rows),
+        "matched_county_row_count": join_audit["matched_county_rows"],
+        "skipped_not_applicable_count": join_audit["skipped_not_applicable"],
+        "feature_count": len(features),
+        "utility_count": utility_count,
+        "state_count": state_count,
+        "distinct_county_count": county_count,
+        "boundary_precision": "County-level approximation. Utility territories are dissolved current TIGER county equivalents, not utility-owned legal boundaries.",
+        "source_population_complete": True,
+    }
+
+
+def _candidate_inputs(receipts: dict[str, dict[str, object]], year: int,
+                      tiger_edition: str) -> list[dict[str, object]]:
+    return [
+        _input("eia861_page", receipts["eia861_page"], purpose="methodology",
+               license=REUSE_URL, release_date=None,
+               unknown_reason="Producer release page; retrieval time is not a publication date."),
+        _input("eia861_zip", receipts["eia861_zip"], purpose="data",
+               license=REUSE_URL, release_date=None,
+               unknown_reason=f"EIA-861 data year {year}; the producer page and ZIP headers do not establish an exact publication date."),
+        _input("eia_reuse_policy", receipts["eia_reuse_policy"], purpose="license",
+               license=REUSE_URL, release_date=None,
+               unknown_reason="Producer reuse policy page; revision date is not established by this capture."),
+        _input("tiger_annual_listing", receipts["tiger_annual_listing"], purpose="methodology",
+               license="https://www.usa.gov/government-works", release_date=None,
+               unknown_reason="Census annual directory listing; retrieval time is not a publication date."),
+        _input("tiger_product_listing", receipts["tiger_product_listing"], purpose="methodology",
+               license="https://www.usa.gov/government-works", release_date=None,
+               unknown_reason="Census product directory listing; retrieval time is not a publication date."),
+        _input("tiger_county_zip", receipts["tiger_county_zip"], purpose="data",
+               license="https://www.usa.gov/government-works", release_date=None,
+               unknown_reason=f"TIGER/Line {tiger_edition} county archive; the directory listing does not establish an exact archive publication date."),
+    ]
+
+
+def _candidate_manifest(receipts: dict[str, dict[str, object]], year: int, eia_url: str,
+                        tiger_release: dict[str, str], identity: dict[str, object],
+                        features: list[dict[str, object]], output: bytes,
+                        coverage: dict[str, object], parquet_path: str) -> dict[str, object]:
+    return {
+        "schema_version": 1, "approved": False, "processor": "HIFLD Next",
+        "title": "Electric Retail Service Territories (EIA-861 utility-by-county; draft)",
+        "description": "Utility service territories approximated by dissolving current Census TIGER county equivalents for each EIA-861 utility-by-county row. County-level approximation only; no legal boundary or historical HIFLD equivalence is claimed.",
+        "publisher": "U.S. Energy Information Administration",
+        "agency": "U.S. Department of Energy",
+        "source_url": eia_url,
+        "license": REUSE_URL,
+        "date_issued": None, "date_modified": None, "source_modified": None,
+        "source_vintage": f"EIA-861 {year} / TIGER/Line {tiger_release['edition']}",
+        "lineage": [PAGE_URL, eia_url, TIGER_ROOT, tiger_release["listing_url"], tiger_release["source_url"], REUSE_URL],
+        "code_commit": identity["code_commit"],
+        "code_identity_scheme": identity["code_identity_scheme"],
+        "inputs": _candidate_inputs(receipts, year, tiger_release["edition"]),
+        "transformations": [
+            {"operation": "Select the newest active EIA-861 annual ZIP and current TIGER/Line county ZIP from producer listings", "parameters": {"eia861_data_year": year, "tiger_edition": tiger_release["edition"], "selection_rule": "largest published year with one exact national ZIP; no older-edition fallback"}},
+            {"operation": "Join each EIA utility-county row to TIGER county equivalents by state FIPS and normalized name", "parameters": {"county_aliases": {f"{state}:{name}": list(geoids) for (state, name), geoids in COUNTY_ALIASES.items()}, "skipped_sentinel": "Not Applicable"}},
+            {"operation": "Dissolve joined county geometries into one feature per utility-state pair", "parameters": {"key": ["utility_number", "state"], "geometry": "shapely.union_all in native EPSG:4269"}},
+        ],
+        "field_definitions": {
+            "utility_number": {"source_fields": ["Utility Number"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA utility number as a string, preserving its lexical value."},
+            "utility_name": {"source_fields": ["Utility Name"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA utility name."},
+            "ownership_type": {"source_fields": ["Ownership"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA frame ownership type."},
+            "state": {"source_fields": ["State"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA state postal code; utilities operating in multiple states have one feature per state."},
+            "county_count": {"source_fields": ["County"], "input_ids": ["eia861_zip"], "basis": "derived", "description": "Number of EIA utility-county rows dissolved into this feature.", "units": "count"},
+            "source_year": {"source_fields": ["Data Year"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA-861 data year."},
+            "geometry": {"source_fields": ["GEOID", "geometry"], "input_ids": ["tiger_county_zip"], "basis": "derived", "description": "Union of current TIGER county equivalents for the utility's EIA county rows; native EPSG:4269. County-level approximation, not a legal boundary."},
+        },
+        "coverage": coverage,
+        "source_relationship": {
+            "relationship": "unverified",
+            "evidence_input_ids": ["eia861_zip", "tiger_county_zip"],
+            "unknown_reason": "This source-native county approximation does not establish equivalence to the historical HIFLD/ORNL utility polygon population or its identifiers.",
+        },
+        "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
+            "reason": "County-dissolved utility-state draft in native EPSG:4269; no legal boundary, historical equivalence or release acceptance is claimed.",
+            "objects": [{"path": parquet_path, "bytes": len(output), "sha256": _sha(output)}],
+        }}},
+        "unsupported_output_formats": {
+            "geopackage": "No approved export-field mapping or downstream schema contract.",
+            "shapefile_zip": "No approved field mapping or encoding contract.",
+            "pmtiles": "No approved display transformation or generalization.",
+        },
+        **APPROVALS,
+    }
+
+
+def _candidate_audit(receipts: dict[str, dict[str, object]], year: int, eia_url: str,
+                     tiger_release: dict[str, str],
+                     territory_rows: list[dict[str, str]],
+                     frame: dict[str, dict[str, str]], join_audit: dict[str, int],
+                     records: list[dict[str, object]],
+                     features: list[dict[str, object]],
+                     utility_count: int, county_count: int, state_count: int,
+                     id_sha: str, identity: dict[str, object]) -> dict[str, object]:
+    return {
+        "source": {
+            "eia861_page": PAGE_URL, "eia861_zip": eia_url, "eia861_data_year": year,
+            "tiger_edition": tiger_release["edition"], "tiger_county_zip": tiger_release["source_url"],
+        },
+        "acquisition_receipts": {
+            name: {**_stable_receipt(receipt), "observed_at": receipt.get("observed_at")}
+            for name, receipt in receipts.items()
+        },
+        "eia861": {
+            "territory_row_count": len(territory_rows), "frame_utility_count": len(frame),
+        },
+        "join": {
+            **join_audit, "distinct_county_count": county_count,
+            "county_aliases": {f"{state}:{name}": list(geoids) for (state, name), geoids in COUNTY_ALIASES.items()},
+        },
+        "output": {
+            "feature_count": len(features), "utility_count": utility_count,
+            "source_id_sha256": id_sha,
+            "state_count": state_count, "county_row_count": len(territory_rows),
+        },
+        "processing_identity": identity,
+        **APPROVALS,
+    }
+
+
+def _candidate_ready(version: str, output: bytes,
+                     parquet_path: str) -> tuple[dict[str, object], bytes]:
+    ready = {"approved": False, "version": version,
+             "objects": {parquet_path: {"bytes": len(output), "sha256": _sha(output)}},
+             "source_population_complete": True, **APPROVALS}
+    return ready, _canonical(ready) + b"\n"
+
+
+def _candidate_result(version: str, prefix: str, output: bytes,
+                      features: list[dict[str, object]],
+                      records: list[dict[str, object]], join_audit: dict[str, int],
+                      territory_rows: list[dict[str, str]],
+                      utility_count: int, county_count: int, state_count: int,
+                      year: int, tiger_edition: str, id_sha: str,
+                      ready_key: str) -> dict[str, object]:
+    parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
+    return {
+        "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+        "feature_count": len(features), "utility_count": utility_count,
+        "source_id_sha256": id_sha,
+        "state_count": state_count, "county_row_count": len(territory_rows),
+        "matched_county_row_count": join_audit["matched_county_rows"],
+        "distinct_county_count": county_count,
+        "skipped_not_applicable_count": join_audit["skipped_not_applicable"],
+        "source_year": year, "tiger_edition": tiger_edition,
+        "source_population_complete": True,
+        "null_geometry_count": 0, "invalid_geometry_count": 0,
+        "candidate_ready": ready_key,
+        "prebuilt_geoparquet": f"{prefix}/{parquet_path}",
+        "prebuilt_geoparquet_sha256": _sha(output),
+        **APPROVALS,
+    }
+
+
+def _retained_candidate_keys(version: str) -> set[str]:
+    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
+    keys = {f"{prefix}/raw/{name}.{suffix}"
+            for name in CAPTURE_NAMES for suffix in ("body", "wire", "receipt.json")}
+    keys.update(f"{prefix}/{name}" for name in CANDIDATE_OBJECT_NAMES)
+    return keys
+
+
+def _stable_read(storage: StagingStorageResource, key: str) -> bytes:
+    """Read one retained object pinned to a snapshot so a concurrent replacement fails closed."""
+    before = storage.object_snapshot(key)
+    if before is None:
+        raise ValueError("retained_evidence_missing:" + key.split("/", 3)[-1])
+    body = storage.read_key(key)
+    if storage.object_snapshot(key) != before:
+        raise ValueError("retained_evidence_changed_during_read:" + key.split("/", 3)[-1])
+    return body
+
+
+def _validate_retained_capture(name: str, body: bytes, wire: bytes, receipt_raw: bytes,
+                               expected_url: str) -> dict[str, object]:
+    """Bind one retained body/wire/receipt to the exact GET endpoint that names it."""
+    try:
+        receipt = json.loads(receipt_raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("retained_capture_receipt_invalid:" + name) from exc
+    if not isinstance(receipt, dict) or set(receipt) != _RECEIPT_KEYS:
+        raise ValueError("retained_capture_receipt_invalid:" + name)
+    if (receipt["method"] != "GET" or receipt["url"] != expected_url
+            or receipt["final_url"] != expected_url):
+        raise ValueError("retained_capture_request_identity_mismatch:" + name)
+    if (receipt["status"] != 200 or receipt["complete_body"] is not True
+            or receipt["error_code"] is not None or receipt["error_type"] is not None):
+        raise ValueError("retained_capture_response_incomplete:" + name)
+    if (type(receipt["bytes"]) is not int or receipt["bytes"] != len(body)
+            or receipt["sha256"] != _sha(body)):
+        raise ValueError("retained_capture_body_mismatch:" + name)
+    if (type(receipt["wire_bytes"]) is not int or receipt["wire_bytes"] != len(wire)
+            or receipt["wire_sha256"] != _sha(wire)):
+        raise ValueError("retained_capture_wire_mismatch:" + name)
+    if not isinstance(receipt["observed_at"], str) or not receipt["observed_at"]:
+        raise ValueError("retained_capture_observation_missing:" + name)
+    if (not isinstance(receipt["content_encoding"], (str, type(None)))
+            or not isinstance(receipt["content_length"], (int, type(None)))):
+        raise ValueError("retained_capture_receipt_invalid:" + name)
+    if _canonical(receipt) + b"\n" != receipt_raw:
+        raise ValueError("retained_capture_receipt_not_canonical:" + name)
+    return receipt
+
+
+def _replay_retained_candidate(storage: StagingStorageResource,
+                               replay_version: str) -> dict[str, object]:
+    """Replay one retained original acquisition with zero network and zero writes.
+
+    Re-validates every retained body, wire and receipt against the exact
+    producer endpoints, re-derives the candidate from the retained bytes and
+    requires the staged candidate to match the re-derivation byte for byte.
+    Forged, truncated, partial or conflicting retained evidence fails closed
+    without replacing any original receipt, manifest or audit bytes.
+    """
+    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{replay_version}"
+    ready_key = f"{prefix}/metadata/candidate_ready.json"
+    listed = storage.list_prefix(prefix + "/")
+    if storage.prefix:
+        storage_prefix = storage.prefix.rstrip("/") + "/"
+        listed = [key.removeprefix(storage_prefix) for key in listed
+                  if key.startswith(storage_prefix)]
+    actual_keys = set(listed)
+    if ready_key not in actual_keys:
+        raise ValueError("electric_territory_replay_candidate_incomplete:" + replay_version)
+    if actual_keys != _retained_candidate_keys(replay_version):
+        raise ValueError("electric_territory_replay_roster_changed:" + replay_version)
+
+    raw = {}
+    for name in CAPTURE_NAMES:
+        raw[name] = (
+            _stable_read(storage, f"{prefix}/raw/{name}.body"),
+            _stable_read(storage, f"{prefix}/raw/{name}.wire"),
+            _stable_read(storage, f"{prefix}/raw/{name}.receipt.json"),
+        )
+    year, eia_url = latest_release(raw["eia861_page"][0].decode("utf-8"))
+    tiger = census_latest.annual_zip_release_from_listings(
+        raw["tiger_annual_listing"][0], raw["tiger_product_listing"][0], product=TIGER_PRODUCT)
+    expected_urls = {
+        "eia861_page": PAGE_URL,
+        "eia861_zip": eia_url,
+        "eia_reuse_policy": REUSE_URL,
+        "tiger_annual_listing": TIGER_ROOT,
+        "tiger_product_listing": tiger["listing_url"],
+        "tiger_county_zip": tiger["source_url"],
+    }
+    receipts = {}
+    for name in CAPTURE_NAMES:
+        body, wire, receipt_raw = raw[name]
+        receipts[name] = _validate_retained_capture(name, body, wire, receipt_raw, expected_urls[name])
+
+    with zipfile.ZipFile(io.BytesIO(raw["eia861_zip"][0])) as archive:
+        members = archive.infolist()
+        if (len(members) > 200 or len({member.filename for member in members}) != len(members)
+                or sum(member.file_size for member in members) > MAX_EIA_UNCOMPRESSED_BYTES):
+            raise ValueError("eia861_zip_expansion_limit")
+        service_name = f"Service_Territory_{year}.xlsx"
+        frame_name = f"Frame_{year}.xlsx"
+        names = {member.filename for member in members}
+        if service_name not in names or frame_name not in names:
+            raise ValueError("eia861_workbook_members_missing")
+        service_body = archive.read(service_name)
+        frame_body = archive.read(frame_name)
+    territory_rows = read_service_territory_workbook(service_body, year)
+    frame = read_frame_workbook(frame_body, year)
+    counties = _read_counties(raw["tiger_county_zip"][0], tiger["edition"])
+    records, join_audit = join_territories(territory_rows, frame, counties)
+    features = aggregate_territories(records, counties, year)
+    if not features:
+        raise ValueError("empty_electric_retail_population")
+    identity = processing_identity(Path(__file__).parents[3])
+    output = _geoparquet(features)
+    id_sha, record_sha, geometry_sha, schema_sha = _candidate_hashes(features, year, tiger["edition"])
+    derived_version = content_derived_version(record_sha, geometry_sha, schema_sha, identity)
+    if derived_version != replay_version:
+        raise ValueError("electric_territory_replay_version_conflict:" + replay_version)
+    version = derived_version
+
+    utility_count, county_count, state_count = _candidate_counts(records, features)
+    parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
+    coverage = _candidate_coverage(year, tiger["edition"], territory_rows, join_audit,
+                                   features, utility_count, county_count, state_count)
+    manifest = _candidate_manifest(receipts, year, eia_url, tiger, identity, features,
+                                   output, coverage, parquet_path)
+    validate_provenance(manifest)
+    validate_output_policy(manifest)
+    validate_release_provenance(manifest)
+    audit = _candidate_audit(receipts, year, eia_url, tiger, territory_rows, frame,
+                             join_audit, records, features, utility_count, county_count,
+                             state_count, id_sha, identity)
+    _ready, ready_body = _candidate_ready(version, output, parquet_path)
+    expected_objects = {
+        parquet_path: output,
+        "metadata/source_manifest.json": _canonical(manifest) + b"\n",
+        "metadata/source_audit.json": _canonical(audit) + b"\n",
+        "metadata/processing_identity.json": _canonical(identity) + b"\n",
+        "metadata/candidate_ready.json": ready_body,
+    }
+    for name, body in expected_objects.items():
+        if _stable_read(storage, f"{prefix}/{name}") != body:
+            raise ValueError("electric_territory_replay_candidate_conflict:" + name)
+    return _candidate_result(version, prefix, output, features, records, join_audit,
+                             territory_rows, utility_count, county_count, state_count,
+                             year, tiger["edition"], id_sha, ready_key)
+
+
 def capture_electric_retail_service_territories(
     storage: StagingStorageResource, *, capture_directory: str | None = None,
-    client: httpx.Client | None = None,
+    client: httpx.Client | None = None, replay_version: str | None = None,
 ) -> dict[str, object]:
-    """Capture the current EIA-861 and TIGER county inputs and stage one draft candidate."""
+    """Capture the current EIA-861 and TIGER county inputs and stage one draft candidate.
+
+    With ``replay_version`` set, replay that retained candidate from its staged
+    raw evidence with zero network access and zero staged writes; without it the
+    run fetches a fresh snapshot.
+    """
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource):
         raise ValueError("explicit_staging_resource_required")
+    if replay_version is not None:
+        if not safe_candidate_version(replay_version):
+            raise ValueError("unsafe_electric_retail_replay_version")
+        return _replay_retained_candidate(storage, replay_version)
     if capture_directory:
         root = Path(capture_directory).absolute()
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
@@ -545,23 +921,7 @@ def capture_electric_retail_service_territories(
             raise ValueError("empty_electric_retail_population")
         identity = processing_identity(Path(__file__).parents[3])
         output = _geoparquet(features)
-        id_sha = _sha(_canonical(sorted((row['utility_number'], row['state']) for row in features)))
-        record_sha = _sha(_canonical([
-            {key: value for key, value in row.items() if key != "geometry"} for row in features
-        ]))
-        geometry_hash = hashlib.sha256()
-        for row in features:
-            value = to_wkb(row["geometry"], byte_order=1, output_dimension=2)
-            geometry_hash.update(len(value).to_bytes(8, "little"))
-            geometry_hash.update(value)
-        geometry_sha = geometry_hash.hexdigest()
-        schema_sha = _sha(_canonical({
-            "output_fields": [name for name, _kind in _OUTPUT_FIELDS],
-            "eia861_data_year": year,
-            "tiger_edition": tiger_release["edition"],
-            "state_fips": STATE_FIPS,
-            "county_aliases": {f"{state}:{name}": list(geoids) for (state, name), geoids in COUNTY_ALIASES.items()},
-        }))
+        id_sha, record_sha, geometry_sha, schema_sha = _candidate_hashes(features, year, tiger_release["edition"])
         version = content_derived_version(record_sha, geometry_sha, schema_sha, identity)
         prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
         parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
@@ -590,115 +950,17 @@ def capture_electric_retail_service_territories(
             if (ready_snapshot is not None or verify_write) and storage.read_key(key) != body:
                 raise ValueError("candidate_readback_mismatch:" + name)
 
-        utility_count = len({row["utility_number"] for row in features})
-        county_count = len({geoid for record in records for geoid in record["geoids"]})
-        state_count = len({row["state"] for row in features})
-        coverage = {
-            "population_scope": "All EIA-861 utility-by-county service-territory rows for the selected annual release, excluding only the source 'Not Applicable' county sentinel.",
-            "eia861_data_year": year,
-            "tiger_edition": tiger_release["edition"],
-            "territory_row_count": len(territory_rows),
-            "matched_county_row_count": join_audit["matched_county_rows"],
-            "skipped_not_applicable_count": join_audit["skipped_not_applicable"],
-            "feature_count": len(features),
-            "utility_count": utility_count,
-            "state_count": state_count,
-            "distinct_county_count": county_count,
-            "boundary_precision": "County-level approximation. Utility territories are dissolved current TIGER county equivalents, not utility-owned legal boundaries.",
-            "source_population_complete": True,
-        }
-        inputs = [
-            _input("eia861_page", receipts["eia861_page"], purpose="methodology",
-                   license=REUSE_URL, release_date=None,
-                   unknown_reason="Producer release page; retrieval time is not a publication date."),
-            _input("eia861_zip", receipts["eia861_zip"], purpose="data",
-                   license=REUSE_URL, release_date=None,
-                   unknown_reason=f"EIA-861 data year {year}; the producer page and ZIP headers do not establish an exact publication date."),
-            _input("eia_reuse_policy", receipts["eia_reuse_policy"], purpose="license",
-                   license=REUSE_URL, release_date=None,
-                   unknown_reason="Producer reuse policy page; revision date is not established by this capture."),
-            _input("tiger_annual_listing", receipts["tiger_annual_listing"], purpose="methodology",
-                   license="https://www.usa.gov/government-works", release_date=None,
-                   unknown_reason="Census annual directory listing; retrieval time is not a publication date."),
-            _input("tiger_product_listing", receipts["tiger_product_listing"], purpose="methodology",
-                   license="https://www.usa.gov/government-works", release_date=None,
-                   unknown_reason="Census product directory listing; retrieval time is not a publication date."),
-            _input("tiger_county_zip", receipts["tiger_county_zip"], purpose="data",
-                   license="https://www.usa.gov/government-works", release_date=None,
-                   unknown_reason=f"TIGER/Line {tiger_release['edition']} county archive; the directory listing does not establish an exact archive publication date."),
-        ]
-        manifest = {
-            "schema_version": 1, "approved": False, "processor": "HIFLD Next",
-            "title": "Electric Retail Service Territories (EIA-861 utility-by-county; draft)",
-            "description": "Utility service territories approximated by dissolving current Census TIGER county equivalents for each EIA-861 utility-by-county row. County-level approximation only; no legal boundary or historical HIFLD equivalence is claimed.",
-            "publisher": "U.S. Energy Information Administration",
-            "agency": "U.S. Department of Energy",
-            "source_url": eia_url,
-            "license": REUSE_URL,
-            "date_issued": None, "date_modified": None, "source_modified": None,
-            "source_vintage": f"EIA-861 {year} / TIGER/Line {tiger_release['edition']}",
-            "lineage": [PAGE_URL, eia_url, TIGER_ROOT, tiger_release["listing_url"], tiger_release["source_url"], REUSE_URL],
-            "code_commit": identity["code_commit"],
-            "code_identity_scheme": identity["code_identity_scheme"],
-            "inputs": inputs,
-            "transformations": [
-                {"operation": "Select the newest active EIA-861 annual ZIP and current TIGER/Line county ZIP from producer listings", "parameters": {"eia861_data_year": year, "tiger_edition": tiger_release["edition"], "selection_rule": "largest published year with one exact national ZIP; no older-edition fallback"}},
-                {"operation": "Join each EIA utility-county row to TIGER county equivalents by state FIPS and normalized name", "parameters": {"county_aliases": {f"{state}:{name}": list(geoids) for (state, name), geoids in COUNTY_ALIASES.items()}, "skipped_sentinel": "Not Applicable"}},
-                {"operation": "Dissolve joined county geometries into one feature per utility-state pair", "parameters": {"key": ["utility_number", "state"], "geometry": "shapely.union_all in native EPSG:4269"}},
-            ],
-            "field_definitions": {
-                "utility_number": {"source_fields": ["Utility Number"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA utility number as a string, preserving its lexical value."},
-                "utility_name": {"source_fields": ["Utility Name"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA utility name."},
-                "ownership_type": {"source_fields": ["Ownership"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA frame ownership type."},
-                "state": {"source_fields": ["State"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA state postal code; utilities operating in multiple states have one feature per state."},
-                "county_count": {"source_fields": ["County"], "input_ids": ["eia861_zip"], "basis": "derived", "description": "Number of EIA utility-county rows dissolved into this feature.", "units": "count"},
-                "source_year": {"source_fields": ["Data Year"], "input_ids": ["eia861_zip"], "basis": "publisher", "description": "Native EIA-861 data year."},
-                "geometry": {"source_fields": ["GEOID", "geometry"], "input_ids": ["tiger_county_zip"], "basis": "derived", "description": "Union of current TIGER county equivalents for the utility's EIA county rows; native EPSG:4269. County-level approximation, not a legal boundary."},
-            },
-            "coverage": coverage,
-            "source_relationship": {
-                "relationship": "unverified",
-                "evidence_input_ids": ["eia861_zip", "tiger_county_zip"],
-                "unknown_reason": "This source-native county approximation does not establish equivalence to the historical HIFLD/ORNL utility polygon population or its identifiers.",
-            },
-            "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
-                "reason": "County-dissolved utility-state draft in native EPSG:4269; no legal boundary, historical equivalence or release acceptance is claimed.",
-                "objects": [{"path": parquet_path, "bytes": len(output), "sha256": _sha(output)}],
-            }}},
-            "unsupported_output_formats": {
-                "geopackage": "No approved export-field mapping or downstream schema contract.",
-                "shapefile_zip": "No approved field mapping or encoding contract.",
-                "pmtiles": "No approved display transformation or generalization.",
-            },
-            **APPROVALS,
-        }
+        utility_count, county_count, state_count = _candidate_counts(records, features)
+        coverage = _candidate_coverage(year, tiger_release["edition"], territory_rows,
+                                       join_audit, features, utility_count, county_count, state_count)
+        manifest = _candidate_manifest(receipts, year, eia_url, tiger_release, identity,
+                                       features, output, coverage, parquet_path)
         validate_provenance(manifest)
         validate_output_policy(manifest)
         validate_release_provenance(manifest)
-        audit = {
-            "source": {
-                "eia861_page": PAGE_URL, "eia861_zip": eia_url, "eia861_data_year": year,
-                "tiger_edition": tiger_release["edition"], "tiger_county_zip": tiger_release["source_url"],
-            },
-            "acquisition_receipts": {
-                name: {**_stable_receipt(receipt), "observed_at": receipt.get("observed_at")}
-                for name, receipt in receipts.items()
-            },
-            "eia861": {
-                "territory_row_count": len(territory_rows), "frame_utility_count": len(frame),
-            },
-            "join": {
-                **join_audit, "distinct_county_count": county_count,
-                "county_aliases": {f"{state}:{name}": list(geoids) for (state, name), geoids in COUNTY_ALIASES.items()},
-            },
-            "output": {
-                "feature_count": len(features), "utility_count": utility_count,
-                "source_id_sha256": id_sha,
-                "state_count": state_count, "county_row_count": len(territory_rows),
-            },
-            "processing_identity": identity,
-            **APPROVALS,
-        }
+        audit = _candidate_audit(receipts, year, eia_url, tiger_release, territory_rows, frame,
+                                 join_audit, records, features, utility_count, county_count,
+                                 state_count, id_sha, identity)
         source_files = {
             "tiger_annual_listing": "county-annual-listing",
             "tiger_product_listing": "county-product-listing",
@@ -720,8 +982,7 @@ def capture_electric_retail_service_territories(
                             or storage.object_snapshot(key) != snapshot):
                         raise ValueError("candidate_readback_mismatch:" + relative)
             stage(f"raw/{name}.receipt.json", _canonical(receipt) + b"\n", verify_write=False)
-        ready = {"approved": False, "version": version, "objects": {parquet_path: {"bytes": len(output), "sha256": _sha(output)}}, "source_population_complete": True, **APPROVALS}
-        ready_body = _canonical(ready) + b"\n"
+        _ready, ready_body = _candidate_ready(version, output, parquet_path)
         for name, body in (
             (parquet_path, output),
             ("metadata/source_manifest.json", _canonical(manifest) + b"\n"),
@@ -732,22 +993,9 @@ def capture_electric_retail_service_territories(
             stage(name, body)
         if ready_snapshot is not None and storage.object_snapshot(ready_key) != ready_snapshot:
             raise ValueError("electric_territory_candidate_changed:" + version)
-        return {
-            "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": len(features), "utility_count": utility_count,
-            "source_id_sha256": id_sha,
-            "state_count": state_count, "county_row_count": len(territory_rows),
-            "matched_county_row_count": join_audit["matched_county_rows"],
-            "distinct_county_count": county_count,
-            "skipped_not_applicable_count": join_audit["skipped_not_applicable"],
-            "source_year": year, "tiger_edition": tiger_release["edition"],
-            "source_population_complete": True,
-            "null_geometry_count": 0, "invalid_geometry_count": 0,
-            "candidate_ready": ready_key,
-            "prebuilt_geoparquet": f"{prefix}/{parquet_path}",
-            "prebuilt_geoparquet_sha256": _sha(output),
-            **APPROVALS,
-        }
+        return _candidate_result(version, prefix, output, features, records, join_audit,
+                                 territory_rows, utility_count, county_count, state_count,
+                                 year, tiger_release["edition"], id_sha, ready_key)
     finally:
         if owned_client:
             client.close()
