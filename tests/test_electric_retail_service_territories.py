@@ -496,8 +496,9 @@ class _RemoteStorage(StagingStorageResource):
 
     def __init__(self, objects, prefix=""):
         super().__init__(bucket="remote-test-bucket", use_local=False, prefix=prefix)
-        self.objects = {self._ensure_prefixed(key): body for key, body in objects.items()}
-        self.writes = 0
+        object.__setattr__(self, "objects",
+                           {self._ensure_prefixed(key): body for key, body in objects.items()})
+        object.__setattr__(self, "writes", 0)
 
     def list_prefix(self, key_prefix=""):
         physical = self._ensure_prefixed(key_prefix).rstrip("/")
@@ -520,7 +521,7 @@ class _RemoteStorage(StagingStorageResource):
         return hashlib.sha256(self.objects[self._ensure_prefixed(key)]).hexdigest()
 
     def write_key_if_unchanged(self, key, data, expected_snapshot):
-        self.writes += 1
+        object.__setattr__(self, "writes", self.writes + 1)
         key = self._ensure_prefixed(key)
         current = self.object_snapshot(key)
         if current != expected_snapshot:
