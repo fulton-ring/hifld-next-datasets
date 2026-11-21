@@ -241,6 +241,37 @@ structure does not prove ORNL structure-level values. Gulf date strings use
 explicit conversion. Install/removal dates are structure attributes, not a
 license to filter all historic structures to active records.
 
+## Live re-verification (2026-11-21)
+
+Anonymous GETs on 2026-11-21 (UTC) re-fetched all seven producer files and both landing
+pages; every response was 200 on the same original hosts listed above.
+
+- The six platform/structure/location ZIPs and the BSEE GIS ZIP are byte-identical to the
+  2026-11-15 captures in the table above (same byte counts and SHA-256): no new edition was
+  published between 2026-11-15 and 2026-11-21.
+- Landing page last-updated values are unchanged: BSEE Platform/Rig masters/structures/
+  locations 11/2/2026 10:02:22 / 10:12:11 / 10:06:56 AM; BOEM Pacific Platform
+  11/1/2026 6:32:10 / 6:32:11 / 6:32:09 AM. The BSEE GIS metadata still states publication
+  2026-03-02, period end 2026-04-01, monthly updates and progress complete. The BOEM Data
+  Center disclaimer wording is unchanged.
+- Re-parsing the re-fetched payloads against the published layout definitions reproduced
+  every join measurement above: Gulf 6940/7092/7306 rows, zero duplicate keys, 8
+  structure-only and 222 location-only native pairs, 759 structure-less masters and one
+  blank coordinate pair (`91001`, `1`); Pacific 34/24/24 rows, zero duplicate keys,
+  structure and location pair sets agreeing exactly, 10 structure-less masters and one
+  `(0,0)` pair (`51012`, `1`). Sparse master blanks (Gulf 630/2907/5961/5903 of 6940;
+  Pacific 0/12/11/11 of 34) are unchanged.
+- New observations on the same bytes: Gulf structure install dates span 1942-01-01 to
+  2025-07-17 (all 7092 rows) and removal dates span 1973-12-31 to 2026-09-30 (5791 of 7092
+  rows). Pacific structure install dates span 1967-09-01 to 1989-10-07 and a single
+  removal date is present (1994-12-31). The BSEE landing page continues to advertise the
+  same additional exports (rig ID list, removed-structures and platform applications and
+  approvals files) that are not inputs to this product.
+
+No payload, key, date, rights or layout change is observed since the 2026-11-15
+investigation; the recoverability map and unmatched-pair findings stand. The ORNL exact
+product remains inaccessible (GII access required), so that comparison stays open.
+
 ## Regional coverage and product choices
 
 | Region | Accessible constituent evidence | Limit against original ORNL inventory |
