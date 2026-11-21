@@ -96,7 +96,7 @@ class SignificantVolcanicTests(unittest.TestCase):
         self.assertEqual(f.id_roster(f.encode({'objectIdFieldName':'OBJECTID','objectIds':[7001,7000]}),2),[7000,7001])
     def test_registered_one_asset_checks_and_stopped_monthly_refresh(self):
         self.assertEqual(set(defs.resolve_job_def('significant_volcanic_source_integrity').asset_layer.executable_asset_keys),{AssetKey(['ingest',f.SLUG,f.SLUG])})
-        check_names={c.name for c in defs.asset_checks}
+        check_names={key.name for definition in defs.asset_checks for key in definition.check_keys}
         self.assertIn('noaa_significant_volcanic_events_complete',check_names);self.assertIn('noaa_significant_volcanic_events_drift',check_names)
         self.assertEqual(significant_volcanic_source_integrity_schedule.default_status,DefaultScheduleStatus.STOPPED)
     def test_special_file_and_bounded_read_guard(self):
@@ -186,16 +186,16 @@ print(json.dumps({'metadata_sha256':hashlib.sha256(output.schema.metadata[b'geo'
         # One feature added by the producer: completeness is the capture-time
         # witness, so the capture stays complete; the registered drift check
         # has no approved baseline and reports an explicit skip (WARN).
-        ids=[7000,7001]
+        ids=list(range(7000,7600))
         table,audit=f.inspect_captures(synthetic_capture_bodies(ids))
         candidate={'dataset_slug':f.SLUG,'file_slug':f.SLUG,'feature_count':table.num_rows,
             'source_reported_count':audit['source_reported_count'],'source_id_sha256':audit['source_id_sha256'],'source_population_complete':True}
         self.assertTrue(noaa_significant_volcanic_events_complete(candidate).passed)
-        edited=ids+[7002]
+        edited=ids+[7600]
         table2,audit2=f.inspect_captures(synthetic_capture_bodies(edited))
         candidate2={'dataset_slug':f.SLUG,'file_slug':f.SLUG,'feature_count':table2.num_rows,
             'source_reported_count':audit2['source_reported_count'],'source_id_sha256':audit2['source_id_sha256'],'source_population_complete':True}
-        self.assertEqual(table2.num_rows,3);self.assertTrue(noaa_significant_volcanic_events_complete(candidate2).passed)
+        self.assertEqual(table2.num_rows,len(ids)+1);self.assertTrue(noaa_significant_volcanic_events_complete(candidate2).passed)
         drift=noaa_significant_volcanic_events_drift(candidate2)
         self.assertEqual(drift.severity.name,'WARN');self.assertEqual(drift.metadata['comparison_status'],'skipped_no_approved_baseline');self.assertFalse(drift.passed)
         self.assertNotEqual(candidate['source_id_sha256'],candidate2['source_id_sha256'])
@@ -207,12 +207,13 @@ print(json.dumps({'metadata_sha256':hashlib.sha256(output.schema.metadata[b'geo'
         def mutated(captures,name,body):
             receipt=dict(captures[name][1]);receipt['bytes']=len(body);receipt['sha256']=f.digest(body)
             captures[name]=(body,receipt);return captures
-        captures=mutated(synthetic_capture_bodies([7000,7001]),'count_after',f.encode({'count':3}))
-        with self.assertRaises(ValueError):f.inspect_captures(captures)
-        captures=mutated(synthetic_capture_bodies([7000,7001]),'ids_after',f.encode({'objectIdFieldName':'OBJECTID','objectIds':[7000,7002]}))
-        with self.assertRaises(ValueError):f.inspect_captures(captures)
+        ids=list(range(7000,7600))
+        captures=mutated(synthetic_capture_bodies(ids),'count_after',f.encode({'count':len(ids)+1}))
+        with self.assertRaisesRegex(ValueError,'source_count_or_id_roster_drift|invalid_complete_OID_witness'):f.inspect_captures(captures)
+        captures=mutated(synthetic_capture_bodies(ids),'ids_after',f.encode({'objectIdFieldName':'OBJECTID','objectIds':ids[:-1]+[999999]}))
+        with self.assertRaisesRegex(ValueError,'source_count_or_id_roster_drift'):f.inspect_captures(captures)
     def test_pages_derived_from_observed_roster_cover_exact_slices(self):
-        ids=list(range(7000,7000+f.PAGE_SIZE+37))
+        ids=list(range(7000,7000+2*f.PAGE_SIZE+37))
         captures=synthetic_capture_bodies(ids)
         pages=f.derive_pages(ids)
         self.assertEqual(sorted(pages),[f'page_{i:04d}'for i in range((len(ids)+f.PAGE_SIZE-1)//f.PAGE_SIZE)])
