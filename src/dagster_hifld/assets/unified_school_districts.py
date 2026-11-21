@@ -17,8 +17,9 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.unified_school_districts import DATASET_SLUG, FILE_SLUG, capture
 
 _DESCRIPTION = (
-    "Draft extraction of the full 2024 U.S. Census TIGER/Line "
-    "School_District_Unified layer (10,897 features, native EPSG:4269). "
+    "Draft extraction of the complete U.S. Census TIGER/Line "
+    "School_District_Unified layer (native EPSG:4269). The newest published national "
+    "school geodatabase edition is resolved from the producer listing at capture time. "
     "Historical HIFLD coverage equivalence, rights, and release approval remain unresolved."
 )
 

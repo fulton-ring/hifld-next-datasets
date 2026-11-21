@@ -385,9 +385,12 @@ class SchoolDistrictLayerConfig:
     inventory_id: str
     title: str
     coverage_statement: str
-    source_url: str = "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_school.gdb.zip"
+    # Every school-district adapter resolves its edition at capture time and
+    # passes an explicit (empty here) source_url/source_vintage; no pinned
+    # edition may be inherited from a default.
+    source_url: str = ""
     source_host: str = "www2.census.gov"
-    source_vintage: str = "2024"
+    source_vintage: str = ""
     expected_source_fields: list[tuple[str, pa.DataType]] = field(
         default_factory=lambda: list(EXPECTED_SOURCE_FIELDS))
     discover_current: bool = False
@@ -401,10 +404,6 @@ class SchoolDistrictLayerConfig:
     def output_fields(self) -> list[str]:
         attribute_names = [name for name, _ in self.expected_source_fields if name != "SHAPE"]
         return ["OBJECTID", *attribute_names, "geometry"]
-
-
-SOURCE_URL = "https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_school.gdb.zip"
-SOURCE_HOST = "www2.census.gov"
 
 
 def _json_bytes(value: object) -> bytes:
