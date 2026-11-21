@@ -1,4 +1,4 @@
-"""Complete official NCES EDGE postsecondary2025–2026, unapproved successor.
+"""Complete latest published NCES EDGE postsecondary edition, unapproved successor.
 
 Preserves every native field, physical DBF declaration, original file FID, UNITID
 and WKB point. This does not approve replacing ORNL enrichment or published IDs.
@@ -20,7 +20,9 @@ import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
+from urllib.parse import urljoin, urlsplit
 from uuid import uuid4
 
 import httpx
@@ -33,8 +35,8 @@ from dagster_hifld.release_approval import validate_release_provenance, verifier
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
-from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
-    processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
+from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+    capture_get, processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
@@ -86,10 +88,105 @@ def strict_json(body):
 
 
 SPACE_FLOOR=300_000_000
-MAX_ARCHIVE_BYTES=3_000_000
+MAX_ARCHIVE_BYTES=16_000_000
 MAX_AUX_BYTES=2_000_000
 
 class IncidentWriteError(Exception):pass
+
+class _PublicationLinks(HTMLParser):
+    def __init__(self):
+        super().__init__();self.hrefs=[];self.stack=[];self.tokens=[];self.main_seen=False
+
+    def handle_starttag(self, tag, attrs):
+        attributes=dict(attrs)
+        muted=(self.stack[-1][1] if self.stack else False) or tag in {'head','script','style','noscript','header','footer','nav','aside'}
+        main=(self.stack[-1][2] if self.stack else False) or tag=='main' or 'MainContent' in attributes.get('class','').split()
+        self.main_seen=self.main_seen or main
+        if tag=='a' and not muted:
+            for key,value in attrs:
+                if key=='href' and value is not None:
+                    self.hrefs.append(value);self.tokens.append((main,'href',urljoin(LANDING,value)))
+        if tag not in {'area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'}:
+            self.stack.append((tag,muted,main))
+
+    def handle_endtag(self,tag):
+        for index in range(len(self.stack)-1,-1,-1):
+            if self.stack[index][0]==tag:
+                del self.stack[index:];break
+
+    def handle_data(self,data):
+        if self.stack and self.stack[-1][1]:return
+        text=' '.join(data.split())
+        if text:self.tokens.append((self.stack[-1][2] if self.stack else False,'text',text))
+
+    def substantive_evidence(self):
+        # Preserve producer notes, definitions, tables and links. NCES injects
+        # randomized F5 JavaScript; executable/chrome bytes are retained raw,
+        # but do not define a new data release. Fragments support offline tests.
+        return [(kind,value) for main,kind,value in self.tokens if main or not self.main_seen]
+
+
+def discover_release(body):
+    """Select actual official postsecondary anchors; comments are not links."""
+    links=_PublicationLinks();links.feed(body.decode('utf8'))
+    candidates=[];documentation=[]
+    for href in links.hrefs:
+        url=urljoin(LANDING,href);parts=urlsplit(url)
+        if parts.scheme!='https' or parts.netloc!='nces.ed.gov' or parts.query or parts.fragment:continue
+        match=re.fullmatch(r'/programs/edge/data/(EDGE_GEOCODE_POSTSECSCH_(\d{2})(\d{2}))\.zip',parts.path)
+        if match and int(match[3])==(int(match[2])+1)%100:
+            candidates.append((int(match[2]),url,match[1]))
+        if parts.path=='/programs/edge/docs/EDGE_GEOCODE_POSTSEC_TECHDOC.pdf':documentation.append(url)
+    if not candidates or len(documentation)!=1:raise CollegeQuarantineError('published_postsecondary_release_or_documentation_missing_or_ambiguous')
+    newest=max(year for year,_,_ in candidates)
+    selected=[(url,stem) for year,url,stem in candidates if year==newest]
+    if len(selected)!=1:raise CollegeQuarantineError('published_postsecondary_release_ambiguous')
+    source,stem=selected[0]
+    return {'schoolyear':f'{2000+newest}-{2001+newest}','source_url':source,'stem':stem,
+            'documentation_url':documentation[0],
+            'landing_evidence_sha256':digest(encode(links.substantive_evidence())),
+            'selection_rule':'Largest adjacent school-year POSTSECSCH ZIP named by a real official SchoolLocations anchor; preserve substantive main-page text and links, excluding scripts/styles/chrome; no guessed URLs or older fallback.'}
+
+
+def release_urls(release):
+    if release is None:return URLS
+    original={'nces_landing':LANDING,'nces_geocode':release['source_url'],'nces_documentation':release['documentation_url']}
+    return {**original,**{name+'_after':url for name,url in original.items()}}
+
+
+def acquire_latest(storage,client=None):
+    """Bound and retain before/after publisher evidence, refusing source mutation."""
+    local_only(storage);owned=client is None
+    client=client or httpx.Client(timeout=httpx.Timeout(90,connect=20),follow_redirects=False)
+    captures={}
+    with tempfile.TemporaryDirectory(prefix='nces-current-capture-') as directory:
+        root=Path(directory)
+        def fetch(name,url):
+            body,receipt=capture_get(client,url,root,name,max_bytes=MAX_ARCHIVE_BYTES if 'geocode' in name else MAX_AUX_BYTES)
+            captures[name]=(body,receipt)
+            if receipt['content_encoding']!='identity':raise CollegeQuarantineError('current_source_requires_identity_transfer')
+            return body
+        try:
+            release=discover_release(fetch('nces_landing',LANDING))
+            fetch('nces_geocode',release['source_url']);documentation=fetch('nces_documentation',release['documentation_url'])
+            if not documentation.startswith(b'%PDF-'):raise CollegeQuarantineError('source_technical_documentation_is_not_pdf')
+            after=discover_release(fetch('nces_landing_after',LANDING))
+            if after!=release:raise CollegeQuarantineError('published_selection_changed_during_capture')
+            for name in ('nces_geocode','nces_documentation'):
+                if fetch(name+'_after',release_urls(release)[name])!=captures[name][0]:
+                    raise CollegeQuarantineError('source_changed_during_capture:'+name)
+            for name,(body,receipt) in captures.items():validate_receipt(name,body,receipt,release=release)
+            return captures,release
+        except (ValueError,OSError,TypeError,UnicodeError) as exc:
+            for path in root.glob('*.receipt.json'):
+                name=path.name.removesuffix('.receipt.json');body_path=root/(name+'.body')
+                if body_path.exists() and name not in captures:
+                    captures[name]=(body_path.read_bytes(),strict_json(path.read_bytes()))
+            where=quarantine(storage,captures,str(exc))
+            for wire in root.glob('*.wire'):immutable(storage,where+'/'+wire.name,wire.read_bytes())
+            raise CollegeQuarantineError(f'{exc}; retained:{where}') from exc
+        finally:
+            if owned:client.close()
 
 def local_only(storage):
     if isinstance(storage,PublishedStorageResource)or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
@@ -125,8 +222,8 @@ def processing_identity():
     return packaged_processing_identity(root)
 
 
-def validate_receipt(name,body,receipt):
-    url=URLS[name]
+def validate_receipt(name,body,receipt,*,release=None):
+    url=release_urls(release)[name]
     if (receipt.get('url')!=url or receipt.get('final_url')!=url or type(receipt.get('status')) is not int
         or receipt['status']!=200 or type(receipt.get('bytes')) is not int or receipt['bytes']!=len(body)
         or receipt.get('sha256')!=digest(body) or receipt.get('complete_body') is not True):
@@ -134,29 +231,74 @@ def validate_receipt(name,body,receipt):
     return {'input_id':name+':'+digest(body),'producer':'National Center for Education Statistics, U.S. Department of Education','host':'nces.ed.gov',
         'role':'producer_publication','canonical_url':url,'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],
         'retrieved_at':receipt.get('observed_at'),'http_status':receipt['status'],'sha256':digest(body),'bytes':len(body),
-        'license':LICENSE,'attribution':'NCES Education Demographic and Geographic Estimates (EDGE), Postsecondary School Geocodes2025–2026.',
-        'release_date_unknown_reason':'Official publication names school year2025–2026. Embedded shapefile metadata creation2026-03-05 is not an exact release date.'}
+        'license':LICENSE,'attribution':'NCES Education Demographic and Geographic Estimates (EDGE), Postsecondary School Geocodes '+(release['schoolyear'] if release else '2025–2026')+'.',
+        'release_date_unknown_reason':'The school-year edition and file metadata dates are not an exact producer publication date.'}
 
 
-def manifest_for(captures,identity):
-    if set(captures)!=set(URLS): raise CollegeQuarantineError('missing_extra_source_publication_roster')
-    inputs=[validate_receipt(name,*captures[name]) for name in URLS]
-    if URL.encode() not in captures['nces_landing'][0] and b'/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2526.zip' not in captures['nces_landing'][0]:
+def manifest_for(captures,identity,*,release=None,table=None):
+    if set(captures)!=set(release_urls(release)): raise CollegeQuarantineError('missing_extra_source_publication_roster')
+    inputs=[validate_receipt(name,*captures[name],release=release) for name in release_urls(release)]
+    if release:
+        if any(discover_release(captures[name][0])!=release for name in ('nces_landing','nces_landing_after')):
+            raise CollegeQuarantineError('official_source_landing_selection_changed')
+        if any(captures[name][0]!=captures[name+'_after'][0] for name in ('nces_geocode','nces_documentation')):
+            raise CollegeQuarantineError('source_changed_during_capture')
+        if table is None:table,_=inspect_archives({},captures,release=release)
+        payload=parquet_payload(table);parquet_pin={'bytes':len(payload),'sha256':digest(payload)}
+    else:parquet_pin=PARQUET_PIN
+    if not release and URL.encode() not in captures['nces_landing'][0] and b'/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2526.zip' not in captures['nces_landing'][0]:
         raise CollegeQuarantineError('official_source_landing_download_delegation_missing')
     manifest={'schema_version':1,'processor':'HIFLD Next','approved':False,
         'code_commit':identity['code_commit'],'code_identity_scheme':identity['code_identity_scheme'],
         'processing_code':{'scheme':identity['code_identity_scheme'],'identity':identity['code_commit']},
-        'title':'Colleges and Universities — complete NCES EDGE2025–2026 changed successor draft',
+        'title':'Colleges and Universities — complete NCES EDGE '+(release['schoolyear'] if release else '2025–2026')+' unapproved successor draft',
         'publisher':'National Center for Education Statistics','agency':'U.S. Department of Education','source_url':LANDING,
-        'documentation_url':DOCUMENTATION,'license':LICENSE,
+        'documentation_url':release['documentation_url'] if release else DOCUMENTATION,'license':LICENSE,
         'processing_fingerprint':digest(encode(identity)),'inputs':inputs,
         'transformations':[{'operation':'decode_complete_original_nested_shapefile','parameters':{'fields':'All21 original names/physical DBF declarations preserved; no ORNL enrichment inferred','source_fid':'Original file-local OGC_FID retained separately; not a generated IPEDSID','UNITID':'Original DBF C8 string preserved; no approved IPEDSID mapping','crs':'EPSG:4326','geometry':'native WKB Point, no reproject/repair/quantization'}},
             {'operation':'native_geopackage_and_geoparquet','parameters':{'source_types':'DBF C remains string, LAT/LON N11/12,6 exposed float64; raw lexical values retained and independently compared','gpkg_fid':'separate storage index, not source/published identifier'}}],
-        'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve complete native source field roster/Arrow types and original OGC_FID; no generic bbox expansion approved.','objects':[{'path':'geoparquet/'+SLUG+'.parquet',**PARQUET_PIN}]}}},
+        'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve complete native source field roster/Arrow types and original OGC_FID; no generic bbox expansion approved.','objects':[{'path':'geoparquet/'+SLUG+'.parquet',**parquet_pin}]}}},
         'unsupported_output_formats':{'shapefile_zip':'Original nested shapefile retained losslessly. Additional OGC_FID column is not an approved published schema/field mapping.',
             'pmtiles':'Quantized visualization and published ID mapping remain unapproved.'}}
+    if release:
+        indexed={name:item for name,item in zip(release_urls(release),inputs)}
+        for name,item in indexed.items():item['purpose']='data' if 'geocode' in name else 'methodology'
+        indexed['nces_geocode']['refresh']={
+            'maintenance_status':'maintained','maintenance_evidence_input_id':indexed['nces_landing']['input_id'],
+            'source_release_id':release['schoolyear'],'data_period':release['schoolyear'],
+            'update_cadence':'unknown','unknown_reasons':{'update_cadence':'Annual IPEDS survey and annual edition links do not alone establish a geocode publication schedule.'},
+            'latest_checked_at':captures['nces_landing'][1]['observed_at'],
+            'latest_evidence_input_id':indexed['nces_landing']['input_id'],'selection_rule':release['selection_rule'],
+            'source_state_fingerprint':digest(encode({'archive':digest(captures['nces_geocode'][0]),
+                'documentation':digest(captures['nces_documentation'][0]),'publication':release['landing_evidence_sha256']}))}
+        manifest['coverage']={'schoolyear':release['schoolyear'],'feature_count':table.num_rows,
+            'population':'Complete selected NCES EDGE IPEDS reporting-institution file; not every physical campus or present-day operating institution.',
+            'jurisdiction_counts':dict(collections.Counter(table['STATE'].to_pylist())),
+            'coordinate_observation_date':'Unknown; school year is the reporting edition, not a coordinate observation timestamp.'}
+        manifest['source_relationship']={'relationship':'unverified','evidence_input_ids':[],
+            'unknown_reason':'Exact ORNL enriched historical product joins, IDs and population have not been accepted as equivalent to these NCES reporting-institution points.'}
+        docs=[('raw/captures/nces_landing.body',captures['nces_landing'][0],'nces_landing','methodology','text/html'),
+              ('raw/captures/nces_documentation.body',captures['nces_documentation'][0],'nces_documentation','methodology','application/pdf'),
+              ('raw/source_metadata.xml',source_xml(captures,release),'nces_geocode','schema','application/xml')]
+        manifest['documentation']=[{'path':path,'input_id':indexed[name]['input_id'],'purpose':purpose,'media_type':mime,
+                                    'bytes':len(body),'sha256':digest(body)} for path,body,name,purpose,mime in docs]
+        manifest['field_definitions']={
+            name:{'source_fields':[name],'input_ids':[indexed['nces_documentation']['input_id']],'basis':'publisher','description':description}
+            for name,description in {
+                'UNITID':'Native IPEDS reporting-institution identifier, retained as a DBF C8 string including leading zeroes; not an approved historical IPEDSID or OPEID mapping.',
+                'SCHOOLYEAR':'NCES school-year reporting edition; not the publication date, coordinate observation date or an operating-status guarantee.',
+                'LAT':'Native geographic latitude attribute in degrees, DBF N11,6; kept separately from full native point precision.',
+                'LON':'Native geographic longitude attribute in degrees, DBF N12,6; kept separately from full native point precision.'}.items()}
+        manifest.update(source_release_accepted=False,source_freshness_accepted=False,schema_contract_accepted=False,
+                        id_contract_accepted=False,coverage_accepted=False,rights_accepted=False,mapping_approved=False,release_accepted=False)
     validate_release_provenance(manifest)
     return manifest
+
+
+def source_xml(captures,release):
+    with zipfile.ZipFile(io.BytesIO(captures['nces_geocode'][0])) as outer:
+        with zipfile.ZipFile(io.BytesIO(outer.read('Shapefile.zip'))) as inner:
+            return inner.read(release['stem']+'.shp.xml')
 
 
 def bounded_input(path,limit):
@@ -190,7 +332,7 @@ def acquire(storage,capture_dir=None):
                             try:
                                 iterator=response.iter_bytes(65536)
                                 while True:
-                                    if shutil.disk_usage('/workspace').free<SPACE_FLOOR:raise CollegeQuarantineError('disk_floor_before_next_read')
+                                    if shutil.disk_usage(storage.local_dir).free<SPACE_FLOOR:raise CollegeQuarantineError('disk_floor_before_next_read')
                                     try:block=next(iterator)
                                     except StopIteration:break
                                     body+=block
@@ -212,7 +354,7 @@ def acquire(storage,capture_dir=None):
 def dbf_definition(body):
     if len(body)<33: raise CollegeQuarantineError('short_dbf_header')
     rows=int.from_bytes(body[4:8],'little');header=int.from_bytes(body[8:10],'little');record=int.from_bytes(body[10:12],'little')
-    if header<33 or (header-33)%32 or body[header-1]!=13 or len(body) not in (header+rows*record,header+rows*record+1):
+    if header<33 or header>len(body) or (header-33)%32 or body[header-1]!=13 or len(body) not in (header+rows*record,header+rows*record+1):
         raise CollegeQuarantineError('incomplete_or_changed_dbf_records')
     fields=[]
     for index in range(32,header-1,32):
@@ -241,26 +383,48 @@ def decode_dbf_rows(body):
     return rows
 
 
-def inspect_archives(paths,captures):
+def inspect_archives(paths,captures,*,release=None):
     body=captures['nces_geocode'][0]
-    if len(body)!=PINS['nces_geocode']['bytes'] or digest(body)!=PINS['nces_geocode']['sha256']:
+    stem=release['stem'] if release else STEM
+    if release is None and (len(body)!=PINS['nces_geocode']['bytes'] or digest(body)!=PINS['nces_geocode']['sha256']):
         raise CollegeQuarantineError('changed_truncated_or_unknown_nces_release')
     with zipfile.ZipFile(io.BytesIO(body)) as outer:
-        check_zip(outer,OUTER_MEMBERS,15_000_000)
+        check_zip(outer,{name.replace(STEM,stem) for name in OUTER_MEMBERS},64_000_000 if release else 15_000_000)
         nested=outer.read('Shapefile.zip')
-        text=outer.read(STEM+'.TXT').decode('utf8')
+        text=outer.read(stem+'.TXT').decode('utf8')
         outer_inventory={i.filename:{'bytes':i.file_size,'sha256':digest(outer.read(i.filename))} for i in outer.infolist()}
     with zipfile.ZipFile(io.BytesIO(nested)) as archive:
-        check_zip(archive,set(INNER_MEMBERS),8_000_000)
+        check_zip(archive,{name.replace(STEM,stem) for name in INNER_MEMBERS},32_000_000 if release else 8_000_000)
         for name,pin in INNER_MEMBERS.items():
-            value=archive.read(name)
-            if len(value)!=pin['bytes'] or digest(value)!=pin['sha256']: raise CollegeQuarantineError('original_nested_member_drift:'+name)
-        dbf=dbf_definition(archive.read(STEM+'.dbf'))
-        physical_rows=decode_dbf_rows(archive.read(STEM+'.dbf'))
-        if archive.read(STEM+'.cpg')!=b'UTF-8':raise CollegeQuarantineError('source_encoding_drift')
+            value=archive.read(name.replace(STEM,stem))
+            if release is None and (len(value)!=pin['bytes'] or digest(value)!=pin['sha256']): raise CollegeQuarantineError('original_nested_member_drift:'+name)
+        nested_inventory={i.filename:{'bytes':i.file_size,'sha256':digest(archive.read(i.filename))} for i in archive.infolist()}
+        dbf=dbf_definition(archive.read(stem+'.dbf'))
+        physical_rows=decode_dbf_rows(archive.read(stem+'.dbf'))
+        if archive.read(stem+'.cpg')!=b'UTF-8':raise CollegeQuarantineError('source_encoding_drift')
+        if release:
+            # Independent physical sidecar counts precede and constrain GDAL.
+            shp,shx=archive.read(stem+'.shp'),archive.read(stem+'.shx')
+            for component in (shp,shx):
+                if (len(component)<100 or int.from_bytes(component[:4],'big')!=9994
+                        or int.from_bytes(component[24:28],'big')*2!=len(component)
+                        or int.from_bytes(component[28:32],'little')!=1000
+                        or int.from_bytes(component[32:36],'little')!=1):
+                    raise CollegeQuarantineError('source_point_header_or_declared_length_drift')
+            shx_count=(len(shx)-100)//8
+            if (len(shx)-100)%8 or shx_count!=dbf['row_count'] or len(shp)!=100+28*shx_count:
+                raise CollegeQuarantineError('source_dbf_shx_point_count_disagreement')
+            for index in range(shx_count):
+                entry=shx[100+index*8:108+index*8];offset=100+index*28
+                if (int.from_bytes(entry[:4],'big')*2!=offset or int.from_bytes(entry[4:],'big')!=10
+                        or int.from_bytes(shp[offset:offset+4],'big')!=index+1
+                        or int.from_bytes(shp[offset+4:offset+8],'big')!=10
+                        or int.from_bytes(shp[offset+8:offset+12],'little')!=1):
+                    raise CollegeQuarantineError('source_point_index_or_record_disagreement')
+            ET.fromstring(archive.read(stem+'.shp.xml'))
     with tempfile.TemporaryDirectory(prefix='nces-original-') as tmp:
         path=Path(tmp)/'original-shapefile.zip';path.write_bytes(nested)
-        meta,table=pyogrio.read_arrow('/vsizip/{'+str(path)+'}/'+STEM+'.shp',return_fids=True)
+        meta,table=pyogrio.read_arrow('/vsizip/{'+str(path)+'}/'+stem+'.shp',return_fids=True)
     if (tuple(table.column_names)!=SOURCE_FIELDS or tuple(f.type for f in table.schema)!=TYPES or meta['crs']!='EPSG:4326'
         or meta['fid_column']!='OGC_FID' or meta['geometry_type']!='Point' or table.num_rows!=dbf['row_count']):
         raise CollegeQuarantineError('source_schema_types_crs_geometry_or_dbf_completeness_drift')
@@ -272,32 +436,44 @@ def inspect_archives(paths,captures):
         if len(row)!=len(DBF_FIELDS):raise CollegeQuarantineError('source_text_column_count_drift')
         converted.append({name:float(value) if kind=='N' else value for (name,kind,_,_),value in zip(DBF_FIELDS,row)})
     if converted!=physical_rows: raise CollegeQuarantineError('complete_official_text_disagrees_with_shapefile')
-    validate_table(table)
-    return table,{'original_dbf':dbf,'original_outer_members':outer_inventory,'original_nested_members':INNER_MEMBERS,'arrow_schema':str(table.schema),
+    validate_table(table,release=release,expected_count=dbf['row_count'])
+    audit={'original_dbf':dbf,'original_outer_members':outer_inventory,'original_nested_members':nested_inventory,'arrow_schema':str(table.schema),
         'all_original_attributes_ids_and_native_wkb_retained':True,'native_wkb_vs_six_decimal_coordinates':'Both preserved without snapping; maximum allowed half DBF decimal unit','independent_dbf_and_official_text_rows_compared':len(physical_rows),
         'state_counts':dict(collections.Counter(table['STATE'].to_pylist())),'source_relationship':'ChangedNCES2025–2026 successor; NOT exactORNL2020–2021 enriched HIFLD continuation.'}
+    if release:
+        audit['source_counts']={'dbf':dbf['row_count'],'shx':shx_count,'decoded':table.num_rows,'text':len(converted)}
+        audit['schoolyear']=release['schoolyear']
+        audit['publication_selection']=release
+        audit['source_relationship']='NCES reporting-institution points; historical ORNL enriched product equivalence is unverified.'
+    return table,audit
 
 
 def check_zip(archive,expected,limit):
     infos=archive.infolist();names=[i.filename for i in infos]
-    if len(names)!=len(expected) or set(names)!=expected or archive.testzip() is not None:
+    if len(names)!=len(expected) or set(names)!=expected:
         raise CollegeQuarantineError('missing_duplicate_extra_or_corrupt_archive_member')
     if sum(i.file_size for i in infos)>limit or any(PurePosixPath(i.filename).name!=i.filename or i.flag_bits&1 or stat.S_ISLNK(i.external_attr>>16) for i in infos):
         raise CollegeQuarantineError('unsafe_or_oversized_archive')
+    if archive.testzip() is not None:raise CollegeQuarantineError('missing_duplicate_extra_or_corrupt_archive_member')
 
 
-def validate_table(table):
-    if tuple(table.column_names)!=FIELDS or tuple(f.type for f in table.schema)!=TYPES or table.num_rows!=6438 or any(table[n].null_count for n in FIELDS):
+def validate_table(table,*,release=None,expected_count=None):
+    count=expected_count if release else 6438
+    if tuple(table.column_names)!=FIELDS or tuple(f.type for f in table.schema)!=TYPES or table.num_rows!=count or not count or any(table[n].null_count for n in FIELDS):
         raise CollegeQuarantineError('native_schema_physical_types_nullability_or_completeness_drift')
     ids=table['UNITID'].to_pylist()
-    if len(set(ids))!=6438 or hashlib.sha256(json.dumps(ids,separators=(',',':')).encode()).hexdigest()!=UNITID_SHA256:
+    if len(set(ids))!=count or (release is None and hashlib.sha256(json.dumps(ids,separators=(',',':')).encode()).hexdigest()!=UNITID_SHA256):
         raise CollegeQuarantineError('missing_duplicate_changed_source_ids')
-    if table['OGC_FID'].to_pylist()!=list(range(6438)) or dict(collections.Counter(table['STATE'].to_pylist()))!=STATE_COUNTS or set(table['SCHOOLYEAR'].to_pylist())!={'2025-2026'}:
+    if any(not isinstance(value,str) or not value.isascii() or not value.isdecimal() or len(value)>8 for value in ids):
+        raise CollegeQuarantineError('nonlexical_native_unitid')
+    if (table['OGC_FID'].to_pylist()!=list(range(count))
+            or (release is None and dict(collections.Counter(table['STATE'].to_pylist()))!=STATE_COUNTS)
+            or set(table['SCHOOLYEAR'].to_pylist())!={release['schoolyear'] if release else '2025-2026'}):
         raise CollegeQuarantineError('native_fid_year_or_national_territory_coverage_drift')
     geoms=shapely.from_wkb(table['wkb_geometry'].to_pylist())
     if not all(shapely.is_valid(geoms)) or any(shapely.is_empty(geoms)) or set(shapely.get_type_id(geoms).tolist())!={0}:
         raise CollegeQuarantineError('missing_invalid_or_changed_native_point_geometry')
-    if hashlib.sha256(b''.join(table['wkb_geometry'].to_pylist())).hexdigest()!='14193ccbebe31729370f18b5e912c6399dac38fd342fcfbb75483d8060a94893':
+    if release is None and hashlib.sha256(b''.join(table['wkb_geometry'].to_pylist())).hexdigest()!='14193ccbebe31729370f18b5e912c6399dac38fd342fcfbb75483d8060a94893':
         raise CollegeQuarantineError('native_geometry_values_drift')
     # Native double WKB and six-decimal DBF coordinate text have distinct
     # producer precision. Preserve both; never snap geometry to attributes.
@@ -310,33 +486,44 @@ def expected_parquet_table(table):
     return table.replace_schema_metadata({b'geo':encode(geo)})
 
 
-def write_native_gpkg(table,path):
+def parquet_payload(table):
+    sink=pa.BufferOutputStream();pq.write_table(expected_parquet_table(table),sink,compression='zstd')
+    return sink.getvalue().to_pybytes()
+
+
+def write_native_gpkg(table,path,*,release=None):
+    layer='NCES_EDGE_'+release['schoolyear'].replace('-','_') if release else LAYER
     with with_geopackage_creation_time('2026-01-01T00:00:00.000Z'):
-        pyogrio.write_arrow(table,path,layer=LAYER,driver='GPKG',geometry_name='wkb_geometry',geometry_type='Point',crs='EPSG:4326',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'wkb_geometry'})
+        pyogrio.write_arrow(table,path,layer=layer,driver='GPKG',geometry_name='wkb_geometry',geometry_type='Point',crs='EPSG:4326',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'wkb_geometry'})
     with sqlite3.connect(path) as db: db.execute("UPDATE gpkg_contents SET last_change='2026-01-01T00:00:00.000Z'")
 
 
-def reconcile_outputs(root,table):
+def reconcile_outputs(root,table,*,release=None):
     expected=expected_parquet_table(table)
     parquet=pq.read_table(root/'geoparquet/colleges-and-universities.parquet')
-    if sha256_file(root/'geoparquet/colleges-and-universities.parquet')!=PARQUET_PIN['sha256'] or (root/'geoparquet/colleges-and-universities.parquet').stat().st_size!=PARQUET_PIN['bytes'] or not parquet.equals(expected,check_metadata=True): raise CollegeQuarantineError('cached_parquet_values_types_or_metadata_disagree_with_fresh_original')
-    gm,gt=pyogrio.read_arrow(root/'geopackage'/f'{SLUG}.gpkg',layer=LAYER)
+    pin=PARQUET_PIN
+    if release:
+        payload=parquet_payload(table);pin={'bytes':len(payload),'sha256':digest(payload)}
+    if sha256_file(root/'geoparquet/colleges-and-universities.parquet')!=pin['sha256'] or (root/'geoparquet/colleges-and-universities.parquet').stat().st_size!=pin['bytes'] or not parquet.equals(expected,check_metadata=True): raise CollegeQuarantineError('cached_parquet_values_types_or_metadata_disagree_with_fresh_original')
+    layer='NCES_EDGE_'+release['schoolyear'].replace('-','_') if release else LAYER
+    gm,gt=pyogrio.read_arrow(root/'geopackage'/f'{SLUG}.gpkg',layer=layer)
     if gm['crs']!='EPSG:4326' or tuple(gt.column_names)!=FIELDS or tuple(f.type for f in gt.schema)!=TYPES or gt.to_pylist()!=table.to_pylist():
         raise CollegeQuarantineError('cached_geopackage_values_types_or_wkb_disagree_with_fresh_original')
     with tempfile.TemporaryDirectory(prefix='colleges-canonical-gpkg-') as tmp:
-        fresh=Path(tmp)/'fresh.gpkg';write_native_gpkg(table,fresh)
+        fresh=Path(tmp)/'fresh.gpkg';write_native_gpkg(table,fresh,release=release)
         if sha256_file(fresh)!=sha256_file(root/'geopackage'/f'{SLUG}.gpkg'):
             raise CollegeQuarantineError('cached_geopackage_full_container_disagrees_with_fresh_original')
 
 
-def source_payloads(captures,identity,table,audit,manifest):
+def source_payloads(captures,identity,table,audit,manifest,*,release=None):
     values={'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),
-        'metadata/colleges_source_audit.json':encode({'approved':False,'feature_count':6438,'crs':'EPSG:4326','invalid_geometries':0,'points':6438,
+        'metadata/colleges_source_audit.json':encode({'approved':False,'feature_count':table.num_rows,'crs':'EPSG:4326','invalid_geometries':0,'points':table.num_rows,
             'archive_count':1,'original_publications':audit,'full_values_ids_physical_types_native_wkb_roundtrip':True,
-            'source_relationship':'Changed NCES2025–2026 successor, not exactORNL2020–2021 enriched continuation; all field/ID/schema/CRS/geometry mappings remain unapproved.'}),
+            'source_relationship':'NCES '+(release['schoolyear'] if release else '2025–2026')+' reporting-institution successor; exact ORNL enriched equivalence and all mapping/release gates remain unapproved.'}),
         'metadata/baseline_comparison.json':encode({'schema_version':1,'approved':False,'status':'blocked','reason_codes':['baseline_source_schema_id_geometry_mapping_not_approved']})}
     for name,(body,receipt) in captures.items():
         values['raw/captures/'+name+'.body']=body;values['raw/captures/'+name+'.receipt.json']=encode(receipt)
+    if release:values['raw/source_metadata.xml']=source_xml(captures,release)
     return values
 
 
@@ -344,7 +531,7 @@ def candidate_bytes(root,name):
     path=root/name
     if '..'in Path(name).parts or Path(name).is_absolute()or any(p.is_symlink()for p in[path.parent,*path.parent.parents]):
         raise CollegeQuarantineError('candidate_read_path_alias_refused')
-    limit=MAX_ARCHIVE_BYTES if name=='raw/captures/nces_geocode.body'else(8_000_000 if name.endswith(('.gpkg','.parquet'))else MAX_AUX_BYTES)
+    limit=MAX_ARCHIVE_BYTES if name.startswith('raw/captures/nces_geocode') and name.endswith('.body') else(32_000_000 if name.endswith(('.gpkg','.parquet'))else MAX_AUX_BYTES)
     return bounded_input(path,limit)
 
 
@@ -358,21 +545,22 @@ def candidate_roster(root):
     return names
 
 
-def reconcile_cache(storage,prefix,table,audit,captures,identity,original_context=None):
+def reconcile_cache(storage,prefix,table,audit,captures,identity,original_context=None,*,release=None):
     root=Path(storage.local_dir)/prefix;actual=candidate_roster(root);ready=strict_json(candidate_bytes(root,READY))
-    cached={name:(candidate_bytes(root,f'raw/captures/{name}.body'),strict_json(candidate_bytes(root,f'raw/captures/{name}.receipt.json'))) for name in URLS}
-    if any(cached[name][0]!=captures[name][0] for name in PINS): raise CollegeQuarantineError('cached_original_publication_changed')
-    manifest=manifest_for(cached,identity)
+    cached={name:(candidate_bytes(root,f'raw/captures/{name}.body'),strict_json(candidate_bytes(root,f'raw/captures/{name}.receipt.json'))) for name in release_urls(release)}
+    if any(cached[name][0]!=captures[name][0] for name in (release_urls(release) if release else PINS)): raise CollegeQuarantineError('cached_original_publication_changed')
+    manifest=manifest_for(cached,identity,release=release,table=table)
     actual_manifest=strict_json(candidate_bytes(root,'metadata/source_manifest.json'))
     validate_release_provenance(actual_manifest)
     for key,value in manifest.items():
         if key!='code_commit' and encode(actual_manifest.get(key))!=encode(value): raise CollegeQuarantineError('cached_provenance_disagrees_with_original')
-    retained,original_manifest=original_context if original_context is not None else original_provenance_bundle(storage,digest(encode(identity)),captures,identity,manifest)
+    fingerprint=candidate_fingerprint(identity,captures,release)
+    retained,original_manifest=original_context if original_context is not None else original_provenance_bundle(storage,fingerprint,captures,identity,manifest,release=release)
     if encode(actual_manifest)!=encode(original_manifest):raise CollegeQuarantineError('cached_provenance_disagrees_with_immutable_original_bundle')
     manifest=actual_manifest
-    expected=source_payloads(cached,identity,table,audit,manifest)
+    expected=source_payloads(cached,identity,table,audit,manifest,release=release)
     expected_names={*expected,f'geopackage/{SLUG}.gpkg','geoparquet/colleges-and-universities.parquet'}
-    if (ready.get('version')!=prefix.rsplit('/',1)[1] or ready.get('approved') is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready['objects'])!=expected_names):
+    if (ready.get('version')!=prefix.rsplit('/',1)[1] or ready.get('approved') is not False or ready.get('processing_fingerprint')!=fingerprint or set(ready['objects'])!=expected_names):
         raise CollegeQuarantineError('cached_ready_identity_or_roster_drift')
     for name,value in expected.items():
         if candidate_bytes(root,name)!=value: raise CollegeQuarantineError('cached_source_owned_bytes_drift:'+name)
@@ -391,7 +579,7 @@ def reconcile_cache(storage,prefix,table,audit,captures,identity,original_contex
         resolved=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,ready['version']).metadata)
         if resolved.get('inputs')!=manifest['inputs'] or encode(strict_json(candidate_bytes(root,'metadata/resolved_provenance.json')))!=encode(resolved):
             raise CollegeQuarantineError('cached_resolved_provenance_drift')
-    reconcile_outputs(root,table)
+    reconcile_outputs(root,table,release=release)
 
 
 
@@ -412,27 +600,38 @@ def record_observed_loss(storage,version,fingerprint,reason):
     seal_first_construction(storage,key,version,fingerprint,body)
 
 
-def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,create=False):
-    version=f'v0.0.0-draft-nces2526-{fingerprint[:16]}'
+def candidate_fingerprint(identity,captures,release=None):
+    return digest(encode({'processing':identity,'release':release,'evidence':{name:digest(body) for name,(body,_) in captures.items()
+                        if name not in {'nces_landing','nces_landing_after'}}})) if release else digest(encode(identity))
+
+
+def candidate_version(fingerprint,release=None):
+    code=release['stem'].rsplit('_',1)[1] if release else '2526'
+    return f'v0.0.0-draft-nces{code}-{fingerprint[:16]}'
+
+
+def original_provenance_bundle(storage,fingerprint,captures,identity,manifest,*,create=False,release=None):
+    version=candidate_version(fingerprint,release)
     legacy=f'_source-provenance/{SLUG}/{fingerprint}/bundle.json'
     if storage.object_exists(legacy):raise CollegeQuarantineError('legacy_unbound_provenance_requires_explicit_migration')
     payload={'manifest':manifest,'captures':{name:{'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body','receipt':receipt}for name,(body,receipt)in captures.items()}}
     envelope=canonical_construction_bundle(version,fingerprint,payload);key=construction_record_key(version)
     if create:
-        inspect_archives({},captures);expected=manifest_for(captures,identity)
+        table,_=inspect_archives({},captures,release=release);expected=manifest_for(captures,identity,release=release,table=table)
         if encode({k:v for k,v in expected.items()if k!='code_commit'})!=encode({k:v for k,v in manifest.items()if k!='code_commit'}):raise CollegeQuarantineError('preseal_full_original_manifest_drift')
         validate_release_provenance(manifest);validate_output_policy(manifest);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'],identity=identity)
         body=seal_first_construction(storage,key,version,fingerprint,envelope)
     else:body=load_first_construction(storage,key,version,fingerprint)
     bundle=strict_json(body)['payload']
-    if set(bundle)!={'manifest','captures'}or set(bundle['captures'])!=set(URLS):raise CollegeQuarantineError('original_provenance_bundle_roster_drift')
+    if set(bundle)!={'manifest','captures'}or set(bundle['captures'])!=set(release_urls(release)):raise CollegeQuarantineError('original_provenance_bundle_roster_drift')
     original={}
     for name,item in bundle['captures'].items():
         if set(item)!={'body_key','receipt'}or item['body_key']!=f"_raw-captures/{SLUG}/{item['receipt'].get('sha256')}/{name}.body":raise CollegeQuarantineError('original_provenance_body_key_drift')
         original[name]=(storage.read_key(item['body_key']),item['receipt'])
-    first,first_audit=inspect_archives({},original);current,current_audit=inspect_archives({},captures)
+    first,first_audit=inspect_archives({},original,release=release);current,current_audit=inspect_archives({},captures,release=release)
     if not first.equals(current,check_metadata=True)or encode(first_audit)!=encode(current_audit)or original['nces_documentation'][0]!=captures['nces_documentation'][0]:raise CollegeQuarantineError('original_source_or_documentation_changed')
-    expected=manifest_for(original,identity);actual=bundle['manifest']
+    if release and candidate_fingerprint(identity,original,release)!=fingerprint:raise CollegeQuarantineError('original_source_evidence_fingerprint_changed')
+    expected=manifest_for(original,identity,release=release,table=first);actual=bundle['manifest']
     if encode({k:v for k,v in expected.items()if k!='code_commit'})!=encode({k:v for k,v in actual.items()if k!='code_commit'}):raise CollegeQuarantineError('original_manifest_or_retrieval_context_drift')
     validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files'],identity=identity);return original,actual
 
@@ -450,10 +649,10 @@ def write_private(root,name,body):
     if candidate_bytes(root,name)!=body:raise CollegeQuarantineError('incomplete_private_write:'+name)
 
 
-def reconcile_private(root,table,audit,captures,identity,manifest,version):
+def reconcile_private(root,table,audit,captures,identity,manifest,version,*,release=None):
     # Re-read the complete closed candidate, not only native data, before the
     # first outside seal and again before exposing a discoverable version.
-    expected=source_payloads(captures,identity,table,audit,manifest)
+    expected=source_payloads(captures,identity,table,audit,manifest,release=release)
     names={*expected,f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'}
     actual=candidate_roster(root)
     if actual!=names|{READY}:raise CollegeQuarantineError('private_candidate_closed_roster_drift')
@@ -461,21 +660,26 @@ def reconcile_private(root,table,audit,captures,identity,manifest,version):
         if candidate_bytes(root,name)!=body:raise CollegeQuarantineError('private_candidate_source_bytes_drift:'+name)
     actual_manifest=strict_json(candidate_bytes(root,'metadata/source_manifest.json'))
     validate_release_provenance(actual_manifest);validate_output_policy(actual_manifest)
-    ready={'version':version,'approved':False,'processing_fingerprint':digest(encode(identity)),
+    ready={'version':version,'approved':False,'processing_fingerprint':candidate_fingerprint(identity,captures,release),
         'objects':{name:sha256_file(root/name)for name in names}}
     if candidate_bytes(root,READY)!=encode(ready):raise CollegeQuarantineError('private_candidate_ready_drift')
-    reconcile_outputs(root,table)
+    reconcile_outputs(root,table,release=release)
 
 
-def stage_colleges(storage,*,capture_dir=None):
-    local_only(storage);captures=acquire(storage,capture_dir)
+def stage_colleges(storage,*,capture_dir=None,client=None):
+    """Refresh the discovered producer edition, or explicitly replay pinned historical evidence."""
+    local_only(storage)
+    if capture_dir is None:captures,release=acquire_latest(storage,client)
+    else:captures,release=acquire(storage,capture_dir),None
+    checked_at=captures['nces_landing'][1]['observed_at']
     try:
-        identity=processing_identity();manifest=manifest_for(captures,identity);fingerprint=digest(encode(identity));version=f'v0.0.0-draft-nces2526-{fingerprint[:16]}'
+        identity=processing_identity();fingerprint=candidate_fingerprint(identity,captures,release);version=candidate_version(fingerprint,release)
         prefix=f'{SLUG}/{SLUG}/{version}';base=Path(storage.local_dir).absolute();root=base/prefix
         depot={}
         for name,(body,receipt)in captures.items():
             key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body';immutable(storage,key,body);immutable(storage,key+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt));depot[name]=base/key
-        table,audit=inspect_archives(depot,captures);locks=base/'_locks';locks.mkdir(exist_ok=True);lockpath=locks/(SLUG+'.lock')
+        table,audit=inspect_archives(depot,captures,release=release);manifest=manifest_for(captures,identity,release=release,table=table)
+        locks=base/'_locks';locks.mkdir(exist_ok=True);lockpath=locks/(SLUG+'.lock')
         descriptor=os.open(lockpath,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
         with os.fdopen(descriptor,'r+b')as lock:
             if os.fstat(lock.fileno()).st_nlink!=1:raise CollegeQuarantineError('linked_common_lock')
@@ -483,18 +687,18 @@ def stage_colleges(storage,*,capture_dir=None):
             original_context=None
             if root.exists():
                 try:
-                    try:original_context=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                    try:original_context=original_provenance_bundle(storage,fingerprint,captures,identity,manifest,release=release)
                     except(ValueError,TypeError,KeyError,OSError,RuntimeError)as loss:
                         try:record_observed_loss(storage,version,fingerprint,str(loss))
                         except Exception as write:raise IncidentWriteError('incident_write_failed_candidate_preserved')from write
                         raise CollegeQuarantineError('observed_original_trust_loss:'+str(loss))from loss
-                    captures,manifest=original_context;reconcile_cache(storage,prefix,table,audit,captures,identity,original_context)
+                    captures,manifest=original_context;reconcile_cache(storage,prefix,table,audit,captures,identity,original_context,release=release)
                 except(ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error)as exc:
                     target=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);target.parent.mkdir(parents=True,exist_ok=True);os.rename(root,target)
                     raise CollegeQuarantineError('invalid_cache_moved_intact_out_of_discovery:'+str(target)+':'+str(exc))from exc
-                return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True}
+                return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True,'release_accepted':False,'latest_checked_at':checked_at}
             if state_present(storage,version):
-                try:captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest)
+                try:captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest,release=release)
                 except(ValueError,TypeError,KeyError,OSError,RuntimeError)as loss:
                     try:record_observed_loss(storage,version,fingerprint,str(loss))
                     except Exception as write:raise IncidentWriteError('incident_write_failed_partial_state_preserved')from write
@@ -503,12 +707,14 @@ def stage_colleges(storage,*,capture_dir=None):
             with tempfile.TemporaryDirectory(prefix='candidate-',dir=build)as tmp:
                 temp=Path(tmp)
                 for part in('geopackage','geoparquet','metadata','raw'):(temp/part).mkdir()
-                write_native_gpkg(table,temp/'geopackage'/f'{SLUG}.gpkg');pq.write_table(expected_parquet_table(table),temp/'geoparquet/colleges-and-universities.parquet',compression='zstd');reconcile_outputs(temp,table)
-                for name,value in source_payloads(captures,identity,table,audit,manifest).items():write_private(temp,name,value)
-                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};write_private(temp,READY,encode(ready));reconcile_private(temp,table,audit,captures,identity,manifest,version)
-                captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest,create=True)
-                for name,value in source_payloads(captures,identity,table,audit,manifest).items():write_private(temp,name,value)
-                ready['objects']={str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()and str(p.relative_to(temp))!=READY};write_private(temp,READY,encode(ready));reconcile_private(temp,table,audit,captures,identity,manifest,version);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
-            return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
+                write_native_gpkg(table,temp/'geopackage'/f'{SLUG}.gpkg',release=release)
+                (temp/'geoparquet/colleges-and-universities.parquet').write_bytes(parquet_payload(table))
+                reconcile_outputs(temp,table,release=release)
+                for name,value in source_payloads(captures,identity,table,audit,manifest,release=release).items():write_private(temp,name,value)
+                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};write_private(temp,READY,encode(ready));reconcile_private(temp,table,audit,captures,identity,manifest,version,release=release)
+                captures,manifest=original_provenance_bundle(storage,fingerprint,captures,identity,manifest,create=True,release=release)
+                for name,value in source_payloads(captures,identity,table,audit,manifest,release=release).items():write_private(temp,name,value)
+                ready['objects']={str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()and str(p.relative_to(temp))!=READY};write_private(temp,READY,encode(ready));reconcile_private(temp,table,audit,captures,identity,manifest,version,release=release);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+            return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False,'release_accepted':False,'latest_checked_at':checked_at}
     except(ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException,ET.ParseError)as exc:
         where=quarantine(storage,captures,str(exc));raise CollegeQuarantineError(f'{exc}; retained:{where}')from exc

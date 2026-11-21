@@ -1,4 +1,4 @@
-"""Stopped integrity workflow for the frozen public 2025 NBAM copy."""
+"""Stopped draft asset for county-level EIA-861 utility service territories."""
 
 from dagster import (
     AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
@@ -6,10 +6,10 @@ from dagster import (
 )
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.electric_retail_service_territories import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG,
-    capture_electric_retail_service_territories,
+from dagster_hifld.sources.electric_retail_service_territories_common import (
+    DATASET_SLUG, FILE_SLUG, capture_electric_retail_service_territories,
 )
 
 
@@ -22,13 +22,13 @@ class ElectricRetailServiceTerritoriesConfig(Config):
     group_name="energy",
     compute_kind="http",
     description=(
-        "Preserves the frozen 2025-08-21 public NBAM ArcGIS copy of the HIFLD "
-        "Electric Retail Service Territories layer (2,931 observed object IDs). "
-        "This is not a current-feed refresh. Upstream acceptance, rights, geographic "
-        "coverage, contracts, baseline and release remain pending."
+        "County-level EIA-861 utility service territories dissolved from current "
+        "Census TIGER county equivalents. This is an approximation, not a legal "
+        "boundary or a historical HIFLD equivalence; all acceptance and release "
+        "gates remain closed."
     ),
 )
-def electric_retail_service_territories_preservation_candidate(
+def electric_retail_service_territories_eia861_candidate(
     context, config: ElectricRetailServiceTerritoriesConfig,
     staging_storage: StagingStorageResource,
 ) -> dict:
@@ -43,24 +43,36 @@ def electric_retail_service_territories_preservation_candidate(
     return result
 
 
-@asset_check(asset=electric_retail_service_territories_preservation_candidate, blocking=True)
+@asset_check(asset=electric_retail_service_territories_eia861_candidate, blocking=True)
 def electric_retail_service_territories_population_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT
-              and candidate.get("source_population_complete") is True)
+    passed = (
+        candidate.get("source_population_complete") is True
+        and type(candidate.get("feature_count")) is int
+        and candidate.get("feature_count", 0) > 0
+        and type(candidate.get("utility_count")) is int
+        and candidate.get("utility_count", 0) > 0
+        and type(candidate.get("distinct_county_count")) is int
+        and candidate.get("distinct_county_count", 0) > 0
+        and type(candidate.get("county_row_count")) is int
+        and candidate.get("county_row_count", 0) > 0
+    )
     return AssetCheckResult(passed=passed, metadata={
-        "frozen_copy_feature_count": candidate.get("feature_count", 0),
-        "source_id_sha256": candidate.get("source_id_sha256", "missing"),
-        "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
-        "native_crs": candidate.get("native_crs", "missing"),
-        "source_edition": candidate.get("source_edition", "missing"),
-        "producer_release_date": "unknown",
+        "feature_count": candidate.get("feature_count", 0),
+        "utility_count": candidate.get("utility_count", 0),
+        "state_count": candidate.get("state_count", 0),
+        "county_row_count": candidate.get("county_row_count", 0),
+        "matched_county_row_count": candidate.get("matched_county_row_count", 0),
+        "distinct_county_count": candidate.get("distinct_county_count", 0),
+        "skipped_not_applicable_count": candidate.get("skipped_not_applicable_count", 0),
+        "source_year": candidate.get("source_year", "missing"),
+        "tiger_edition": candidate.get("tiger_edition", "missing"),
         "source_acceptance": False, "rights_acceptance": False,
         "coverage_acceptance": False, "baseline_acceptance": False,
         "release_acceptance": False,
     })
 
 
-@asset_check(asset=electric_retail_service_territories_preservation_candidate, blocking=True)
+@asset_check(asset=electric_retail_service_territories_eia861_candidate, blocking=True)
 def electric_retail_service_territories_geometry_valid(candidate: dict) -> AssetCheckResult:
     nulls = candidate.get("null_geometry_count")
     invalid = candidate.get("invalid_geometry_count")
@@ -72,23 +84,36 @@ def electric_retail_service_territories_geometry_valid(candidate: dict) -> Asset
     )
 
 
-@asset_check(asset=electric_retail_service_territories_preservation_candidate, blocking=False)
+@asset_check(asset=electric_retail_service_territories_eia861_candidate, blocking=False)
 def electric_retail_service_territories_release_pending(candidate: dict) -> AssetCheckResult:
     return AssetCheckResult(
         passed=False,
-        description="Release remains blocked pending upstream, rights, coverage, contract and baseline acceptance.",
+        description="Release remains blocked pending source, rights, coverage, schema/ID, baseline and release acceptance.",
         metadata={"release_accepted": candidate.get("release_accepted", False)},
     )
 
 
-electric_retail_service_territories_preservation_job = define_asset_job(
-    "electric_retail_service_territories_frozen_snapshot_integrity",
-    selection=AssetSelection.assets(electric_retail_service_territories_preservation_candidate),
+electric_retail_service_territories_draft_job = define_asset_job(
+    "electric_retail_service_territories_eia861_draft",
+    selection=AssetSelection.assets(electric_retail_service_territories_eia861_candidate),
 )
-electric_retail_service_territories_preservation_schedule = ScheduleDefinition(
-    name="electric_retail_service_territories_frozen_snapshot_integrity_schedule",
-    job=electric_retail_service_territories_preservation_job,
+electric_retail_service_territories_draft_schedule = ScheduleDefinition(
+    name="electric_retail_service_territories_eia861_draft_monthly",
+    job=electric_retail_service_territories_draft_job,
     cron_schedule="0 10 1 * *",
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [electric_retail_service_territories_eia861_candidate]
+electric_retail_service_territories_approved_baseline_drift = register_approved_baseline_drift(
+    electric_retail_service_territories_eia861_candidate,
+    "electric_retail_service_territories_approved_baseline_drift")
+ASSET_CHECKS = [
+    electric_retail_service_territories_population_complete,
+    electric_retail_service_territories_geometry_valid,
+    electric_retail_service_territories_release_pending,
+    electric_retail_service_territories_approved_baseline_drift,
+]
+JOBS = [electric_retail_service_territories_draft_job]
+SCHEDULES = [electric_retail_service_territories_draft_schedule]

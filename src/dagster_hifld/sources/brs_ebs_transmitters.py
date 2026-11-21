@@ -24,18 +24,24 @@ import pyarrow.parquet as pq
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable, capture_get,
+    validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
-    _canonical, _load_capture, _sha, _validate_capture_request_identity,
+from dagster_hifld.sources.arcgis_layer import (
+    _canonical,
+    _sha,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    load_capture,
+)
+
 
 DATASET_SLUG = "broadband-radio-service-transmitters"
 FILE_SLUG = DATASET_SLUG
@@ -137,26 +143,13 @@ def _capture(client: httpx.Client, root: Path) -> tuple[bytes, dict]:
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
-    manifest_path = root / "capture_manifest.json"
-    if manifest_path.is_symlink():
-        raise ValueError("retained_capture_manifest_symlink_rejected")
-    manifest = json.loads(manifest_path.read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
-        raise ValueError("retained_capture_manifest_invalid")
-    roster = manifest.get("artifact_roster")
-    if not isinstance(roster, dict) or set(manifest["receipts"]) != CAPTURE_NAMES:
-        raise ValueError("retained_capture_roster_or_names_invalid")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
-        raise ValueError("retained_capture_artifact_digest_mismatch")
-    captures = {}
-    for name in sorted(CAPTURE_NAMES):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, L_MDSITFS_URL)
-        captures[name] = (body, receipt)
-    return captures
+    return validate_retained_capture_replay(
+        root,
+        capture_names=CAPTURE_NAMES,
+        expected_urls={name: L_MDSITFS_URL for name in CAPTURE_NAMES},
+        load_capture=load_capture,
+        validate_request_identity=validate_capture_request_identity,
+    )
 
 
 def _zip_tables(body: bytes) -> tuple[dict[str, list[list[str]]], bytes]:
@@ -229,7 +222,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
     if set(captures) != CAPTURE_NAMES:
         raise ValueError("source_capture_name_roster_drift")
     body, receipt = captures["l_mdsitfs"]
-    _validate_capture_request_identity("l_mdsitfs", receipt, L_MDSITFS_URL)
+    validate_capture_request_identity("l_mdsitfs", receipt, L_MDSITFS_URL)
     if (receipt.get("status") != 200 or receipt.get("complete_body") is not True
             or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
         raise ValueError("source_capture_status_length_hash_or_completeness_drift")
@@ -407,7 +400,7 @@ def _parquet_bytes(published: list[dict]) -> bytes:
 def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
     digests = {}
     for name in sorted(captures):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         digests[name] = {"decoded_sha256": _sha(captures[name][0]), "wire_sha256": _sha(wire)}
     return _sha(_canonical(digests))
 
@@ -438,7 +431,7 @@ def capture_brs_ebs_transmitters(storage: StagingStorageResource, *, version: st
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/24/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "24", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
@@ -502,7 +495,9 @@ def capture_brs_ebs_transmitters(storage: StagingStorageResource, *, version: st
         "title": "Broadband Radio Service (BRS) and Educational Broadband Service (EBS) Transmitters (FCC ULS)",
         "description": ("Location records of active BRS (BR) and EBS (ED) licenses from the FCC ULS weekly public "
                         "access complete MDS/ITFS licenses file, republished under the ULS-derived tower column "
-                        "contract. Unapproved candidate; source edition, baseline, schema/ID contract, rights and "
+                        "contract. Filed license-location rows may share a "
+                        "structure; this is not a physical tower census. "
+                        "Source completeness refers only to the declared file and filters. Unapproved candidate; source edition, baseline, schema/ID contract, rights and "
                         "release decisions remain pending."),
         "publisher": PUBLISHER, "agency": "Federal Communications Commission", "source_url": L_MDSITFS_URL,
         "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
@@ -553,7 +548,7 @@ def capture_brs_ebs_transmitters(storage: StagingStorageResource, *, version: st
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
@@ -574,7 +569,7 @@ def capture_brs_ebs_transmitters(storage: StagingStorageResource, *, version: st
         if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            body, wire, _receipt = _load_capture(root, name)
+            body, wire, _receipt = load_capture(root, name)
             if (storage.read_key(f"{prefix}/raw/{name}.body") != body
                     or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
                 raise ValueError("cached_source_evidence_changed:" + name)

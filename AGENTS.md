@@ -1,124 +1,183 @@
-## Agent development practices for `hifld-next-datasets`
+# AGENTS.md: hifld-next-datasets
 
-### Scope: HIFLD Next vs civicdata
+Dagster pipelines that rebuild each HIFLD Open dataset from its original agency
+source, stage candidates, generate catalog metadata and derived formats, and
+publish approved releases. Factory roles, board flow and merge procedure are in
+the factory playbook (`/data/home/.factory/instructions/projects/hifld-next.md`),
+not here.
 
-- **HIFLD Next** holds the state of the world: reference features, usually with geometry — jurisdiction boundaries
-  (states, counties, county subdivisions, places, districts), infrastructure (power plants, substations, towers,
-  pipelines, dams), facilities and service territories. Public, versioned releases.
-- **civicdata** (`fulton-ring/bigass-data-masheen`) holds dated records of actions — filings, applications, permits,
-  violations, interconnection requests, contracts, incentives, notices, meeting records and their documents — and
-  joins to HIFLD Next by identifiers (GEOID, OCD ID, feature IDs). It serves no geometry; it reads HIFLD Next's
-  published GeoParquet at a pinned release.
-- The test: is it a *feature* (it exists now) or an *event* (it was filed or decided at a time)? A substation belongs
-  here; a proposed substation in an interconnection request belongs in civicdata.
-- Keep published releases stable and addressable (`{dataset}/{file}/{version}/geoparquet/{file}.parquet`): civicdata
-  depends on them by version. Layers are published in different CRSs (e.g. counties EPSG:4269, county subdivisions
-  and places EPSG:3857); consumers must read the CRS from the file.
-- Open decision: whether a registry of governing bodies (Census of Governments) belongs here as non-spatial
-  reference data.
+## Scope
 
-### Environments & dependencies
+- HIFLD Next holds features: things that exist now, usually with geometry
+  (boundaries, infrastructure, facilities, service territories).
+- Dated records of actions (filings, permits, interconnection requests, notices)
+  belong in civicdata (`fulton-ring/bigass-data-masheen`), which joins to HIFLD
+  Next by identifiers and reads its published GeoParquet at a pinned release. A
+  substation belongs here; a proposed substation in an interconnection request
+  belongs in civicdata.
+- Published paths are `{dataset}/{file}/{version}/...` and must stay stable and
+  addressable, because consumers pin versions. Layers keep their source CRS;
+  consumers read it from the file.
 
-- This project is bootstrapped with `uv`, which manages the vendored `.venv` and lockfile. Run `uv run <script>` so dependencies (polars, Agno, ddgs, fastapi, openai, python-dotenv, etc.) load from the managed environment.
-- Keep the dependency list lean: we now rely on `polars` for CSV I/O instead of `pandas`, and only retain packages required by Agno’s search tools (DuckDuckGo, Jina Reader) and workflow plumbing (FastAPI, ddgs, OpenAI/openrouter adapters).
-- When updating `pyproject.toml`, rerun `uv sync` to refresh `uv.lock` and confirm the installed packages match the manifest.
+## Layout
 
-### Prompt & schema updates
+- `src/dagster_hifld/sources/<dataset>.py`: source adapter (capture, validation,
+  candidate construction).
+- `src/dagster_hifld/assets/<dataset>.py`: ingest asset, blocking completeness
+  check, draft job and stopped schedule, registered through module lists.
+- `src/dagster_hifld/assets/{catalog,publish,portolan}.py`,
+  `native_geoparquet_catalog.py`, `conversion.py`, `release_approval.py`,
+  `promotion.py`, `portolan/`: shared catalog, format and release stages.
+- `src/dagster_hifld/definitions.py`: Dagster `defs` and `version_discovery_sensor`.
+- `tests/test_*.py`: unittest modules, offline fixtures (`httpx.MockTransport`).
+- `src/hifld_next_datasets/` and `prompts/`: the separate Agno source-finder CLI
+  (`uv run find-dataset-sources`), used only for source research.
+- `HIFLD_Open_Inventory_12112025.csv`: the archived HIFLD Open inventory.
+  `helm/`, `Dockerfile`: user-code image and chart values. `ops/`: acceptance
+  fixtures and GCS lifecycle policies.
 
-- Prompts live in `prompts/agent-instructions.md` and `prompts/query-template.md`. Edit those Markdown files when you need to adjust the agent’s tone, tool guidance, or target formats; the workflow loads them at runtime so no code changes are necessary for prompt tweaks.
-- Agno’s structured output is anchored by `src/hifld_next_datasets/core.py::DatasetSources`, which now includes a `files` list (each entry has `name`, `format`, and `urls` containing `SourceCandidate` records). Keep new fields minimal and descriptive to avoid schema parsing errors with structured models.
-- The agent is expected to describe every geospatial file (shapefile, GeoJSON, KMZ, GDB, etc.) plus each format-specific URL and confidence. Do not prompt for free-form JSON; rely on Agno’s schema validation instead.
+## Commands
 
-### Workflow & execution
+- `uv sync --locked` (Python 3.12). Run everything through `uv run`. Change
+  dependencies with `uv add`/`uv remove` so `uv.lock` stays in sync.
+- Full suite: `uv run python -m unittest discover tests`.
+- One module: `PYTHONPATH=tests uv run python -m unittest test_<name>`.
+- PMTiles tests need `tippecanoe` and `tippecanoe-decode` on `PATH`.
+- Local Dagster: `uv run dagster dev -m dagster_hifld.definitions` with a
+  persistent `DAGSTER_HOME`. Storage comes from `HIFLD_STAGING_BUCKET` or
+  `HIFLD_STAGING_DIR` (default `data/staging`), and `HIFLD_DATASETS_BUCKET` or
+  `HIFLD_DATASETS_DIR`.
 
-- **Tool call limit:** Agno's `tool_call_limit` is **per agent run** (each parallel agent has its own budget). It is configurable via `HIFLD_TOOL_CALL_LIMIT` (default 200). If an agent hits the limit before emitting structured output, increase it or tighten the prompt.
-- `src/hifld_next_datasets/workflow.py` constructs a `Parallel` step that spins up one agent per dataset row and runs them asynchronously via `workflow.arun()`. Each agent’s results are flattened into `dataset-source-hints.jsonl` by `src/hifld_next_datasets/scraper.py`, so the CLI only needs to slice the CSV with `--offset/--limit` and await the workflow.
-- To run a test pass, use:
-  ```bash
-  uv run find-dataset-sources --inventory HIFLD_Open_Inventory_12112025.csv --limit <n>
-  ```
-  The script automatically loads `.env` (for `OPENROUTER_API_KEY`, `HIFLD_AGNO_MODEL`, etc.) and defaults the model to `gpt-5.1-codex-mini`.
-- Default is to process all rows; use `--limit <n>` to cap how many rows run. Use `--offset <start>` to resume or reprocess a subset (e.g. `--offset 20 --limit 10`).
+## CI
 
-### Code style & best practices
+- `.github/workflows/ci.yml` runs on the PR merged into current `main`, with full
+  Git history (provenance tests read old blobs), local storage only, a writable
+  `/workspace`, and tippecanoe built from felt/tippecanoe `2d548bed`. Test modules
+  are split across four shards by file name. The required check is `test`.
+- `publish-images.yml` only builds on PRs and on this fork. Images are published
+  from the upstream `Public-Environmental-Data-Partners/hifld-next-datasets`.
+- Do not change `.github/` from dataset or maintenance work.
+- When `main` is red, every open PR is red. Tests must be deterministic. Do not
+  assert byte identity of GeoPackage, DBF or other outputs that embed creation
+  times. Use `gdal.with_geopackage_creation_time` and set the DBF date, or compare
+  decoded content. Do not depend on the wall clock or on run-time receipts in
+  content-derived versions.
 
-- **Top-level imports:** Always use top-level imports rather than inline/local imports when integrating Agno models or tools. For example, `from agno.models.openrouter import OpenRouter` should be at the top of the file, not inside the `build_agent` function. This prevents repetitive runtime overhead and makes dependencies explicit.
-- **Environment variables:** Use `load_dotenv(override=True)` instead of `load_dotenv()` when configuring CLI entrypoints like `scraper.py`. This ensures your local `.env` keys (such as `OPENROUTER_API_KEY`) correctly override any lingering keys in your global shell environment.
-- **Clean up test files:** Remove temporary debug scripts (e.g., `test_*.py`) once a pipeline bug is verified and resolved.
-- **Custom Native Tools:** Rather than writing complex subclasses for simple validation tasks, define standard Python functions with type hints and docstrings (like `check_download_url`) and pass them directly into the agent's `tools=[]` list. Agno natively wraps these functions. Ensure operations that might hang (like HTTP checks) use timeouts and do not eagerly download large payloads.
-- **Handling ArcGIS Hub SPA pages:** Many federal datasets use ArcGIS Hub which relies on client-side JS rendering. We provide explicit instructions in the prompt for the agent to bypass the HTML and interact with the ArcGIS Hub V3 API (e.g. `/api/v3/datasets?filter[slug]=...`) to dynamically fetch the dataset ID and construct static REST download links.
+## Source rules
 
-### Troubleshooting
+- Pipeline inputs come only from the producing agency, or from a distributor the
+  agency explicitly delegates (for example BTS NTAD for FRA or USACE layers). For
+  an ArcGIS item, check that the owner and org are the agency's.
+- Never fetch from mirrors or archives, even as a fallback or comparison: PASDA,
+  DataLumos/ICPSR, Stanford EarthWorks (`stacks`/`purl.stanford.edu`),
+  `web.archive.org`, Source Cooperative/SeerAI, Esri or DHS HIFLD copies, or
+  community compilations. They may be cited as research context, but never fetched.
+- Build on the current maintained product. Before writing code, check the
+  source's last data update and refresh cadence (`editingInfo`, release notes,
+  FGDC `Status/Update`, file dates) and whether the agency has superseded it (a
+  newer TIGER vintage, the EIA Energy Atlas instead of `eia.gov/maps/map_data`
+  zips, EPA_GEO FRS services instead of frozen `geodata.epa.gov` layers, a revised
+  USGS data release). Label historical sources as historical.
+- Do not build a pipeline on a release the publisher no longer maintains (retired,
+  frozen, "None planned", or a one-time release) unless currently published data
+  can recreate it. Otherwise, record what you checked on the issue and stop. Do
+  not write a docs-only PR for that.
+- If the only route to a current source needs a token or access grant, stop and
+  ask. Do not substitute an older public file.
+- OSM, Overture, Google and commercial POI or imagery sources are not pipeline
+  inputs without a recorded rights decision. See
+  `docs/source-licensing-and-redistribution.md` for permitted operations,
+  attribution and redistribution obligations.
 
-- If Agno reports “failed to parse JSON” or a schema error, inspect the command output (or add `LOG_LEVEL=debug`) to capture the raw response. Schema mismatches usually mean the agent emitted malformed JSON; adjust the prompt to keep each field simple, or add validators in `DatasetSources` if you need to coerce certain values.
-- Keep a close eye on tool dependencies: DuckDuckGo requires `ddgs`, Jina Reader uses `httpx`, and the default `openrouter` model requires `openai` or the OpenRouter SDK. Reinstall missing packages via `uv add <pkg>`/`uv remove <pkg>` as needed and recompile with `python -m py_compile` to catch syntax issues early.
+## Engineering rules
 
-### Future run tips
+- Prefer native platform features and existing, well-maintained libraries
+  (GDAL/OGR, Shapely, pyogrio, pyarrow, httpx, Dagster, `uv`) over writing your
+  own. Do not hand-roll geometry assembly, format readers or writers, retry
+  loops, paging or schedulers when a library or platform feature already does it.
+- When you are about to copy a function, class or block from another module,
+  extract it into a shared helper module instead, and switch the existing copies
+  to it in the same PR (or open an issue that lists them if that is too large).
+  Two copies is the limit.
 
-- Encourage the agent to fingerprint source agencies (NOAA, USGS, Census, etc.) before grabbing URLs; we rely on that detail when selecting between duplicates/mirrors.
-- When a dataset ships in multiple formats, create separate `DatasetFile` records so downstream consumers know which file corresponds to which format and URL.
-- Instrument new tooling (e.g., a `--dry-run` mode or telemetry tagging) in the workflow if you need fine-grained auditing for later ingestion pipelines.
+## Dataset pipeline conventions
 
----
+- A new dataset is normally three files: `sources/<x>.py`, `assets/<x>.py` and
+  `tests/test_<x>.py`. Register it by defining module-level `INGEST_ASSETS`,
+  `ASSET_CHECKS`, `JOBS` and `SCHEDULES` in `assets/<x>.py`. `assets/discovery.py`
+  collects them, and an asset that is not in those lists is not registered. Do
+  not add entries to `assets/ingest_registry.py` or the lists in `definitions.py`.
+  When resolving a conflict there, move the entries into the module's lists.
+- Ingest asset keys are `ingest/<dataset_slug>/<file_slug>`, with the slugs taken
+  from the inventory. The ingest asset stages a content-derived candidate under
+  `{dataset}/{file}/{candidate}/` and registers the publish partition
+  `{dataset}/{file}/{candidate}` (`partitions.build_publish_partition_key`).
+  Downstream assets (`publish/catalog`, `publish/formats/*`,
+  `publish/release_metadata`, `publish/verify`, `publish/promote`,
+  `publish/portolan_catalog`) are shared and need no per-dataset code.
+- Keep schedules `DefaultScheduleStatus.STOPPED` (enforced by
+  `tests/test_schedule_config_validation.py`), and keep every acceptance or
+  approval flag `False`. Merging code never authorizes publication. Release
+  approval pins the full staged inventory and happens outside PRs.
+- Reuse the shared helpers instead of copying them from another adapter:
+  `http_capture.capture_http_response`, `sources/capture_common.py` (generic
+  capture, candidate, seal and quarantine primitives), `sources/arcgis_layer.py`
+  (ArcGIS layer capture, replay, retry and geometry encoding),
+  `sources/esri_common.py`, `sources/esri_geometry.py`, `esri_pbf.py`,
+  `sources/arcgis_filegdb.py`, `sources/census_tiger_common.py`,
+  `sources/nfhl/`, `sources/epa_icis_wastewater_common.py`,
+  `sources/electric_retail_service_territories_common.py`,
+  `sources/national_inventory_of_dams_common.py`, `sources/wbd_hu_family.py`,
+  `construction_state.py`,
+  `construction_provenance.py`, `provenance.py`, `validation.sha256_file` and
+  `gdal.py`. If the logic you need exists only inside another dataset module,
+  move it into a shared module in the same PR. Do not import it from that dataset
+  module, and do not copy it. `tests/test_sources_module_contract.py` enforces
+  this: a `sources/` dataset module may import only shared modules (or its own
+  `<stem>_spec` pinned manifest), and shared modules never import dataset
+  modules.
+- Families share infrastructure: FEMA NFHL MapServer layers (`sources/nfhl/`; a
+  new layer is one `LAYERS` entry), Census TIGER (`census_tiger_common`), USACE
+  IENC, WBD hydrologic units, NHD/3DHP and GNIS. Build a family member as a thin
+  adapter over the shared module, and extend the shared module when a member
+  needs more.
+- ArcGIS layer capture: capture the service and layer documents and the count
+  plus an ID roster or OBJECTID count/min/max statistics before paging, page by
+  exact ID slices or bisected OBJECTID windows (`sources/nfhl/capture.py`), then
+  capture the "after" witnesses once the last page is done. Preserve failed attempts as evidence, keep
+  memory bounded (stream pages to disk, not to a population-wide dict), and
+  enforce byte budgets during acquisition.
+- Preserve the source as served: the native ID column (including an `fid` that
+  Fiona exposes as `feature.id`), field types and precision (Esri dates are epoch
+  milliseconds), the source datum and CRS (FCC ULS coordinates are NAD83), and the
+  geometry. Assemble polygons with GDAL/Shapely, not a hand-written ring
+  assembler, and report invalid source geometry rather than repairing it silently.
+- Every failure path that quarantines or writes evidence needs a test that
+  exercises it. Untested `except` branches have shipped with `NameError`.
+- Scratch and capture directories come from asset config (`capture_directory`);
+  the shared fallback root is `HIFLD_CAPTURE_ROOT` (`resources.default_capture_dir`).
+  Do not add hard-coded capture-root defaults or per-dataset env vars.
+- Keep module docstrings to source identity and behavior. Dated investigation
+  narrative belongs in the PR and the issue.
 
-### Dagster pipeline (`src/dagster_hifld`)
+## Pull requests
 
-This is separate from the Agno `find-dataset-sources` CLI. It implements a **three-stage** asset graph: **ingest → catalog → publish**, backed by GCS or local paths via `StagingStorageResource` / `PublishedStorageResource` (`resources.py`).
+- Target `main`. When the PR completes an issue (meets its acceptance
+  criteria), write `Closes #<issue>` in the body so GitHub closes it on merge.
+  Use `Refs #<issue>` only for related or partially covered issues, and say what
+  remains. One open PR per issue: update the existing PR rather than opening
+  another.
+- In the PR body, list every URL the pipeline fetches, who publishes it, and its
+  last data update.
+- Keep PRs focused. Add files only for runtime code, meaningful tests or essential
+  provenance. Do not delete, skip or weaken existing tests to pass CI.
 
-#### Design principles (learnings)
+## Deployment
 
-- **Explicit assets, not a mega-registry.** Each dataset (or logical file) has its own ingest asset and matching catalog/publish assets. Do not reintroduce a centralized `DATASET_SPECS_BY_SYMBOL`-style registry that tries to treat every download the same way; that pattern broke for heterogeneous sources (e.g. NOAA MapServer layers vs Census ZIPs).
-- **Large multi-file datasets colocate their slug lists** next to their ingest logic. Example: `src/dagster_hifld/assets/census_blocks_2020.py` defines `CENSUS_2020_TABBLOCK20_STATE_GEOIDS`, derived file slugs, and `CENSUS_2020_DATASET_FILE_PAIRS`. `partitions.py` only **merges** that list into `DATASET_FILE_PAIRS` so the shared partition map stays small and other datasets follow the same pattern.
-- **Versions are partition keys**, not hidden loops inside catalog/publish. Catalog and publish assets use `context.partition_key` for the version directory. Older “scan all versions in one asset body” helpers were removed to align with Dagster’s model and to make backfills targetable (`v20260214`, etc.).
-- **Asset checks** on catalog assets must use `context.partition_key` when reading `metadata/quality_manifest.json`, not `build_version_id(context)` (that encodes the *current run* time, not the staged version being checked).
-
-#### Object layout and metadata
-
-- Paths: `{dataset_slug}/{file_slug}/{version}/` with format subdirs (`shapefile`, `geopackage`, `geojson`, `file_geodatabase`, etc.).
-- Catalog writes: `metadata/quality_manifest.json`, `metadata/data_dictionary.json` (see `catalog.py` helpers).
-- **Legacy staging:** Some copies use a folder named `unknown/` for shapefile sidecars. The version-discovery logic treats `unknown` as a signal that geodata exists (`definitions.py`), and `_load_best_file` in `catalog.py` can read `.shp` from `unknown/` after trying canonical `shapefile/`.
-
-#### Partition registry
-
-- `partitions.py` builds one `DynamicPartitionsDefinition` per `(dataset_slug, file_slug)` in `DATASET_FILE_PAIRS` and exposes `PARTITIONS_BY_PAIR` and `get_partition_name` (`{dataset_slug}--{file_slug}`).
-- Adding a new dataset: register it from its own asset module, not the shared files. Define module-level `INGEST_ASSETS`, and as needed `ASSET_CHECKS`, `JOBS` and `SCHEDULES`, in `src/dagster_hifld/assets/<dataset>.py`. `assets/discovery.py` collects them, so do not edit `assets/ingest_registry.py` or the lists in `definitions.py` (parallel PRs conflict there). Catalog and publish assets derive from the ingest registry automatically. When resolving a conflict in those shared files, move the PR's entries into its module lists instead.
-- Adding a **large** dataset with many file slugs: add `*_DATASET_FILE_PAIRS` (or equivalent) in that dataset’s module (see census blocks), then extend `DATASET_FILE_PAIRS` in `partitions.py` with `*THAT_LIST` only—keep the long tables out of `partitions.py`.
-
-#### Sensors
-
-- `version_discovery_sensor` (`definitions.py`) walks staging (GCS via `gcsfs.find`, local via directory walk), finds `dataset_slug/file_slug/version` with at least one recognized format dir, skips if `metadata/quality_manifest.json` exists, then `add_dynamic_partitions` + `RunRequest` for the corresponding **catalog** asset. Pairs not in `PARTITIONS_BY_PAIR` are skipped (no silent asset creation).
-
-#### Environment variables
-
-- `HIFLD_STAGING_BUCKET` — GCS bucket for staging (no `gs://` prefix in code; value is the bucket name).
-- `HIFLD_STAGING_DIR` — local staging root when bucket unset.
-- `HIFLD_DATASETS_BUCKET` / `HIFLD_DATASETS_DIR` — publish target.
-- `DAGSTER_HOME` — use a real directory for durable run/partition state in dev and when using the CLI against a long-lived instance.
-
-#### Usage notes for humans and agents
-
-- **Materializing partitioned catalog/publish assets** from Python requires passing a `DagsterInstance` that has the dynamic partition registered (`materialize(..., instance=instance, partition_key=...)`). Otherwise Dagster raises about the instance not being available for dynamic partitions.
-- **Ephemeral `materialize()`** from a random script without `DAGSTER_HOME` / instance wiring will not show up in a separately launched Dagster UI; use `dagster asset materialize` (or `dg launch`) against the same instance you use for the webserver if you need runs in the UI.
-- **CLI / sensors** must see the same `HIFLD_STAGING_BUCKET` (and credentials) as your GCS staging; otherwise catalog will write metadata locally or to the wrong backend.
-
-#### Testing
-
-- Run the full suite: `uv run python -m unittest discover tests`
-- Tests cover partition wiring, sensor behavior (with mocks), catalog helpers, explicit asset keys (e.g. NOAA distinct layers), and resource path behavior. When changing `DATASET_FILE_PAIRS` or discovery logic, extend `tests/test_dynamic_partitions.py` or add focused tests rather than relying only on manual GCS checks.
-
-### Factory implementation and review
-
-The current assigned project playbook at
-`/data/home/.factory/instructions/projects/hifld-next.md` owns factory roles,
-admission, board routing and merge procedures. Follow that playbook and the
-current assignment for the worker's saved report schema and handoff.
-
-Managers maintain the board. Implementation workers push their changes and update
-the existing PR, then save an accurate report. Independent reviewers work
-read-only. Keep dataset PRs small: reuse existing assets and helpers, consolidate
-source evidence and documentation, and add files only for necessary runtime code,
-meaningful regressions or essential provenance.
-
-Code review and merge do not grant source, contract, baseline, rights or release
-acceptance, or authorize production publication. Preserve runtime approval gates
-and identify remaining acceptance decisions in the handoff.
+- `Public-Environmental-Data-Partners/hifld-next-datasets` (upstream) is the
+  deploy source. This fork must not publish images. Changes reach production only
+  after they are synced upstream and deployed through `hifld-next-iac`
+  (`deploy-dagster.yml` and `scripts/deploy-dagster.sh`, Helm release `dagster` in
+  GKE `hifld-prod`, namespace `hifld-next-datasets`).
+- Production publication requires independent release approval of the exact
+  staged inventory. Staging runs must never run `publish/promote`.

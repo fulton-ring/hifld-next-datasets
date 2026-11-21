@@ -34,3 +34,12 @@ def fuds_irm_property_point_geometry_quality(candidate: dict) -> AssetCheckResul
 
 fuds_irm_property_point_draft_job = define_asset_job("fuds_irm_property_point_draft_refresh", selection=AssetSelection.assets(fuds_irm_property_point_ingest))
 fuds_irm_property_point_draft_schedule = ScheduleDefinition(name="fuds_irm_property_point_draft_refresh_schedule", job=fuds_irm_property_point_draft_job, cron_schedule="0 8 1 * *", execution_timezone="America/New_York", default_status=DefaultScheduleStatus.STOPPED)
+
+
+ASSET_CHECKS = [
+    fuds_irm_property_point_complete,
+    fuds_irm_property_point_geometry_quality,
+]
+INGEST_ASSETS = [fuds_irm_property_point_ingest]
+JOBS = [fuds_irm_property_point_draft_job]
+SCHEDULES = [fuds_irm_property_point_draft_schedule]

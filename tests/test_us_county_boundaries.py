@@ -11,17 +11,25 @@ from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.assets.us_county_boundaries import us_county_boundaries_source_complete
 from dagster_hifld.assets.supported_assets import SUPPORTED_DATASET_FILE_PAIRS
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources.us_county_boundaries import (
-    EXPECTED_BYTES,
-    EXPECTED_FEATURE_COUNT,
-    EXPECTED_GEOID_SHA256,
-    EXPECTED_SHA256,
     EXPECTED_FIELDS,
     STRING_FIELDS,
     _geoparquet,
     candidate_version,
     _inspect_archive,
 )
+
+
+def _release(vintage=2026):
+    source_file = f"tl_{vintage}_us_county.zip"
+    return census_latest.ShapefileRelease(
+        vintage=vintage, layer="COUNTY", source_file=source_file,
+        source_url=f"https://www2.census.gov/geo/tiger/TIGER{vintage}/COUNTY/{source_file}",
+        directory_url=f"https://www2.census.gov/geo/tiger/TIGER{vintage}/COUNTY/",
+        listing_sha256="0" * 64, listing_bytes=1, latest_checked_at="2026-11-13T00:00:00+00:00",
+        annual_listing_sha256="1" * 64,
+    )
 
 
 class UsCountyBoundariesTests(unittest.TestCase):
@@ -32,7 +40,7 @@ class UsCountyBoundariesTests(unittest.TestCase):
                 archive.writestr(name, b"fixture")
         return sink.getvalue()
 
-    def test_candidate_version_is_bound_to_packaged_code_identity(self):
+    def test_candidate_version_is_bound_to_resolved_vintage_and_code_identity(self):
         identity = {
             "code_commit": "packaged-sha256:" + "a" * 64,
             "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
@@ -41,32 +49,33 @@ class UsCountyBoundariesTests(unittest.TestCase):
             "installed_distributions": [{"name": "dagster", "version": "1.11.0"}],
             "python": "3.12.14", "pyarrow": "23.0.1", "proj": "9.5.1", "geos": "3.13.1",
         }
-        first = candidate_version(identity)
-        self.assertEqual(first, candidate_version(identity))
-        identity = {**identity, "installed_distributions": [{"name": "dagster", "version": "1.11.1"}]}
-        self.assertNotEqual(first, candidate_version(identity))
+        first = candidate_version(_release(), "c" * 64, identity)
+        self.assertEqual(first, candidate_version(_release(), "c" * 64, identity))
+        self.assertNotEqual(first, candidate_version(_release(2027), "c" * 64, identity))
+        self.assertNotEqual(first, candidate_version(_release(), "d" * 64, identity))
 
     def test_rejects_incomplete_tiger_archive_member_roster(self):
-        body = self._archive(["tl_2023_us_county.shp"])
+        body = self._archive(["tl_2026_us_county.shp"])
         with self.assertRaisesRegex(ValueError, "tiger_archive_member_roster_drift"):
-            _inspect_archive(body)
+            _inspect_archive(body, _release())
 
     def test_rejects_archive_path_traversal_before_extraction(self):
         names = [
-            "../tl_2023_us_county.cpg", "tl_2023_us_county.dbf", "tl_2023_us_county.prj",
-            "tl_2023_us_county.shp", "tl_2023_us_county.shp.ea.iso.xml",
-            "tl_2023_us_county.shp.iso.xml", "tl_2023_us_county.shx",
+            "../tl_2026_us_county.cpg", "tl_2026_us_county.dbf", "tl_2026_us_county.prj",
+            "tl_2026_us_county.shp", "tl_2026_us_county.shp.ea.iso.xml",
+            "tl_2026_us_county.shp.iso.xml", "tl_2026_us_county.shx",
         ]
         with self.assertRaisesRegex(ValueError, "tiger_archive_unsafe_member"):
-            _inspect_archive(self._archive(names))
+            _inspect_archive(self._archive(names), _release())
 
     def test_complete_source_gate_keeps_release_acceptance_false(self):
         result = us_county_boundaries_source_complete({
-            "feature_count": EXPECTED_FEATURE_COUNT,
+            "feature_count": 3235,
             "source_population_complete": True,
-            "source_archive_bytes": EXPECTED_BYTES,
-            "source_archive_sha256": EXPECTED_SHA256,
-            "source_id_sha256": EXPECTED_GEOID_SHA256,
+            "source_archive_bytes": 1000,
+            "source_archive_sha256": "a" * 64,
+            "source_id_sha256": "b" * 64,
+            "source_vintage": "2026",
         })
         self.assertTrue(result.passed)
         self.assertFalse(result.metadata["release_accepted"].value)

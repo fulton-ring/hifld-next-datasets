@@ -21,6 +21,10 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import locks_usace_ienc as source
 
 
+
+FEATURE_COUNT = 234
+FEATURE_OIDS = list(range(1, FEATURE_COUNT + 1))
+
 def _metadata(wkid=4019):
     return {
         "id": 0, "name": "Lock", "geometryType": "esriGeometryPoint",
@@ -32,7 +36,7 @@ def _metadata(wkid=4019):
     }
 
 
-def _table(*, blob_null=False, oid_shift=0, rows=source.EXPECTED_COUNT):
+def _table(*, blob_null=False, oid_shift=0, rows=FEATURE_COUNT):
     arrays = []
     for name, _kind, _width in source.EXPECTED_FIELDS:
         dtype = source.EXPECTED_PYARROW_TYPES[name]
@@ -79,7 +83,7 @@ class LocksUsaceIencTests(unittest.TestCase):
     def test_registered_draft_asset_and_blocked_acceptance(self):
         self.assertIn(locks_usace_ienc, hifld_ingest_assets)
         self.assertEqual(locks_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = locks_usace_ienc_complete({"feature_count": 234, "source_population_complete": True})
+        check = locks_usace_ienc_complete({"feature_count": 234, "source_reported_count": 234, "source_population_complete": True})
         self.assertTrue(check.passed)
         for flag in ("mapping_approved", "rights_accepted", "release_accepted", "schema_contract_accepted"):
             self.assertFalse(check.metadata[flag].value)
@@ -87,10 +91,10 @@ class LocksUsaceIencTests(unittest.TestCase):
     def test_candidate_preserves_native_oid_binary_fields_wkb_and_unknown_datum_crs(self):
         table, audit = source.validate_native_table(_table(),
             {"crs": "EPSG:4019", "geometry_type": "Point", "layer_metadata": _metadata()},
-            source.EXPECTED_OIDS)
+            FEATURE_OIDS)
         self.assertEqual(table.num_rows, 234)
         self.assertEqual(table.column_names, source.EXPECTED_COLUMN_ORDER)
-        self.assertEqual(table.column("OBJECTID").to_pylist(), source.EXPECTED_OIDS)
+        self.assertEqual(table.column("OBJECTID").to_pylist(), FEATURE_OIDS)
         self.assertEqual(table.column("SE_ANNO_CAD_DATA").to_pylist(), [b""] * 234)
         self.assertEqual(audit["native_crs_authority"], "EPSG:4019")
         self.assertEqual(audit["native_crs_name"], "Unknown datum based upon the GRS 1980 ellipsoid")
@@ -98,7 +102,7 @@ class LocksUsaceIencTests(unittest.TestCase):
         raw = source._canonical_geoparquet(table)
         import io
         output = pq.read_table(io.BytesIO(raw))
-        self.assertEqual(output.column("OBJECTID").to_pylist(), source.EXPECTED_OIDS)
+        self.assertEqual(output.column("OBJECTID").to_pylist(), FEATURE_OIDS)
         self.assertEqual(output.column("SE_ANNO_CAD_DATA").to_pylist(), [b""] * 234)
         geo = json.loads(output.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["geometry"]["crs"]["id"], {"authority": "EPSG", "code": 4019})
@@ -114,7 +118,7 @@ class LocksUsaceIencTests(unittest.TestCase):
             with self.subTest(error=error), self.assertRaisesRegex(source.LocksQuarantineError, error):
                 source.validate_native_table(table,
                     {"crs": "EPSG:4019", "geometry_type": "Point", "layer_metadata": metadata},
-                    source.EXPECTED_OIDS)
+                    FEATURE_OIDS)
 
     def test_safe_filegdb_zip_accepts_native_archive_and_rejects_traversal(self):
         valid_sink = io.BytesIO()
@@ -138,7 +142,7 @@ class LocksUsaceIencTests(unittest.TestCase):
             zf.writestr("locks.gdb/gdb", b"x")
         schema = _metadata()
         count = {"count": 234}
-        ids = {"objectIds": source.EXPECTED_OIDS}
+        ids = {"objectIds": FEATURE_OIDS}
         job = {"status": "Completed", "recordCount": 234, "resultUrl": result_url,
                "replicaName": "hifld_locks_151_fixture"}
         create = {"statusUrl": status_url, "replicaName": "hifld_locks_151_fixture"}
@@ -165,11 +169,11 @@ class LocksUsaceIencTests(unittest.TestCase):
                        "response_headers": {"content-length": str(len(archive.getvalue()))} if name == "result_head" else {}}
             captures[name] = (body_bytes, receipt)
         result = source._validate_service_bundle(captures)
-        self.assertEqual(result[2], source.EXPECTED_OIDS)
+        self.assertEqual(result[2], FEATURE_OIDS)
         self.assertEqual(result[3], archive.getvalue())
 
         broken = dict(captures)
-        broken["ids_after"] = (source.canonical({"objectIds": source.EXPECTED_OIDS[:-1]}), captures["ids_after"][1])
+        broken["ids_after"] = (source.canonical({"objectIds": FEATURE_OIDS[:-1]}), captures["ids_after"][1])
         with self.assertRaisesRegex(source.LocksQuarantineError, "source_count_or_id_roster_drift:after"):
             source._validate_service_bundle(broken)
 
@@ -290,7 +294,7 @@ class LocksUsaceIencTests(unittest.TestCase):
                 "metadata_before": (_metadata(), "GET", source.LAYER_URL + "?f=json"),
                 "count_before": ({"count": 234}, "GET", source.LAYER_URL + "/query?" + source.urlencode(
                     {"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                "ids_before": ({"objectIds": source.EXPECTED_OIDS}, "GET", source.LAYER_URL + "/query?" + source.urlencode(
+                "ids_before": ({"objectIds": FEATURE_OIDS}, "GET", source.LAYER_URL + "/query?" + source.urlencode(
                     {"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
                 "create_replica": ({"statusUrl": status_url},
                     "POST", source.CREATE_REPLICA_URL),
@@ -345,7 +349,7 @@ class LocksUsaceIencTests(unittest.TestCase):
                 if "returnCountOnly=true" in url:
                     return response(200, source.canonical({"count": 234}))
                 if "returnIdsOnly=true" in url:
-                    return response(200, source.canonical({"objectIds": source.EXPECTED_OIDS}))
+                    return response(200, source.canonical({"objectIds": FEATURE_OIDS}))
                 raise AssertionError(f"unexpected resume request {request.method} {url}")
             mock_client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False)
             resumed_root = root.parent / "resumed"

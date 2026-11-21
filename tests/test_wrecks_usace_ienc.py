@@ -1,0 +1,319 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from dagster import DefaultScheduleStatus
+from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
+from dagster_hifld.assets.wrecks_usace_ienc import (
+    wrecks_usace_ienc, wrecks_usace_ienc_complete,
+    wrecks_usace_ienc_draft_schedule,
+)
+from dagster_hifld.http_capture import capture_roster_digests
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import wrecks_usace_ienc as source
+
+COUNT = 560
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "edd5524dc0f61f6bbcd2c2730e4db6a1b259fd622be7cb42a6c6d91348f57e7d"
+from dagster_hifld.sources.esri_common import canonical as _canonical
+
+
+class WrecksUsaceIencTests(unittest.TestCase):
+    def _point(self, oid):
+        x_span = source.EXPECTED_EXTENT["xmax"] - source.EXPECTED_EXTENT["xmin"]
+        y_span = source.EXPECTED_EXTENT["ymax"] - source.EXPECTED_EXTENT["ymin"]
+        return {"x": source.EXPECTED_EXTENT["xmin"] + ((oid - 1) % 56) * (0.9 * x_span / 55),
+                "y": source.EXPECTED_EXTENT["ymin"] + ((oid - 1) // 56) * (0.9 * y_span / 9)}
+
+    def _documents(self):
+        service = {"mapName": "WRECKS_POINT", "copyrightText": "USACE IENC",
+                   "serviceDescription": "The ruined remains of a stranded or sunken vessel which has "
+                                         "been rendered useless. (IHO Dictionary, S-32, 5th Edition, 6027)",
+                   "layers": [{"id": 31, "name": "WRECKS_POINT", "geometryType": "esriGeometryPoint"}]}
+        layer = {"id": 31, "name": "WRECKS_POINT", "geometryType": "esriGeometryPoint",
+                 "maxRecordCount": 2000, "spatialReference": {"wkid": 4326, "latestWkid": 4326},
+                 "extent": {**source.EXPECTED_EXTENT, "spatialReference": {"wkid": 4326}},
+                 "fields": source.EXPECTED_FIELD_DECLARATIONS}
+        rows = []
+        for oid in IDS:
+            attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
+                     (45000 if field["name"] == "Scale_Minimum" else
+                      (f"{field['name']}-{oid:04d}" if field["name"] == "Source_Date"
+                       else f"{field['name']}-{oid}"))
+                     for field in source.ATTRIBUTE_FIELDS}
+            rows.append({"attributes": attrs, "geometry": self._point(oid)})
+        features = {"geometryType": "esriGeometryPoint", "spatialReference": {"wkid": 4326, "latestWkid": 4326},
+                    "fields": source.QUERY_FIELD_DECLARATIONS, "features": rows}
+        return {
+            "bts_item": {"id": source.BTS_ITEM_ID, "owner": "USDOT_BTS", "type": "PDF",
+                         "title": "Inland Electronic Navigational Charts",
+                         "description": "USACE updates. Feature classes are "
+                                        "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes "
+                                        "and USACE_IENC_Master_Service_gdb.zip."},
+            "service_directory": {"services": [{"name": "IENC_Feature_Classes/WRECKS_POINT", "type": "MapServer"}]},
+            "service_before": service, "layer_before": layer,
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
+            "features": features, "layer_after": json.loads(json.dumps(layer)),
+            "service_after": json.loads(json.dumps(service)),
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
+        }
+
+    def _captures(self, docs):
+        return {name: (_canonical(value), {"status": 200}) for name, value in docs.items()}
+
+    def test_registered_stopped_asset_and_unapproved_blocking_check(self):
+        self.assertIn(wrecks_usace_ienc, hifld_ingest_assets)
+        self.assertEqual(wrecks_usace_ienc_draft_schedule.default_status,
+                         DefaultScheduleStatus.STOPPED)
+        check = wrecks_usace_ienc_complete({
+            "feature_count": 560, "source_reported_count": 560, "source_population_complete": True, "source_id_sha256": "abc",
+            "geometry_valid_count": 560, "geometry_invalid_count": 0, "geometry_empty_count": 0})
+        self.assertTrue(check.passed)
+        self.assertFalse(check.metadata["release_accepted"].value)
+        failed = wrecks_usace_ienc_complete({
+            "feature_count": 559, "source_reported_count": 560, "source_population_complete": True, "source_id_sha256": "abc",
+            "geometry_valid_count": 560, "geometry_invalid_count": 0, "geometry_empty_count": 0})
+        self.assertFalse(failed.passed)
+        geometry_failed = wrecks_usace_ienc_complete({
+            "feature_count": 560, "source_reported_count": 560, "source_population_complete": True, "source_id_sha256": "abc",
+            "geometry_valid_count": 559, "geometry_invalid_count": 1, "geometry_empty_count": 0})
+        self.assertFalse(geometry_failed.passed)
+        missing = wrecks_usace_ienc_complete({"feature_count": 560, "source_reported_count": 560, "source_population_complete": True})
+        self.assertFalse(missing.passed)
+
+    def test_capture_roster_covers_bts_service_layer_and_exact_ids(self):
+        urls = dict(source._capture_urls(IDS))
+        self.assertEqual(sorted(urls), sorted(source.BASE_CAPTURE_NAMES))
+        self.assertEqual(urls["layer_before"],
+                         "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/WRECKS_POINT"
+                         "/MapServer/31?f=pjson")
+        self.assertIn("objectIds=1%2C2%2C3%2C4%2C5%2C6%2C7%2C8", urls["features"])
+        self.assertIn("outSR=4326", urls["features"])
+        self.assertIn("returnZ=true", urls["features"])
+        self.assertIn("returnM=true", urls["features"])
+        self.assertIn("orderByFields=OBJECTID+ASC", urls["features"])
+        self.assertIn("ienccloud.us", urls["service_directory"])
+        self.assertIn("arcgis.com", urls["bts_item"])
+
+    def test_complete_native_population_and_geometry_are_validated(self):
+        fields, features, audit = source._validate(self._captures(self._documents()))
+        self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
+        self.assertEqual(len(features), 560)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
+        self.assertEqual(audit["source_vertex_count"], 560)
+        self.assertEqual(audit["source_wkid"], 4326)
+        self.assertEqual(audit["geometry_invalid_count"], 0)
+        self.assertEqual(audit["geometry_valid_count"], 560)
+        self.assertEqual(audit["geometry_empty_count"], 0)
+        self.assertEqual(audit["feature_id_distinct_count"], 560)
+        self.assertEqual(audit["feature_id_duplicate_values"], {})
+        self.assertEqual(audit["feature_id_null_count"], 0)
+        self.assertEqual(features[0]["attributes"]["Feature_ID"], "Feature_ID-1")
+        self.assertEqual(features[0]["attributes"]["Category_of_Wreck"], "Category_of_Wreck-1")
+        self.assertEqual(audit["scale_minimum_distinct_values"], [45000])
+        self.assertEqual(audit["source_date_span"],
+                         {"min": "Source_Date-0001", "max": "Source_Date-0560"})
+        bounds = audit["source_vertex_bounds"]
+        self.assertGreaterEqual(bounds["xmin"], source.EXPECTED_EXTENT["xmin"])
+        self.assertGreaterEqual(bounds["ymin"], source.EXPECTED_EXTENT["ymin"])
+        self.assertLessEqual(bounds["xmax"], source.EXPECTED_EXTENT["xmax"])
+        self.assertLessEqual(bounds["ymax"], source.EXPECTED_EXTENT["ymax"])
+        self.assertIn("not a nationwide wreck inventory", audit["source_coverage_scope"])
+
+    def test_point_wkb_is_xy_only_and_bounds_checked(self):
+        point = self._point(1)
+        wkb = source._esri_point_wkb(point)
+        self.assertEqual(wkb[:5], b"\x01\x01\x00\x00\x00")
+        self.assertEqual(len(wkb), 21)
+        for flags in ({"hasZ": True}, {"hasM": True}, {"hasZ": True, "hasM": True}):
+            with self.assertRaisesRegex(ValueError, "source_geometry_dimensional_drift"):
+                source._validate(self._captures(self._drifted(
+                    lambda d: d["features"]["features"][0]["geometry"].update(flags))))
+        with self.assertRaisesRegex(ValueError, "source_point_outside_declared_extent"):
+            source._esri_point_wkb({"x": 0.0, "y": 0.0})
+        with self.assertRaisesRegex(ValueError, "source_xy_geographic_domain_violation"):
+            source._esri_point_wkb({"x": 10000.0, "y": 37.3})
+
+    def test_feature_id_duplicates_are_preserved_and_counted_not_rejected(self):
+        docs = json.loads(json.dumps(self._documents()))
+        docs["features"]["features"][1]["attributes"]["Feature_ID"] = "Feature_ID-1"
+        _fields, features, audit = source._validate(self._captures(docs))
+        self.assertEqual(len(features), 560)
+        self.assertEqual(audit["feature_id_distinct_count"], 559)
+        self.assertEqual(audit["feature_id_duplicate_values"], {"Feature_ID-1": 2})
+        self.assertEqual(audit["feature_id_null_count"], 0)
+
+    def _drifted(self, mutate):
+        docs = json.loads(json.dumps(self._documents()))
+        mutate(docs)
+        return docs
+
+    def test_population_schema_transfer_limit_and_geometry_drift_fail_closed(self):
+        def duplicate_oid(docs):
+            attrs = docs["features"]["features"][0]["attributes"]
+            docs["features"]["features"][1]["attributes"].update(OBJECTID=attrs["OBJECTID"])
+
+        def move_point(docs, point):
+            docs["features"]["features"][0]["geometry"] = point
+
+        cases = [
+            ("population", lambda d: d["ids_after"].update(objectIds=IDS[:-1]),
+             "source_count_or_id_roster_drift"),
+            ("count", lambda d: d["count_after"].update(count=559), "source_count_or_id_roster_drift"),
+            ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
+             "source_field_schema_drift"),
+            ("page field schema", lambda d: d["features"]["fields"][2].update(name="renamed"),
+             "source_page_field_schema_drift"),
+            ("service identity", lambda d: d["service_before"].update(mapName="DRIFTED"),
+             "official_wreck_point_service_drift"),
+            ("service description", lambda d: d["service_before"].update(
+                serviceDescription="drifted"), "official_wreck_point_description_drift"),
+            ("bts link", lambda d: d["bts_item"].update(
+                description="no linked service"), "bts_ienc_official_distribution_link_drift"),
+            ("bts identity", lambda d: d["bts_item"].update(owner="SOMEONE_ELSE"),
+             "bts_ienc_item_identity_drift"),
+            ("layer identity", lambda d: d["layer_before"].update(id=32),
+             "source_layer_identity_extent_or_limit_drift"),
+            ("layer extent", lambda d: d["layer_before"].update(
+                extent={**source.EXPECTED_EXTENT, "xmin": -90.0, "spatialReference": {"wkid": 4326}}),
+             "source_layer_identity_extent_or_limit_drift"),
+            ("layer dimensional", lambda d: d["layer_before"].update(hasZ=True),
+             "source_layer_dimensional_drift"),
+            ("page dimensional", lambda d: d["features"].update(hasZ=True),
+             "source_page_dimensional_drift"),
+            ("geometry dimensional", lambda d: d["features"]["features"][0]["geometry"].update(hasZ=True),
+             "source_geometry_dimensional_drift"),
+            ("geometry structure", lambda d: d["features"]["features"][0]["geometry"].update(rings=[]),
+             "source_point_geometry_structure_drift"),
+            ("ordinates missing", lambda d: d["features"]["features"][0]["geometry"].pop("x"),
+             "source_point_ordinates_missing"),
+            ("transfer", lambda d: d["features"].update(exceededTransferLimit=True),
+             "source_feature_query_error_or_truncation"),
+            ("page CRS", lambda d: d["features"].update(spatialReference={"wkid": 3857}), "crs_drift"),
+            ("feature CRS", lambda d: d["features"]["features"][0]["geometry"].update(
+                spatialReference={"wkid": 3857}), "crs_drift"),
+            ("page geometry type", lambda d: d["features"].update(geometryType="esriGeometryPolygon"),
+             "source_page_geometry_type_drift"),
+            ("extra attribute", lambda d: d["features"]["features"][0]["attributes"].update(Extra="x"),
+             "source_attribute_roster_or_order_drift"),
+            ("integer type", lambda d: d["features"]["features"][0]["attributes"].update(
+                Scale_Minimum="45000"), "source_integer_value_type_drift"),
+            ("string type", lambda d: d["features"]["features"][0]["attributes"].update(Feature_ID=17),
+             "source_string_value_type_drift"),
+            ("oid roster", lambda d: d["features"]["features"][0]["attributes"].update(OBJECTID=571),
+             "source_oid_roster_drift"),
+            ("duplicate oid", duplicate_oid, "source_feature_id_population_drift"),
+            ("non-finite ordinate", lambda d: move_point(d, {"x": "west", "y": 37.3}),
+             "source_xy_ordinate_contract_drift"),
+            ("geographic domain", lambda d: move_point(d, {"x": 10000.0, "y": 37.3}),
+             "source_xy_geographic_domain_violation"),
+            ("outside coverage", lambda d: move_point(d, {"x": 0.0, "y": 0.0}),
+             "source_point_outside_declared_extent"),
+            ("layer changed during capture", lambda d: d["layer_after"].update(id=32),
+             "source_service_or_layer_changed_during_capture"),
+            ("service changed during capture", lambda d: d["service_after"].update(mapName="DRIFTED"),
+             "source_service_or_layer_changed_during_capture"),
+        ]
+        for label, mutate, expected in cases:
+            with self.subTest(label=label):
+                docs = json.loads(json.dumps(self._documents()))
+                mutate(docs)
+                with self.assertRaisesRegex(ValueError, expected):
+                    source._validate(self._captures(docs))
+
+    def _replay_directory(self, root, docs, mutate=None):
+        documents = json.loads(json.dumps(docs))
+        if mutate is not None:
+            mutate(documents)
+        root.mkdir(parents=True)
+        roster_urls = dict(source._capture_urls(IDS))
+        receipts = {}
+        for name in sorted(source.BASE_CAPTURE_NAMES):
+            body = _canonical(documents[name])
+            receipt = {"method": "GET", "url": roster_urls[name], "final_url": roster_urls[name],
+                       "observed_at": "2026-11-15T00:00:00+00:00", "status": 200, "complete_body": True,
+                       "wire_bytes": len(body), "wire_sha256": source._sha(body),
+                       "bytes": len(body), "sha256": source._sha(body),
+                       "content_encoding": "identity", "content_length": len(body),
+                       "error_code": None, "error_type": None}
+            receipts[name] = receipt
+            (root / f"{name}.body").write_bytes(body)
+            (root / f"{name}.wire").write_bytes(body)
+            (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+        manifest = {"complete": True, "captured_at": "2026-11-15T00:00:00+00:00",
+                    "source_feature_count": COUNT, "receipts": receipts,
+                    "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}
+        (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
+        return root
+
+    def test_drifted_replay_seals_no_ready_candidate(self):
+        def move_vertex_outside(docs):
+            docs["features"]["features"][0]["geometry"] = {"x": 0.0, "y": 0.0}
+
+        cases = [
+            ("outside coverage", move_vertex_outside, "source_point_outside_declared_extent"),
+            ("renamed field", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
+             "source_field_schema_drift"),
+        ]
+        for label, mutate, expected in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+                root = self._replay_directory(Path(tmp) / "capture", self._documents(), mutate)
+                with self.assertRaisesRegex(ValueError, expected):
+                    source.capture_wrecks_usace_ienc(storage, version="regression",
+                                                     capture_directory=str(root))
+                self.assertEqual(storage.list_prefix(""), [])
+
+    def test_valid_replay_seals_ready_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            root = self._replay_directory(Path(tmp) / "capture", self._documents())
+            with patch.object(source, "validate_construction_code_identity"), \
+                 patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
+                first = source.capture_wrecks_usace_ienc(storage, version="regression",
+                                                         capture_directory=str(root))
+            self.assertFalse(first["reused"])
+            self.assertEqual(first["feature_count"], COUNT)
+            self.assertEqual(first["source_vertex_count"], 560)
+            self.assertEqual(first["geometry_valid_count"], 560)
+            self.assertEqual(first["geometry_invalid_count"], 0)
+            self.assertEqual(first["geometry_empty_count"], 0)
+            self.assertTrue(first["source_population_complete"])
+            self.assertFalse(first["release_accepted"])
+            ready = json.loads(storage.read_key(first["candidate_ready"]))
+            self.assertEqual(ready["version"], first["version"])
+            self.assertFalse(ready["approved"])
+            prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{first['version']}"
+            staged = set(storage.list_prefix(prefix))
+            self.assertIn(f"{prefix}/geoparquet/{source.FILE_SLUG}.parquet", staged)
+            self.assertIn(f"{prefix}/raw/features.body", staged)
+            self.assertIn(f"{prefix}/raw/bts_item.receipt.json", staged)
+            self.assertIn(f"{prefix}/metadata/candidate_ready.json", staged)
+            audit = json.loads(storage.read_key(f"{prefix}/metadata/source_audit.json"))
+            self.assertEqual(audit["feature_id_distinct_count"], 560)
+            self.assertEqual(audit["source_date_span"],
+                             {"min": "Source_Date-0001", "max": "Source_Date-0560"})
+            self.assertEqual(audit["source_date_span"]["max"], "Source_Date-0560")
+            manifest = json.loads(storage.read_key(f"{prefix}/metadata/source_manifest.json"))
+            self.assertEqual(manifest["title"], "Wrecks (USACE IENC)")
+            self.assertFalse(manifest["approved"])
+            with patch.object(source, "validate_construction_code_identity"), \
+                 patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
+                second = source.capture_wrecks_usace_ienc(storage, version="regression",
+                                                          capture_directory=str(root))
+            self.assertTrue(second["reused"])
+            self.assertEqual(second["version"], first["version"])
+
+    def test_capture_version_cannot_escape_capture_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            with self.assertRaisesRegex(ValueError, "unsafe_capture_version"):
+                source.capture_wrecks_usace_ienc(storage, version="../outside")
+
+
+if __name__ == "__main__":
+    unittest.main()

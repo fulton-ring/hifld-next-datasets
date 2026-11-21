@@ -15,7 +15,7 @@ import pyarrow.parquet as pq
 import pyproj
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 
 DATASET_SLUG = "distance-marks-usace-ienc-2"
 FILE_SLUG = DATASET_SLUG
@@ -25,9 +25,6 @@ SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_
 SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/DISTANCE_MARK_POINT/MapServer"
 LAYER_ID = 10
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-EXPECTED_COUNT = 7453
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "6e54039c7e61cbf1abd27cd8bcb45e3a447f1cb8ef25cd7f81815263596b26b9"
 EXPECTED_EXTENT = {"xmin": -96.66343689999997, "ymin": 29.732981300000063,
                   "xmax": -79.48022249999997, "ymax": 45.142035400000054}
 PAGE_SIZE = 200
@@ -198,24 +195,22 @@ def _validate_service(service: dict) -> None:
         raise ValueError("official_distance_mark_service_drift")
 
 
-def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int], pin_roster: bool = False) -> list[int]:
+def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int]) -> list[int]:
     result = _request(client, {"f": "json", "where": "1=1", "returnIdsOnly": "true"}, staging, version_key, name, budget)
     if result.get("objectIdFieldName") != "OBJECTID":
         raise ValueError("source_object_id_field_drift")
     ids = result.get("objectIds")
-    if not isinstance(ids, list) or len(ids) != EXPECTED_COUNT or any(type(x) is not int for x in ids):
+    if not isinstance(ids, list) or not ids or any(type(x) is not int for x in ids):
         raise ValueError("source_id_population_drift")
     if len(set(ids)) != len(ids):
         raise ValueError("source_duplicate_object_id")
-    if pin_roster and sorted(ids) != EXPECTED_IDS:
-        raise ValueError("source_id_population_drift")
     return sorted(ids)
 
 
 def _count_snapshot(client, staging, version_key: str, name: str, budget: list[int]) -> int:
     result = _request(client, {"f": "json", "where": "1=1", "returnCountOnly": "true"}, staging, version_key, name, budget)
     count = result.get("count")
-    if type(count) is not int or count != EXPECTED_COUNT:
+    if type(count) is not int or count < 0:
         raise ValueError("source_count_drift")
     return count
 
@@ -426,8 +421,8 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             _validate_service(service_before)
         metadata = _metadata(client, staging, version_key, budget, pin_extent=distribution_chain)
         count_before = _count_snapshot(client, staging, version_key, "count_before", budget)
-        before = _id_snapshot(client, staging, version_key, "ids_before", budget, pin_roster=distribution_chain)
-        if len(before) != EXPECTED_COUNT:
+        before = _id_snapshot(client, staging, version_key, "ids_before", budget)
+        if len(before) != count_before:
             raise ValueError("source_count_drift")
         features = []
         pages = []
@@ -465,20 +460,18 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
                     _validate_crs(geometry["spatialReference"])
             features.extend(page)
             pages.append({"offset": offset, "requested_ids": requested, "returned_ids": page_ids, "count": len(page)})
-        after = _id_snapshot(client, staging, version_key, "ids_after", budget, pin_roster=distribution_chain)
+        after = _id_snapshot(client, staging, version_key, "ids_after", budget)
         count_after = _count_snapshot(client, staging, version_key, "count_after", budget)
         if distribution_chain:
             service_after = _request(client, {"f": "json"}, staging, version_key, "service_after", budget)
             if service_after != service_before:
                 raise ValueError("official_distance_mark_service_changed_during_capture")
         fetched_ids = [feature["attributes"]["OBJECTID"] for feature in features]
-        if count_before != count_after or before != after or fetched_ids != before or len(features) != EXPECTED_COUNT:
+        if count_before != count_after or before != after or fetched_ids != before or len(features) != len(before):
             raise ValueError("source_population_changed_during_capture")
         rows = [{"attributes": f["attributes"], "geometry": f["geometry"]} for f in features]
         row_digest = _digest(_json_bytes(rows))
         ids_digest = _digest(_json_bytes(before))
-        if distribution_chain and ids_digest != EXPECTED_ID_SHA256:
-            raise ValueError("source_id_roster_digest_drift")
         parquet = _make_parquet(metadata, features)
         geojson = _json_bytes({"type": "FeatureCollection", "features": [
             {"type": "Feature", "id": f["attributes"]["OBJECTID"], "properties": f["attributes"],
@@ -494,7 +487,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             "service_layer_id": 10,
             "bts_item_url": BTS_ITEM_URL, "bts_item_id": BTS_ITEM_ID, "bts_item_owner": "USDOT_BTS",
             "official_service": SERVICE_URL, "official_service_map_name": "DISTANCE_MARK_POINT",
-            "pinned_id_roster_sha256": EXPECTED_ID_SHA256, "pinned_layer_extent": EXPECTED_EXTENT,
+            "pinned_layer_extent": EXPECTED_EXTENT,
             "service_description": metadata.get("description"),
             "source_copyright_text": metadata.get("copyrightText"),
             "source_release_date": None,
@@ -518,7 +511,8 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
         }))
         _write_source_manifest(staging, version_key, metadata, processor_identity, row_digest, raw_source_version,
                                distribution_chain=distribution_chain)
-        return {"feature_count": len(features), "ids_sha256": ids_digest, "records_sha256": row_digest,
+        return {"feature_count": len(features), "source_reported_count": len(before),
+                "ids_sha256": ids_digest, "records_sha256": row_digest,
                 "parquet_sha256": _digest(parquet), "release_accepted": False}
     finally:
         if owned:

@@ -10,19 +10,23 @@ from dagster_hifld.assets.usace_overhead_pipeline_lines import (
     usace_overhead_pipeline_lines_usace_ienc,
 )
 from dagster_hifld.sources import usace_overhead_pipeline_lines as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+
+COUNT = 92
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "220aadc856da8f05136dac0a5d7f57dc74c25405f08c98ec94380a29ebd2d858"
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class UsaceOverheadPipelineLinesTests(unittest.TestCase):
     def test_asset_is_registered_refresh_stopped_and_gate_remains_unapproved(self):
         self.assertIn(usace_overhead_pipeline_lines_usace_ienc, hifld_ingest_assets)
         self.assertEqual(usace_overhead_pipeline_lines_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_overhead_pipeline_lines_complete({"feature_count": 92, "source_population_complete": True})
+        check = usace_overhead_pipeline_lines_complete({"feature_count": 92, "source_reported_count": 92, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
 
     def test_capture_page_roster_covers_source_ids_without_overlapping(self):
-        urls = source._capture_roster(source.EXPECTED_IDS)
+        urls = source._capture_roster(IDS)
         page_names = [name for name, _url in urls if name.startswith("page_")]
         self.assertEqual(page_names, [f"page_{index:03d}" for index in range(1)])
         self.assertIn("objectIds=1%2C2%2C3", dict(urls)["page_000"])
@@ -43,12 +47,12 @@ class UsaceOverheadPipelineLinesTests(unittest.TestCase):
                                         "USACE_IENC_Master_Service_gdb.zip"},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/OVERHEAD_PIPELINE_LINE", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT}, "ids_before": {"objectIds": source.EXPECTED_IDS},
-            "layer_after": json.loads(json.dumps(layer)), "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS}, "service_after": json.loads(json.dumps(service)),
+            "count_before": {"count": COUNT}, "ids_before": {"objectIds": IDS},
+            "layer_after": json.loads(json.dumps(layer)), "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS}, "service_after": json.loads(json.dumps(service)),
         }
         for page_index in range(1):
-            ids = source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]
+            ids = IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]
             rows = []
             for oid in ids:
                 attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
@@ -66,14 +70,14 @@ class UsaceOverheadPipelineLinesTests(unittest.TestCase):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 92)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 184)
         self.assertEqual(audit["geometry_valid_count"], 92)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "Feature_ID-1")
 
     def test_missing_rows_schema_drift_transfer_limit_and_crs_override_fail_closed(self):
         mutations = [
-            ("missing IDs", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]), "source_count_or_id"),
+            ("missing IDs", lambda d: d["ids_after"].update(objectIds=IDS[:-1]), "source_count_or_id"),
             ("field rename", lambda d: d["layer_before"]["fields"][2].update(name="renamed"), "source_field_schema_drift"),
             ("page truncation", lambda d: d["page_000"].update(exceededTransferLimit=True), "source_page_error"),
             ("page CRS override", lambda d: d["page_000"].update(spatialReference={"wkid": 3857, "latestWkid": 4326}), "crs_drift"),
@@ -111,10 +115,10 @@ class UsaceOverheadPipelineLinesTests(unittest.TestCase):
             with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp) / "capture"
                 root.mkdir()
-                expected_urls = dict(source._capture_roster(source.EXPECTED_IDS))
+                expected_urls = dict(source._capture_roster(IDS))
                 receipts = {}
                 for name, url in expected_urls.items():
-                    body = b"{}"
+                    body = json.dumps({"objectIds": IDS}).encode() if name == "ids_before" else b"{}"
                     wire = body
                     receipt = {"method": "GET", "url": url, "final_url": url, "observed_at": "2026-10-20T00:00:00Z",
                                "status": 200, "complete_body": True, "bytes": len(body), "sha256": source._sha(body),

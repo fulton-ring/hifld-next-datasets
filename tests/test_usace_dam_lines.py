@@ -8,7 +8,11 @@ from dagster_hifld.assets.usace_dam_lines import (
     usace_dam_lines_usace_ienc,
 )
 from dagster_hifld.sources import usace_dam_lines as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
+
+COUNT = 40
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "c0965eb00233f658aff56f7396cd4a7f72fc111b8c91b9adeff73d0690b12498"
 
 
 class UsaceDamLinesTests(unittest.TestCase):
@@ -25,14 +29,14 @@ class UsaceDamLinesTests(unittest.TestCase):
                           "description": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes USACE_IENC_Master_Service_gdb.zip"},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/DAM_LINE", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
             "service_after": service, "layer_after": layer,
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
         }
         rows = []
-        for oid in source.EXPECTED_IDS:
+        for oid in IDS:
             attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
                      (30000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}")
                      for field in source.ATTRIBUTE_FIELDS}
@@ -46,7 +50,7 @@ class UsaceDamLinesTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(usace_dam_lines_usace_ienc, hifld_ingest_assets)
         self.assertEqual(usace_dam_lines_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_dam_lines_complete({"feature_count": 40, "source_population_complete": True})
+        check = usace_dam_lines_complete({"feature_count": 40, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
 
@@ -54,7 +58,7 @@ class UsaceDamLinesTests(unittest.TestCase):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 40)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_vertex_count"], 80)
         self.assertEqual(audit["source_wkid"], 4326)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "Feature_ID-1")
@@ -62,7 +66,7 @@ class UsaceDamLinesTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]), "source_count_or_id"),
+            ("population", lambda d: d["ids_after"].update(objectIds=IDS[:-1]), "source_count_or_id"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"), "source_field_schema_drift"),
             ("transfer", lambda d: d["page_000"].update(exceededTransferLimit=True), "source_page_error"),
             ("CRS", lambda d: d["page_000"].update(spatialReference={"wkid": 3857}), "crs_drift"),

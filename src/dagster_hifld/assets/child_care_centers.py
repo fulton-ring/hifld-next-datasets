@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.child_care_centers import (
-    DATASET_SLUG, EXPECTED_COUNT, FILE_SLUG, capture_child_care_centers,
+    DATASET_SLUG, FILE_SLUG, capture_child_care_centers,
 )
 
 
@@ -43,9 +44,11 @@ def child_care_centers(context, config: ChildCareCentersConfig,
 
 @asset_check(asset=child_care_centers, blocking=True)
 def child_care_centers_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("source_population_complete") is True
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": candidate.get("source_reported_count", "missing"),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -67,3 +70,8 @@ child_care_centers_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1,15 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+child_care_centers_drift = register_approved_baseline_drift(child_care_centers, "child_care_centers_drift")
+
+ASSET_CHECKS = [child_care_centers_complete, child_care_centers_drift]

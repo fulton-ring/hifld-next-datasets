@@ -1,0 +1,1086 @@
+"""Focused contract checks for the FRA NARN Rail Nodes source adapter."""
+from __future__ import annotations
+
+import hashlib
+import copy
+import gzip
+import json
+import os
+import shutil
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+from urllib.parse import parse_qs
+
+import httpx
+from dagster import AssetCheckSeverity, DagsterInstance, materialize
+from dagster_hifld.assets import narn_rail_nodes as assets
+from dagster_hifld.capture_completeness import approved_baseline_drift
+from dagster_hifld.sources import arcgis_layer as shared
+
+import pyarrow.parquet as pq
+import shapely
+
+from dagster_hifld.sources import narn_rail_nodes as source
+
+
+def _canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+
+
+SERVICE_URL = "https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_North_American_Rail_Network_Nodes/FeatureServer"
+
+PORTAL_ITEM_BODY = json.dumps({
+    "id": "54f40ddee0844fb285dafb13a6b2f623", "owner": "USDOT_BTS",
+    "orgId": "xOi1kZaI0eWDREZv", "title": "North American Rail Network Nodes",
+    "type": "Feature Service", "access": "public", "url": SERVICE_URL,
+    "description": ("The North American Rail Network (NARN) Rail Nodes dataset was created in "
+                    "2016 and was updated on October 19, 2026 from the Federal Railroad "
+                    "Administration (FRA) and is part of the U.S. Department of Transportation "
+                    "(USDOT)/Bureau of Transportation Statistics (BTS) National Transportation "
+                    "Atlas Database (NTAD)."),
+}, separators=(",", ":")).encode()
+
+SERVICE_BODY = json.dumps({
+    "serviceItemId": "54f40ddee0844fb285dafb13a6b2f623",
+    "layers": [{"id": 0, "name": "North American Rail Network Nodes", "type": "Feature Layer"}],
+    "editingInfo": {"dataLastEditDate": 1792540624611},
+}, separators=(",", ":")).encode()
+
+EXTENT = {"xmin": -160.0, "ymin": 14.0, "xmax": -59.0, "ymax": 65.0,
+          "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
+
+
+def _fields():
+    return [
+        {"name": "OBJECTID", "type": "esriFieldTypeOID", "alias": "OBJECTID", "nullable": False, "domain": None},
+        {"name": "FRANODEID", "type": "esriFieldTypeInteger", "alias": "FRANODEID", "nullable": True, "domain": None},
+        {"name": "COUNTRY", "type": "esriFieldTypeString", "alias": "COUNTRY", "length": 2, "nullable": True, "domain": None},
+        {"name": "STATE", "type": "esriFieldTypeString", "alias": "STATE", "length": 2, "nullable": True, "domain": None},
+        {"name": "STFIPS", "type": "esriFieldTypeString", "alias": "STFIPS", "length": 2, "nullable": True, "domain": None},
+        {"name": "CTYFIPS", "type": "esriFieldTypeString", "alias": "CTYFIPS", "length": 3, "nullable": True, "domain": None},
+        {"name": "STCYFIPS", "type": "esriFieldTypeString", "alias": "STCYFIPS", "length": 5, "nullable": True, "domain": None},
+        {"name": "FRADISTRCT", "type": "esriFieldTypeSmallInteger", "alias": "FRADISTRCT", "nullable": True, "domain": None},
+        {"name": "PASSNGR", "type": "esriFieldTypeString", "alias": "PASSNGR", "length": 1, "nullable": True, "domain": None},
+        {"name": "PASSNGRSTN", "type": "esriFieldTypeString", "alias": "PASSNGRSTN", "length": 50, "nullable": True, "domain": None},
+        {"name": "BNDRY", "type": "esriFieldTypeSmallInteger", "alias": "BNDRY", "nullable": True, "domain": None},
+    ]
+
+
+def _attributes(oid, franodeid=None):
+    rows = {
+        10: {"FRANODEID": 300000, "COUNTRY": "US", "STATE": "CA", "STFIPS": "06", "CTYFIPS": "037",
+             "STCYFIPS": "06037", "FRADISTRCT": 7, "PASSNGR": "Y", "PASSNGRSTN": "Union Station", "BNDRY": 0},
+        11: {"FRANODEID": 300001, "COUNTRY": "US", "STATE": "CA", "STFIPS": "06", "CTYFIPS": "037",
+             "STCYFIPS": "06037", "FRADISTRCT": 7, "PASSNGR": None, "PASSNGRSTN": None, "BNDRY": None},
+        12: {"FRANODEID": 300002, "COUNTRY": "CA", "STATE": "BC", "STFIPS": None, "CTYFIPS": None,
+             "STCYFIPS": None, "FRADISTRCT": 8, "PASSNGR": None, "PASSNGRSTN": None, "BNDRY": 1},
+        13: {"FRANODEID": 300003, "COUNTRY": "MX", "STATE": "CO", "STFIPS": None, "CTYFIPS": None,
+             "STCYFIPS": None, "FRADISTRCT": None, "PASSNGR": None, "PASSNGRSTN": None, "BNDRY": 0},
+        14: {"FRANODEID": 300004, "COUNTRY": "US", "STATE": "AK", "STFIPS": "02", "CTYFIPS": "170",
+             "STCYFIPS": "02170", "FRADISTRCT": 8, "PASSNGR": None, "PASSNGRSTN": None, "BNDRY": 0},
+        15: {"FRANODEID": 300005, "COUNTRY": "US", "STATE": "HI", "STFIPS": "15", "CTYFIPS": "009",
+             "STCYFIPS": "15009", "FRADISTRCT": 7, "PASSNGR": None, "PASSNGRSTN": None, "BNDRY": 0},
+    }
+    values = dict(rows[oid])
+    if franodeid is not None:
+        values["FRANODEID"] = franodeid
+    return {"OBJECTID": oid, **values}
+
+
+def _geometries():
+    return {
+        10: {"x": -160.0, "y": 14.0},
+        11: {"x": -119.5, "y": 34.42},
+        12: {"x": -123.1, "y": 49.28},
+        13: {"x": -106.0, "y": 28.6},
+        14: None,
+        15: {"x": -59.0, "y": 65.0},
+    }
+
+
+def _fixture():
+    fields = _fields()
+    layer = {"id": 0, "name": "North American Rail Network Nodes", "type": "Feature Layer",
+             "geometryType": "esriGeometryPoint", "objectIdField": "OBJECTID",
+             "hasZ": False, "hasM": False, "maxRecordCount": 2000,
+             "advancedQueryCapabilities": {"supportsPagination": True, "supportsOrderBy": True},
+             "extent": EXTENT, "fields": fields}
+    service = {"serviceItemId": "54f40ddee0844fb285dafb13a6b2f623",
+               "layers": [{"id": 0, "name": "North American Rail Network Nodes", "type": "Feature Layer"}]}
+    features = [{"attributes": _attributes(oid), "geometry": _geometries()[oid]}
+                for oid in (10, 11, 12, 13, 14, 15)]
+    ids = [10, 11, 12, 13, 14, 15]
+    schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f}
+              for f in fields]
+    attr_names = [f["name"] for f in fields]
+    geometry_records, null_count, invalid_count, bounds = source._classify_geometries(features, attr_names)
+    crs = {"wkid": 4326, "latestWkid": 4326}
+    page0 = {"features": features[:2], "spatialReference": crs, "exceededTransferLimit": True}
+    page1 = {"features": features[2:4], "spatialReference": crs, "exceededTransferLimit": True}
+    page2 = {"features": features[4:], "spatialReference": crs}
+    docs = {"portal_item": json.loads(PORTAL_ITEM_BODY), "service_before": service,
+            "service_after": service, "layer_before": layer, "layer_after": layer,
+            "count_before": {"count": 6}, "count_after": {"count": 6},
+            "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
+            "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
+            "ids_seed": {"objectIdFieldName": "OBJECTID", "objectIds": ids},
+            "page_000000_00002": page0, "page_000002_00002": page1, "page_000004_00002": page2}
+    captures = {name: (json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode(), {"status": 200})
+                for name, doc in docs.items()}
+    geom = geometry_records
+    counts = (null_count, invalid_count)
+    return fields, features, captures, schema, geom, counts, bounds
+
+
+def _pins(features, schema, geom, counts, bounds):
+    null_count, invalid_count = counts
+    return dict(PAGE_START_RECORDS=2,
+                EXPECTED_NULL_GEOMETRY_COUNT=null_count,
+                EXPECTED_INVALID_GEOMETRY_COUNT=invalid_count,
+                EXPECTED_FRANODEID_NULL_COUNT=0, EXPECTED_FRANODEID_DUPLICATE_COUNT=0,
+                EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
+                EXPECTED_SERVICE_LAYER_ROSTER=[(0, "North American Rail Network Nodes", "Feature Layer")])
+
+
+def _page_features(captures):
+    rows = [row for name in sorted(captures) if name.startswith("page_")
+            for row in json.loads(captures[name][0])["features"]]
+    return rows
+
+
+def _live_docs(*, added=False, removed=False):
+    fields, features, captures, schema, *_ = _fixture()
+    features[4]['geometry'] = {'x': -150.0, 'y': 60.0}
+    if added:
+        extra = copy.deepcopy(features[1])
+        extra['attributes'].update(OBJECTID=16, FRANODEID=300006)
+        extra['geometry'] = {'x': -55.0, 'y': 66.0}
+        features.append(extra)
+    if removed:
+        features.pop(0)
+    docs = {name: json.loads(body) for name, (body, _) in captures.items() if not name.startswith('page_')}
+    ids = [row['attributes']['OBJECTID'] for row in features]
+    for name in ('ids_seed', 'ids_before', 'ids_after'):
+        docs[name]['objectIds'] = ids
+    for name in ('count_before', 'count_after'):
+        docs[name]['count'] = len(ids)
+    extent = {'xmin': min(row['geometry']['x'] for row in features),
+              'ymin': min(row['geometry']['y'] for row in features),
+              'xmax': max(row['geometry']['x'] for row in features),
+              'ymax': max(row['geometry']['y'] for row in features),
+              'spatialReference': {'wkid': 4326}}
+    for name in ('layer_before', 'layer_after'):
+        docs[name]['extent'] = extent
+    return docs, features, hashlib.sha256(_canonical(schema)).hexdigest()
+
+
+def _client(docs, features, *, bisect=False, torn=False, missing_row=False, gzip_mtime=0, refusal_kind='error'):
+    counts = {}
+    def respond(request):
+        query = parse_qs(request.url.query.decode())
+        if 'resultOffset' in query:
+            offset, width = int(query['resultOffset'][0]), int(query['resultRecordCount'][0])
+            if bisect and offset == 0 and width > 1:
+                if refusal_kind == 'request':
+                    raise httpx.ConnectError('fixture connection refusal', request=request)
+                if refusal_kind == 'partial':
+                    wire = gzip.compress(b'partial response', mtime=0)[:-5]
+                    return httpx.Response(200, headers={'Content-Encoding': 'gzip'}, stream=httpx.ByteStream(wire))
+                if refusal_kind == 'transport':
+                    class Interrupted(httpx.SyncByteStream):
+                        def __iter__(self):
+                            yield gzip.compress(b'partial response', mtime=0)[:-5]
+                            raise httpx.ReadError('fixture interrupted transfer')
+                    return httpx.Response(200, headers={'Content-Encoding': 'gzip'}, stream=Interrupted())
+                body = _canonical({'error': {'code': 500}})
+                if refusal_kind == 'status':
+                    return httpx.Response(503, stream=httpx.ByteStream(body))
+                if refusal_kind == 'length':
+                    return httpx.Response(200, headers={'Content-Length': 'invalid'}, stream=httpx.ByteStream(body))
+                if refusal_kind == 'length_mismatch':
+                    return httpx.Response(200, headers={'Content-Length': str(len(body) + 1)}, stream=httpx.ByteStream(body))
+            else:
+                rows = features[offset:offset + width]
+                if missing_row and offset == 0:
+                    rows = rows[:-1]
+                body = json.dumps({'features': rows, 'spatialReference': {'wkid': 4326},
+                    'exceededTransferLimit': offset + width < len(features)}, separators=(',', ':')).encode()
+            return httpx.Response(200, headers={'Content-Encoding': 'gzip'},
+                stream=httpx.ByteStream(gzip.compress(body, mtime=gzip_mtime)))
+        if 'returnIdsOnly' in query:
+            doc = docs['ids_before']
+        elif 'returnCountOnly' in query:
+            key = str(request.url)
+            counts[key] = counts.get(key, 0) + 1
+            doc = {'count': len(features) + 1} if torn and counts[key] == 2 else docs['count_before']
+        elif '/sharing/rest/content/items/' in request.url.path:
+            doc = docs['portal_item']
+        elif request.url.path.endswith('/0'):
+            doc = docs['layer_before']
+        else:
+            doc = docs['service_before']
+        return httpx.Response(200, stream=httpx.ByteStream(_canonical(doc)))
+    return httpx.Client(transport=httpx.MockTransport(respond))
+
+
+class NarnRailNodesTests(unittest.TestCase):
+    def test_bisection_refusal_custody_replay(self):
+        docs, features, _ = _live_docs()
+        with tempfile.TemporaryDirectory() as tmp, patch.multiple(source, PAGE_START_RECORDS=4,
+                DOC_CAPTURE_BASE_DELAY_SECONDS=0, PAGE_PROBE_BASE_DELAY_SECONDS=0):
+            root = Path(tmp)
+            for kind in ('error', 'partial', 'request', 'transport', 'status', 'length', 'length_mismatch'):
+                retained = root / kind
+                with _client(docs, features, bisect=True, refusal_kind=kind) as client:
+                    captures = {}
+                    for name, url in [('ids_seed', source._query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'})),
+                                      *source._doc_urls()]:
+                        captures[name] = source._capture_with_retry(client, url, retained, name,
+                            max_bytes=source.MAX_CAPTURE_BYTES, attempts=4, base_delay=0)
+                    captures.update(source._capture_pages(client, retained, len(features)))
+                    for name, url in source._after_doc_urls():
+                        captures[name] = source._capture_with_retry(client, url, retained, name,
+                            max_bytes=source.MAX_CAPTURE_BYTES, attempts=4, base_delay=0)
+                manifest = {'complete': True, 'receipts': {name: receipt for name, (_, receipt) in captures.items()},
+                            'artifact_roster': source.capture_roster_digests(retained)}
+                (retained / 'capture_manifest.json').write_bytes(_canonical(manifest))
+                with self.subTest(kind=kind, mode='legitimate'):
+                    self.assertEqual(set(source._read_replay(retained)), set(captures))
+                for mode in ('missing', 'missing_root_parent', 'missing_attempt', 'url', 'attempt_url', 'body', 'success'):
+                    directory = root / f'{kind}-{mode}'
+                    shutil.copytree(retained, directory)
+                    parent = 'page_000000_00002'
+                    if mode in ('missing', 'missing_root_parent', 'missing_attempt'):
+                        name = {'missing': parent, 'missing_root_parent': 'page_000000_00004',
+                                'missing_attempt': parent + '.attempt-01'}[mode]
+                        for suffix in ('.body', '.wire', '.receipt.json'):
+                            (directory / (name + suffix)).unlink()
+                    elif mode in ('url', 'attempt_url'):
+                        name = parent if mode == 'url' else parent + '.attempt-01'
+                        path = directory / (name + '.receipt.json')
+                        receipt = json.loads(path.read_bytes())
+                        receipt['url'] = source._page_query(2, 2)
+                        receipt['final_url'] = receipt['url']
+                        path.write_bytes(_canonical(receipt))
+                    elif mode == 'body':
+                        path = directory / (parent + '.body')
+                        path.write_bytes(b'{}')
+                        path = directory / (parent + '.receipt.json')
+                        receipt = json.loads(path.read_bytes())
+                        receipt.update(bytes=2, sha256=source._sha(b'{}'))
+                        path.write_bytes(_canonical(receipt))
+                    else:
+                        (directory / (parent + '.body')).write_bytes(b'{}')
+                        (directory / (parent + '.wire')).write_bytes(b'{}')
+                        path = directory / (parent + '.receipt.json')
+                        receipt = json.loads(path.read_bytes())
+                        receipt.update(bytes=2, sha256=source._sha(b'{}'), wire_bytes=2, wire_sha256=source._sha(b'{}'),
+                            complete_body=True, status=200, content_encoding='identity', content_length=None,
+                            error_code=None, error_type=None, final_url=receipt['url'])
+                        path.write_bytes(_canonical(receipt))
+                    manifest['artifact_roster'] = source.capture_roster_digests(directory, exclude={'capture_manifest.json'})
+                    (directory / 'capture_manifest.json').write_bytes(_canonical(manifest))
+                    with self.subTest(kind=kind, mode=mode), self.assertRaises(ValueError):
+                        source._read_replay(directory)
+
+    def test_real_acquisition_replay_refresh_and_changed_population(self):
+        from dagster_hifld.resources import StagingStorageResource
+        docs, features, schema_sha = _live_docs()
+        with tempfile.TemporaryDirectory() as tmp, DagsterInstance.ephemeral() as instance, \
+                patch.multiple(source, EXPECTED_SCHEMA_SHA256=schema_sha, PAGE_START_RECORDS=2,
+                               DOC_CAPTURE_BASE_DELAY_SECONDS=0, PAGE_PROBE_BASE_DELAY_SECONDS=0):
+            root = Path(tmp)
+            storage = StagingStorageResource(local_dir=str(root / 'stage'))
+            client = _client(docs, features, bisect=True)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                first = source.capture_narn_rail_nodes(storage, version='fixture', capture_directory=str(root / 'live'))
+            prefix = first['candidate_ready'].removesuffix('/metadata/candidate_ready.json')
+            original = {key: storage.read_key(key) for key in storage.list_prefix(prefix)}
+            self.assertTrue((Path(first['capture_directory']) / 'page_000000_00002.body').exists())
+            with patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected network')):
+                replay = source.capture_narn_rail_nodes(storage, version='replay',
+                    capture_directory=str(root / 'replay'), offline_capture_directory=first['capture_directory'])
+            self.assertTrue(replay['reused'])
+            self.assertEqual(replay['version'], first['version'])
+            client = _client(docs, features, bisect=True, gzip_mtime=1)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                refreshed = source.capture_narn_rail_nodes(storage, version='refresh', capture_directory=str(root / 'fresh'))
+            self.assertTrue(refreshed['reused'])
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix(prefix)}, original)
+            added_docs, added_features, _ = _live_docs(added=True)
+            client = _client(added_docs, added_features)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                result = materialize([*assets.INGEST_ASSETS, *assets.ASSET_CHECKS], instance=instance,
+                    resources={'staging_storage': storage}, run_config={'ops': {assets.fra_narn_rail_network_nodes.op.name: {
+                        'config': {'capture_directory': str(root / 'added')}}}})
+            self.assertTrue(result.success)
+            added = result.output_for_node(assets.fra_narn_rail_network_nodes.op.name)
+            self.assertEqual(added['feature_count'], 7)
+            evaluations = {check.check_name: check for check in result.get_asset_check_evaluations()}
+            self.assertTrue(evaluations['fra_narn_rail_network_nodes_complete'].passed)
+            warning = evaluations['fra_narn_rail_network_nodes_approved_baseline_drift']
+            self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(warning.metadata['comparison_status'].value, 'skipped_no_approved_baseline')
+            drift = approved_baseline_drift(added, {**first, 'release_accepted': True})
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.metadata['feature_count_delta'].value, 1)
+            removed_docs, removed_features, _ = _live_docs(removed=True)
+            client = _client(removed_docs, removed_features)
+            with patch.object(source.httpx, 'Client', return_value=client):
+                removed = source.capture_narn_rail_nodes(storage, version='removed', capture_directory=str(root / 'removed'))
+            self.assertEqual(removed['feature_count'], 5)
+            self.assertNotEqual(removed['version'], first['version'])
+            retained = Path(first['capture_directory'])
+            retained_bytes = sum(path.stat().st_size for path in retained.iterdir())
+            accepted_names = json.loads((retained / 'capture_manifest.json').read_bytes())['receipts']
+            accepted_bytes = sum((retained / f'{name}.{suffix}').stat().st_size
+                for name in accepted_names for suffix in ('body', 'wire'))
+            self.assertLess(accepted_bytes, retained_bytes - 1)
+            with patch.object(source, 'MAX_CAPTURE_TOTAL_BYTES', retained_bytes - 1), \
+                    patch.object(Path, 'read_bytes', side_effect=AssertionError('read before budget admission')), \
+                    patch.object(source.shutil, 'copyfile', side_effect=AssertionError('copy before budget admission')):
+                with self.assertRaisesRegex(ValueError, 'source_capture_exceeds_scratch_budget'):
+                    source.capture_narn_rail_nodes(storage, version='total-budget',
+                        capture_directory=str(root / 'total-budget'), offline_capture_directory=str(retained))
+            for mode in ('missing_wire', 'missing_refusal', 'wire', 'forged_gzip', 'url', 'manifest',
+                         'extra', 'budget', 'symlink_root', 'symlink_manifest', 'symlink_artifact',
+                         'rostered_extra', 'rostered_page', 'rostered_attempt'):
+                directory = root / ('bad-' + mode)
+                shutil.copytree(first['capture_directory'], directory)
+                page = 'page_000002_00002'
+                manifest_path = directory / 'capture_manifest.json'
+                manifest = json.loads(manifest_path.read_bytes())
+                if mode == 'missing_wire':
+                    (directory / f'{page}.wire').unlink()
+                elif mode == 'missing_refusal':
+                    (directory / 'page_000000_00002.body').unlink()
+                elif mode == 'wire':
+                    (directory / f'{page}.wire').write_bytes(b'corrupt')
+                elif mode in ('forged_gzip', 'url'):
+                    receipt_path = directory / f'{page}.receipt.json'
+                    receipt = json.loads(receipt_path.read_bytes())
+                    if mode == 'forged_gzip':
+                        wire = b'not-valid-gzip'
+                        (directory / f'{page}.wire').write_bytes(wire)
+                        receipt.update(wire_bytes=len(wire), wire_sha256=source._sha(wire), content_encoding='gzip')
+                        manifest['artifact_roster'][f'{page}.wire'] = {'bytes': len(wire), 'sha256': source._sha(wire)}
+                    else:
+                        receipt.update(url=source.LAYER_URL + '/unrelated', final_url=source.LAYER_URL + '/unrelated')
+                    receipt_path.write_bytes(_canonical(receipt) + b'\n')
+                    manifest['receipts'][page] = receipt
+                    body = receipt_path.read_bytes()
+                    manifest['artifact_roster'][receipt_path.name] = {'bytes': len(body), 'sha256': source._sha(body)}
+                    manifest_path.write_bytes(_canonical(manifest) + b'\n')
+                elif mode == 'manifest':
+                    manifest_path.write_bytes(b'{}')
+                elif mode == 'extra':
+                    (directory / 'unrostered.body').write_bytes(b'{}')
+                elif mode.startswith('rostered_'):
+                    name = {'rostered_extra': 'unrelated.body', 'rostered_page': 'page_999999_00002.body',
+                            'rostered_attempt': 'layer_before.attempt-99.body'}[mode]
+                    body = b'{}'
+                    (directory / name).write_bytes(body)
+                    manifest['artifact_roster'][name] = {'bytes': len(body), 'sha256': source._sha(body)}
+                    manifest_path.write_bytes(_canonical(manifest) + b'\n')
+                elif mode.startswith('symlink_'):
+                    path = directory if mode == 'symlink_root' else (
+                        manifest_path if mode == 'symlink_manifest' else directory / f'{page}.body')
+                    target = root / ('target-' + mode)
+                    path.rename(target)
+                    path.symlink_to(target, target_is_directory=mode == 'symlink_root')
+                else:
+                    with (directory / f'{page}.wire').open('wb') as stream:
+                        stream.truncate(source.MAX_CAPTURE_BYTES + 1)
+                expected_error = {'forged_gzip': 'retained_capture_wire_body_mismatch',
+                                  'url': 'retained_capture_request_mismatch',
+                                  'budget': 'source_capture_exceeds_scratch_budget'}.get(mode, '.')
+                if mode.startswith('rostered_'):
+                    expected_error = 'retained_capture_artifact_name_invalid'
+                with self.subTest(replay=mode), patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected network')):
+                    with self.assertRaisesRegex((ValueError, OSError), expected_error):
+                        source.capture_narn_rail_nodes(storage, version='refused',
+                            capture_directory=str(root / 'refused'), offline_capture_directory=str(directory))
+            staged = Path(storage.local_dir) / prefix
+            manifest_path = staged / 'metadata/source_manifest.json'
+            original_manifest = manifest_path.read_bytes()
+            manifest_path.write_bytes(b'{}')
+            with self.assertRaisesRegex(ValueError, 'cached_candidate_object_integrity_failed'):
+                source.capture_narn_rail_nodes(storage, version='conflict', capture_directory=str(root / 'conflict'),
+                    offline_capture_directory=first['capture_directory'])
+            manifest_path.write_bytes(original_manifest)
+            state = Path(storage.local_dir) / f"_construction-state/{source.DATASET_SLUG}/{first['version']}.json"
+            state.unlink()
+            with self.assertRaisesRegex(ValueError, 'unsealed_candidate_prefix'):
+                source.capture_narn_rail_nodes(storage, version='partial', capture_directory=str(root / 'partial'),
+                    offline_capture_directory=first['capture_directory'])
+
+    def test_real_acquisition_rejects_torn_witness_and_incomplete_page(self):
+        from dagster_hifld.resources import StagingStorageResource
+        docs, features, schema_sha = _live_docs()
+        with tempfile.TemporaryDirectory() as tmp, patch.multiple(source,
+                EXPECTED_SCHEMA_SHA256=schema_sha, PAGE_START_RECORDS=2,
+                DOC_CAPTURE_BASE_DELAY_SECONDS=0, PAGE_PROBE_BASE_DELAY_SECONDS=0):
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / 'stage'))
+            for mode in ('torn', 'page'):
+                client = _client(docs, features, torn=mode == 'torn', missing_row=mode == 'page')
+                with self.subTest(mode=mode), patch.object(source.httpx, 'Client', return_value=client):
+                    with self.assertRaises(ValueError):
+                        source.capture_narn_rail_nodes(storage, version='invalid', capture_directory=str(Path(tmp) / mode))
+            self.assertFalse(storage.list_prefix(source.DATASET_SLUG))
+            self.assertTrue(storage.list_prefix('_quarantine/' + source.DATASET_SLUG))
+
+    def test_streamed_list_sha_matches_canonical_digest(self):
+        items = [[1, {"a": "b", "list": [1, 2, 3]}], None, "x", 4.5]
+        self.assertEqual(source._list_sha(items), hashlib.sha256(_canonical(items)).hexdigest())
+
+    def test_native_fields_ids_and_leading_zeros_preserved_in_parquet(self):
+        fields, features, captures, schema, geom, counts, _ = _fixture()
+        with patch.multiple(source, **_pins(features, schema, geom, counts, None)):
+            _, original_fields, extracted = source._validate_captures(captures)
+            body = source._parquet_bytes(original_fields, extracted["features"])
+        with tempfile.NamedTemporaryFile(suffix=".parquet") as stream:
+            stream.write(body)
+            stream.flush()
+            table = pq.read_table(stream.name)
+        self.assertEqual(table.num_rows, 6)
+        self.assertEqual(table.column("OBJECTID").to_pylist(), [10, 11, 12, 13, 14, 15])
+        self.assertEqual(table.column("FRANODEID").type.__str__(), "int32")
+        self.assertEqual(table.column("FRANODEID").to_pylist(),
+                         [300000, 300001, 300002, 300003, 300004, 300005])
+        self.assertEqual(table.column("COUNTRY").to_pylist(), ["US", "US", "CA", "MX", "US", "US"])
+        # FIPS strings keep their leading zeros verbatim; nulls stay null.
+        self.assertEqual(table.column("STFIPS").to_pylist(), ["06", "06", None, None, "02", "15"])
+        self.assertEqual(table.column("CTYFIPS").to_pylist(), ["037", "037", None, None, "170", "009"])
+        self.assertEqual(table.column("STCYFIPS").to_pylist(),
+                         ["06037", "06037", None, None, "02170", "15009"])
+        self.assertEqual(table.column("FRADISTRCT").type.__str__(), "int16")
+        self.assertEqual(table.column("FRADISTRCT").to_pylist(), [7, 7, 8, None, 8, 7])
+        self.assertEqual(table.column("PASSNGR").to_pylist(), ["Y", None, None, None, None, None])
+        self.assertEqual(table.column("PASSNGRSTN").to_pylist()[0], "Union Station")
+        self.assertEqual(table.column("BNDRY").to_pylist(), [0, None, 1, 0, 0, 0])
+        points = [shapely.from_wkb(wkb) if wkb is not None else None
+                  for wkb in table.column("geometry").to_pylist()]
+        self.assertIsInstance(points[0], shapely.Point)
+        self.assertEqual((points[0].x, points[0].y), (-160.0, 14.0))
+        self.assertIsNone(points[4])
+        self.assertEqual((points[5].x, points[5].y), (-59.0, 65.0))
+        geo = json.loads(table.schema.metadata[b"geo"])
+        self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4326)
+        self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
+
+    def test_id_roster_response_order_is_not_population_drift(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        for name, ids in (("ids_seed", [12, 10, 11, 14, 13, 15]), ("ids_before", [11, 12, 10, 13, 14, 15]),
+                          ("ids_after", [10, 11, 12, 13, 14, 15])):
+            doc = json.loads(captures[name][0])
+            doc["objectIds"] = ids
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(extracted["ids"], [10, 11, 12, 13, 14, 15])
+        self.assertEqual(extracted["audit"]["null_geometry_count"], 1)
+
+    def test_portal_item_owner_change_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        portal = json.loads(captures["portal_item"][0])
+        portal["owner"] = "NOT_USDOT_BTS"
+        captures["portal_item"] = (json.dumps(portal, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_portal_item_identity_drift"):
+                source._validate_captures(captures)
+
+    def test_portal_item_url_change_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        portal = json.loads(captures["portal_item"][0])
+        portal["url"] = "https://mirror.invalid/arcgis/rest/services/Other/FeatureServer"
+        captures["portal_item"] = (json.dumps(portal, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_portal_item_identity_drift"):
+                source._validate_captures(captures)
+
+    def test_portal_item_delegation_text_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        portal = json.loads(captures["portal_item"][0])
+        portal["description"] = "A repackaged copy of rail nodes, no FRA lineage stated."
+        captures["portal_item"] = (json.dumps(portal, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "official_FRA_NTAD_relationship_drift"):
+                source._validate_captures(captures)
+
+    def test_service_item_identity_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        service = json.loads(captures["service_before"][0])
+        service["serviceItemId"] = "00000000000000000000000000000000"
+        captures["service_before"] = (json.dumps(service, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "official_BTS_narn_rail_nodes_service_identity_drift"):
+                source._validate_captures(captures)
+
+    def test_service_layer_roster_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        service = json.loads(captures["service_before"][0])
+        service["layers"].append({"id": 1, "name": "Extra Layer", "type": "Feature Layer"})
+        captures["service_before"] = (json.dumps(service, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "official_BTS_narn_rail_nodes_service_identity_drift"):
+                source._validate_captures(captures)
+
+    def test_layer_geometry_type_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        layer = json.loads(captures["layer_before"][0])
+        layer["geometryType"] = "esriGeometryPolyline"
+        captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "exact_BTS_narn_rail_nodes_layer_identity_drift"):
+                source._validate_captures(captures)
+
+    def test_pagination_capability_change_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        layer = json.loads(captures["layer_before"][0])
+        layer["advancedQueryCapabilities"] = {"supportsPagination": False, "supportsOrderBy": True}
+        captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_pagination_capability_changed"):
+                source._validate_captures(captures)
+
+    def test_record_limit_change_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        layer = json.loads(captures["layer_before"][0])
+        layer["maxRecordCount"] = 1000
+        captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_record_limit_drift"):
+                source._validate_captures(captures)
+
+    def test_layer_extent_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        layer = json.loads(captures["layer_before"][0])
+        layer["extent"]["xmax"] = -50.0
+        captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_layer_extent_drift"):
+                source._validate_captures(captures)
+
+    def test_crs_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        page = json.loads(captures["page_000000_00002"][0])
+        page["spatialReference"] = {"wkid": 3857, "latestWkid": 3857}
+        captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_page_000000_crs_drift"):
+                source._validate_captures(captures)
+
+    def test_unexpected_field_is_quarantined_by_contract(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        layer = json.loads(captures["layer_before"][0])
+        layer["fields"].append({"name": "SURPRISE", "type": "esriFieldTypeString"})
+        captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_schema_contract_drift"):
+                source._validate_captures(captures)
+
+    def test_missing_page_id_is_not_accepted(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        page = json.loads(captures["page_000000_00002"][0])
+        page["features"] = page["features"][:1]
+        captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_reordered"):
+                source._validate_captures(captures)
+
+    def test_final_page_cannot_claim_transfer_truncation(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        final = json.loads(captures["page_000004_00002"][0])
+        final["exceededTransferLimit"] = True
+        captures["page_000004_00002"] = (json.dumps(final, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_page_unexpected_exceeded_transfer_limit"):
+                source._validate_captures(captures)
+
+    def test_record_value_change_is_accepted(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        page = json.loads(captures["page_000000_00002"][0])
+        page["features"][0]["attributes"]["COUNTRY"] = "XX"
+        captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(extracted["features"][0]["attributes"]["COUNTRY"], "XX")
+
+    def test_geometry_change_is_accepted(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        page = json.loads(captures["page_000000_00002"][0])
+        page["features"][1]["geometry"]["x"] = -120.5
+        captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(extracted["features"][1]["geometry"]["x"], -120.5)
+
+    def test_coordinate_range_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        page = json.loads(captures["page_000000_00002"][0])
+        page["features"][0]["geometry"]["x"] = -200.0
+        captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_coordinate_range_drift"):
+                source._validate_captures(captures)
+
+    def test_non_numeric_point_geometry_fails_closed(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        page = json.loads(captures["page_000002_00002"][0])
+        page["features"][0]["geometry"] = {"x": "NaN", "y": 49.28}
+        captures["page_000002_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_geometry_population_drift"):
+                source._validate_captures(captures)
+
+    def test_null_geometry_count_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        page = json.loads(captures["page_000002_00002"][0])
+        page["features"][0]["geometry"] = None
+        captures["page_000002_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_geometry_population_drift"):
+                source._validate_captures(captures)
+
+    def test_franodeid_null_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        page = json.loads(captures["page_000000_00002"][0])
+        page["features"][0]["attributes"]["FRANODEID"] = None
+        captures["page_000000_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_feature_id_null_drift"):
+                source._validate_captures(captures)
+
+    def test_franodeid_duplicate_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        page = json.loads(captures["page_000002_00002"][0])
+        page["features"][0]["attributes"]["FRANODEID"] = 300000
+        captures["page_000002_00002"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_feature_id_duplicate_drift"):
+                source._validate_captures(captures)
+
+    def test_count_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        count = json.loads(captures["count_after"][0])
+        count["count"] = 5
+        captures["count_after"] = (json.dumps(count, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+                source._validate_captures(captures)
+
+    def test_id_roster_drift_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        ids = json.loads(captures["ids_after"][0])
+        ids["objectIds"] = [10, 11, 12, 13, 14, 99]
+        captures["ids_after"] = (json.dumps(ids, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+                source._validate_captures(captures)
+
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        added = {"attributes": {**_attributes(10), "OBJECTID": 16, "FRANODEID": 300099},
+                 "geometry": {"x": -100.0, "y": 40.0}}
+        ids = [10, 11, 12, 13, 14, 15, 16]
+        for name in ("ids_seed", "ids_before", "ids_after"):
+            doc = json.loads(captures[name][0]); doc["objectIds"] = ids
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), {"status": 200})
+        for name in ("count_before", "count_after"):
+            doc = json.loads(captures[name][0]); doc["count"] = 7
+            captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), {"status": 200})
+        page = {"features": [added], "spatialReference": {"wkid": 4326, "latestWkid": 4326}}
+        captures["page_000006_00001"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            _, _, extracted = source._validate_captures(captures)
+        self.assertEqual(len(extracted["features"]), 7)
+        from dagster_hifld.assets.narn_rail_nodes import (
+            fra_narn_rail_network_nodes_approved_baseline_drift,
+        )
+        candidate = {"dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+            "feature_count": 7, "source_id_sha256": source._sha(source._canonical(ids)),
+            "release_accepted": False}
+        drift = fra_narn_rail_network_nodes_approved_baseline_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+
+    def test_seed_roster_mismatch_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        seed = json.loads(captures["ids_seed"][0])
+        seed["objectIds"] = [10, 11, 12, 13, 14, 99]
+        captures["ids_seed"] = (json.dumps(seed, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+                source._validate_captures(captures)
+
+    def test_page_tiling_gap_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        del captures["page_000004_00002"]
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_page_tiling_incomplete_or_overlapped"):
+                source._validate_captures(captures)
+
+    def test_malformed_page_name_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        captures["page_xxxxx_00002"] = captures.pop("page_000004_00002")
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_capture_roster_incomplete_or_unexpected"):
+                source._validate_captures(captures)
+
+    def test_layer_metadata_change_during_capture_is_rejected(self):
+        _, features, captures, schema, geom, counts, bounds = _fixture()
+        layer = json.loads(captures["layer_after"][0])
+        layer["maxRecordCount"] = 1000
+        captures["layer_after"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
+        features = _page_features(captures)
+        with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)):
+            with self.assertRaisesRegex(ValueError, "source_layer_metadata_changed_during_capture"):
+                source._validate_captures(captures)
+
+    def test_transient_producer_error_doc_is_retried_with_evidence(self):
+        ok_body = b'{"objectIds": []}'
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            body = error_body if len(calls) == 1 else ok_body
+            digest = hashlib.sha256(body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                       "complete_body": True, "wire_bytes": len(body), "wire_sha256": digest,
+                       "bytes": len(body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(shared, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep") as sleep_mock:
+                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+                                                            root, "probe", max_bytes=1024,
+                                                            attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+            self.assertEqual(body, ok_body)
+            self.assertEqual(calls, ["probe", "probe"])
+            self.assertEqual((root / "probe.body").read_bytes(), ok_body)
+            self.assertEqual((root / "probe.attempt-01.body").read_bytes(), error_body)
+            self.assertTrue(sleep_mock.called)
+
+    def test_persistent_producer_error_doc_exhausts_retries(self):
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            digest = hashlib.sha256(error_body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                       "complete_body": True, "bytes": len(error_body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(error_body)
+            (capture_root / f"{name}.wire").write_bytes(error_body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return error_body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(shared, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+                                                            root, "probe", max_bytes=1024,
+                                                            attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+            self.assertEqual(body, error_body)
+            self.assertEqual(len(calls), source.DOC_CAPTURE_ATTEMPTS)
+            for attempt in range(1, source.DOC_CAPTURE_ATTEMPTS):
+                self.assertEqual((root / f"probe.attempt-{attempt:02d}.body").read_bytes(), error_body)
+
+    def test_incomplete_transport_capture_is_retried_bounded(self):
+        ok_body = b'{"objectIds": []}'
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            if name == "probe2":
+                raise ValueError("unrelated_source_capture_failure")
+            if len(calls) == 1:
+                (capture_root / f"{name}.body").write_bytes(b"")
+                (capture_root / f"{name}.wire").write_bytes(b"")
+                (capture_root / f"{name}.receipt.json").write_bytes(b'{"status": null}\n')
+                raise ValueError(f"incomplete_source_capture:{name}")
+            digest = hashlib.sha256(ok_body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                       "complete_body": True, "bytes": len(ok_body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(ok_body)
+            (capture_root / f"{name}.wire").write_bytes(ok_body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return ok_body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(shared, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+                                                            root, "probe", max_bytes=1024,
+                                                            attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                                            base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+                with self.assertRaisesRegex(ValueError, "unrelated_source_capture_failure"):
+                    source._capture_with_retry(None, "https://producer.invalid/other",
+                                               root, "probe2", max_bytes=1024,
+                                               attempts=source.DOC_CAPTURE_ATTEMPTS,
+                                               base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS)
+            self.assertEqual(body, ok_body)
+            self.assertEqual(calls.count("probe"), 2)
+            self.assertEqual(len(calls), 3)
+            self.assertEqual((root / "probe.attempt-01.receipt.json").read_bytes(), b'{"status": null}\n')
+
+    def test_adaptive_bisection_splits_producer_error_doc_failures(self):
+        _, features, fixture_captures, _, _, _, _ = _fixture()
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            body = error_body if name == "page_000000_00004" else bodies[name]
+            digest = hashlib.sha256(body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "observed_at":
+                       "2026-11-13T00:00:00+00:00", "status": 200, "complete_body": True,
+                       "wire_bytes": len(body), "wire_sha256": digest, "bytes": len(body),
+                       "sha256": digest, "content_encoding": None, "content_length": str(len(body)),
+                       "error_code": None}
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            root.mkdir()
+            with patch.multiple(source, PAGE_START_RECORDS=4,
+                                PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                pages = source._capture_pages(None, root, 6)
+            self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
+            self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
+            self.assertEqual(calls.count("page_000000_00004"), 1)
+
+    def test_adaptive_bisection_splits_persistent_transport_failures(self):
+        _, features, fixture_captures, _, _, _, _ = _fixture()
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+        calls = []
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            calls.append(name)
+            if name == "page_000000_00004":
+                (capture_root / f"{name}.body").write_bytes(b"")
+                (capture_root / f"{name}.wire").write_bytes(b"")
+                (capture_root / f"{name}.receipt.json").write_bytes(b'{"status": null}\n')
+                raise ValueError(f"incomplete_source_capture:{name}")
+            body = bodies[name]
+            digest = hashlib.sha256(body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "observed_at":
+                       "2026-11-13T00:00:00+00:00", "status": 200, "complete_body": True,
+                       "wire_bytes": len(body), "wire_sha256": digest, "bytes": len(body),
+                       "sha256": digest, "content_encoding": None, "content_length": str(len(body)),
+                       "error_code": None}
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            root.mkdir()
+            with patch.multiple(source, PAGE_START_RECORDS=4,
+                                PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                pages = source._capture_pages(None, root, 6)
+            self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
+            self.assertEqual(calls.count("page_000000_00004"), 1)
+
+    def test_unservable_single_feature_fails_explicitly(self):
+        error_body = b'{"error": {"code": 500, "message": "Error performing query operation"}}'
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            digest = hashlib.sha256(error_body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "status": 200,
+                       "complete_body": True, "bytes": len(error_body), "sha256": digest}
+            (capture_root / f"{name}.body").write_bytes(error_body)
+            (capture_root / f"{name}.wire").write_bytes(error_body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return error_body, receipt
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "captures"
+            root.mkdir()
+            with patch.multiple(source, PAGE_START_RECORDS=4,
+                                PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.time, "sleep"):
+                with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
+                    source._capture_pages(None, root, 6)
+
+    def test_capture_requires_explicit_local_staging(self):
+        from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with self.assertRaisesRegex(ValueError, "explicit_local_staging_resource_required"):
+                source.capture_narn_rail_nodes(PublishedStorageResource(use_local=True,
+                                                                        local_dir=str(root)),
+                                               version="v20261113")
+            bucketed = StagingStorageResource(use_local=False, bucket="some-bucket")
+            with self.assertRaisesRegex(ValueError, "explicit_local_staging_resource_required"):
+                source.capture_narn_rail_nodes(bucketed, version="v20261113")
+            prefixed = StagingStorageResource(use_local=True, local_dir=str(root), prefix="sub")
+            with self.assertRaisesRegex(ValueError, "explicit_local_staging_resource_required"):
+                source.capture_narn_rail_nodes(prefixed, version="v20261113")
+
+    def test_invalid_version_is_rejected(self):
+        from dagster_hifld.resources import StagingStorageResource
+        with tempfile.TemporaryDirectory() as temporary:
+            storage = StagingStorageResource(use_local=True, local_dir=temporary, prefix="")
+            with self.assertRaisesRegex(ValueError, "invalid_version"):
+                source.capture_narn_rail_nodes(storage, version="v/invalid")
+
+    def test_missing_approval_preserves_populated_accepted_inventory(self):
+        from dagster_hifld.assets.publish import _copy_version_files
+        from dagster_hifld.release_approval import ReleaseApprovalError
+        from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+
+        with tempfile.TemporaryDirectory() as staging_dir, tempfile.TemporaryDirectory() as published_dir:
+            staging = StagingStorageResource(local_dir=staging_dir, use_local=True)
+            published = PublishedStorageResource(local_dir=published_dir, use_local=True)
+            staging.write(source.DATASET_SLUG, source.FILE_SLUG, "candidate-v1",
+                          "geoparquet/north-american-rail-network-nodes.parquet", b"candidate")
+            accepted_key = published.write(source.DATASET_SLUG, source.FILE_SLUG, "accepted-v1",
+                                           "geoparquet/north-american-rail-network-nodes.parquet", b"accepted")
+            before = {key: (published.object_snapshot(key), published.read_key(key))
+                      for key in published.list_prefix()}
+            self.assertEqual(set(before), {accepted_key})
+            with patch.dict(os.environ, {"HIFLD_RELEASE_APPROVALS": ""}):
+                with self.assertRaisesRegex(ReleaseApprovalError,
+                                            "missing_independent_release_approval_registry"):
+                    _copy_version_files(staging, published, source.DATASET_SLUG,
+                                        source.FILE_SLUG, "candidate-v1")
+            after = {key: (published.object_snapshot(key), published.read_key(key))
+                     for key in published.list_prefix()}
+            self.assertEqual(after, before)
+
+    def _seal_catalog_cache_flow(self):
+        from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
+
+        fields, features, fixture_captures, schema, geom, counts, bounds = _fixture()
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            body = bodies[name]
+            digest = hashlib.sha256(body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url, "observed_at": "2026-11-13T00:00:00+00:00",
+                       "status": 200, "complete_body": True, "wire_bytes": len(body), "wire_sha256": digest,
+                       "bytes": len(body), "sha256": digest, "content_encoding": None,
+                       "content_length": str(len(body)), "error_code": None}
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            return body, receipt
+
+        class EmptyClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        with tempfile.TemporaryDirectory(prefix="narn-rail-nodes-e2e-") as temporary:
+            root = Path(temporary)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)), \
+                 patch.object(shared, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
+                candidate = source.capture_narn_rail_nodes(storage, version="vfixture",
+                                                           capture_directory=str(root / "captures"))
+                self.assertEqual(candidate["feature_count"], 6)
+                self.assertEqual(candidate["source_null_geometry_count"], counts[0])
+                self.assertEqual(candidate["source_invalid_geometry_count"], counts[1])
+                prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
+                state_key = f"_construction-state/{source.DATASET_SLUG}/{candidate['version']}.json"
+                self.assertTrue(storage.object_snapshot(state_key))
+                for name, body in bodies.items():
+                    self.assertEqual(storage.read_key(f"{prefix}/raw/{name}.body"), body)
+                    self.assertEqual(storage.read_key(f"{prefix}/raw/{name}.wire"), body)
+                snapshot_source_metadata(storage, source.DATASET_SLUG, source.FILE_SLUG,
+                                         candidate["version"])
+                manifest = load_resolved_source_manifest(storage, source.DATASET_SLUG, source.FILE_SLUG,
+                                                         candidate["version"]).metadata
+                summary = summarize_staged_catalog(storage, source.DATASET_SLUG, source.FILE_SLUG,
+                                                   candidate["version"], source.DATASET_SLUG,
+                                                   source_metadata=manifest)
+                self.assertEqual(summary.quality_manifest["null_geometry_count"], 1)
+                self.assertFalse(summary.quality_manifest["quality_check_passed"])
+                write_catalog_metadata(storage, dataset_slug=source.DATASET_SLUG,
+                                       file_slug=source.FILE_SLUG, version=candidate["version"],
+                                       quality_dict=summary.quality_manifest,
+                                       dictionary_dict=summary.data_dictionary)
+                reused = source.capture_narn_rail_nodes(storage, version="vfixture",
+                                                        capture_directory=str(root / "captures"))
+                self.assertTrue(reused["reused"])
+                self.assertEqual(reused["version"], candidate["version"])
+
+    def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
+        self._seal_catalog_cache_flow()
+
+    def test_packaged_runtime_without_git_seals_then_reuses_candidate(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(prefix="narn-rail-nodes-packaged-") as temporary:
+            packaged = Path(temporary) / "runtime"
+            packaged.mkdir()
+            shutil.copytree(repo_root / "src/dagster_hifld", packaged / "src/dagster_hifld",
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            for name in ("pyproject.toml", "uv.lock"):
+                shutil.copy2(repo_root / name, packaged / name)
+            self.assertFalse((packaged / ".git").exists())
+            packaged_source = packaged / "src/dagster_hifld/sources/narn_rail_nodes.py"
+            with patch.object(source, "__file__", str(packaged_source)):
+                identity = source._code_identity()
+                self.assertEqual(identity["code_identity_scheme"], "sha256-packaged-dagster-hifld-v1")
+                self.assertEqual(identity["working_tree_status"], "unknown")
+                self.assertTrue(identity["code_commit"].startswith("packaged-sha256:"))
+                self._seal_catalog_cache_flow()
+
+
+if __name__ == "__main__":
+    unittest.main()

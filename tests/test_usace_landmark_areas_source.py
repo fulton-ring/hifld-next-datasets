@@ -13,12 +13,14 @@ import shapely
 from dagster import DefaultScheduleStatus
 
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
+
+COUNT = 6
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "17ec0c346922df8a32b8fee47a41171e9d6fddd3b46b04f9c3a70d9eb7b14af7"
 from dagster_hifld.sources.usace_landmark_areas import (
     BTS_ITEM_ID,
-    EXPECTED_COUNT,
     EXPECTED_FIELD_DECLARATIONS,
     EXPECTED_FIELDS,
-    EXPECTED_ID_SHA256,
     EXPECTED_LAYER_EXTENT,
     _capture_roster,
     _esri_polygon,
@@ -37,7 +39,7 @@ from dagster_hifld.definitions import defs
 
 
 def _docs(ids: list[int] | None = None) -> dict[str, dict]:
-    object_ids = ids or list(range(1, EXPECTED_COUNT + 1))
+    object_ids = ids or list(range(1, COUNT + 1))
     fields = EXPECTED_FIELD_DECLARATIONS
     item = {
         "id": BTS_ITEM_ID,
@@ -91,8 +93,8 @@ def _docs(ids: list[int] | None = None) -> dict[str, dict]:
         "service_after": service,
         "layer_before": layer,
         "layer_after": layer,
-        "count_before": {"count": EXPECTED_COUNT},
-        "count_after": {"count": EXPECTED_COUNT},
+        "count_before": {"count": COUNT},
+        "count_after": {"count": COUNT},
         "ids_seed": {"objectIds": object_ids},
         "ids_before": {"objectIds": object_ids},
         "ids_after": {"objectIds": object_ids},
@@ -121,7 +123,7 @@ class UsaceLandmarkAreasSourceTest(unittest.TestCase):
         self.assertIn(usace_landmark_areas_draft_schedule.name,
                       {schedule.name for schedule in registered.schedule_defs})
         self.assertEqual(usace_landmark_areas_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_landmark_areas_complete({"feature_count": EXPECTED_COUNT, "source_population_complete": True})
+        check = usace_landmark_areas_complete({"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["mapping_approved"].value)
@@ -138,17 +140,17 @@ class UsaceLandmarkAreasSourceTest(unittest.TestCase):
     def test_complete_id_roster_and_geometry_are_checked(self) -> None:
         fields, features, audit = _validate(_captures(_docs()))
         self.assertEqual(fields, EXPECTED_FIELD_DECLARATIONS)
-        self.assertEqual(len(features), EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], EXPECTED_ID_SHA256)
-        self.assertEqual(audit["geometry_valid_count"], EXPECTED_COUNT)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
+        self.assertEqual(audit["geometry_valid_count"], COUNT)
         self.assertEqual(audit["geometry_empty_count"], 0)
         self.assertEqual(audit["geometry_invalid_count"], 0)
-        self.assertEqual(audit["source_vertex_count"], EXPECTED_COUNT * 5)
+        self.assertEqual(audit["source_vertex_count"], COUNT * 5)
 
     def test_changed_ids_fail_closed(self) -> None:
         docs = _docs()
-        docs["ids_after"] = {"objectIds": list(range(1, EXPECTED_COUNT)) + [7]}
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        docs["ids_after"] = {"objectIds": list(range(1, COUNT)) + [7]}
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             _validate(_captures(docs))
 
     def test_type_loss_fails_closed(self) -> None:
@@ -176,7 +178,7 @@ class UsaceLandmarkAreasSourceTest(unittest.TestCase):
         self.assertIsNone(features[0]["attributes"]["Feature_ID"])
         parquet = pq.read_table(io.BytesIO(_parquet_bytes(fields, features, 4326)))
         self.assertEqual(parquet["Feature_ID"].null_count, 1)
-        self.assertEqual(parquet["OBJECTID"].to_pylist(), list(range(1, EXPECTED_COUNT + 1)))
+        self.assertEqual(parquet["OBJECTID"].to_pylist(), list(range(1, COUNT + 1)))
 
     def test_unexpected_column_fails_closed(self) -> None:
         docs = _docs()
@@ -284,7 +286,7 @@ class UsaceLandmarkAreasSourceTest(unittest.TestCase):
                     _validate(_captures(docs))
 
     def test_page_queries_request_z_and_m_and_reject_returned_dimensions(self) -> None:
-        pages = [(name, url) for name, url in _capture_roster(list(range(1, EXPECTED_COUNT + 1)))
+        pages = [(name, url) for name, url in _capture_roster(list(range(1, COUNT + 1)))
                  if name.startswith("page_")]
         self.assertEqual(len(pages), 1)
         for _name, url in pages:

@@ -1,9 +1,10 @@
 """Explicit Dagster ingest/check/job for the EPA RCRA TSD draft candidate."""
 from dagster import (
-    AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
-    ScheduleDefinition, asset, asset_check, define_asset_job,
+    AssetCheckResult, AssetKey, Config, DefaultScheduleStatus,
+    ScheduleDefinition, asset, asset_check,
 )
 
+from dagster_hifld.assets.staging_refresh import define_staging_capture_job
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -59,9 +60,8 @@ def epa_rcra_tsd_complete(candidate: dict) -> AssetCheckResult:
     )
 
 
-epa_rcra_tsd_draft_job = define_asset_job(
-    "epa_rcra_tsd_draft_refresh",
-    selection=AssetSelection.assets(epa_rcra_treatment_storage_and_disposal_facilities),
+epa_rcra_tsd_draft_job = define_staging_capture_job(
+    "epa_rcra_tsd_draft_refresh", epa_rcra_treatment_storage_and_disposal_facilities,
 )
 epa_rcra_tsd_draft_schedule = ScheduleDefinition(
     name="epa_rcra_tsd_draft_refresh_schedule",
@@ -70,3 +70,8 @@ epa_rcra_tsd_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [epa_rcra_treatment_storage_and_disposal_facilities]
+ASSET_CHECKS = [epa_rcra_tsd_complete]
+JOBS = [epa_rcra_tsd_draft_job]
+SCHEDULES = [epa_rcra_tsd_draft_schedule]

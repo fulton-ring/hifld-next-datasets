@@ -51,8 +51,7 @@ def _capture_fixture():
         "page_000": {"spatialReference": sr, "features": rows[:2], "exceededTransferLimit": True},
         "page_001": {"spatialReference": sr, "features": rows[2:], "exceededTransferLimit": False},
     }
-    with patch.multiple(source, EXPECTED_COUNT=3, EXPECTED_IDS=ids,
-                        EXPECTED_ID_SHA256=hashlib.sha256(source._canonical(ids)).hexdigest(), PAGE_SIZE=2):
+    with patch.object(source, "PAGE_SIZE", 2):
         names = ["ids_seed", *[name for name, _url in source._capture_roster(ids)]]
     # `_capture_roster` uses its module-level count only through the supplied IDs.
     return {name: (_body(docs[name]), {}) for name in names}, docs
@@ -62,7 +61,8 @@ class CoastlinesSourceValidationTests(unittest.TestCase):
     def test_registered_completeness_check_exposes_capture_evidence_digest(self):
         check_fn = coastlines_usace_ienc_complete.node_def.compute_fn.decorated_fn
         result = check_fn({
-            "feature_count": source.EXPECTED_COUNT,
+            "feature_count": 3,
+            "source_reported_count": 3,
             "source_population_complete": True,
             "source_capture_evidence_sha256": "a" * 64,
         })
@@ -74,8 +74,7 @@ class CoastlinesSourceValidationTests(unittest.TestCase):
         if mutate:
             mutate(docs)
         captures = {name: (_body(docs[name]), {}) for name in captures}
-        with patch.multiple(source, EXPECTED_COUNT=3, EXPECTED_IDS=[1, 2, 3],
-                            EXPECTED_ID_SHA256=hashlib.sha256(source._canonical([1, 2, 3])).hexdigest(), PAGE_SIZE=2):
+        with patch.object(source, "PAGE_SIZE", 2):
             return source._validate(captures)
 
     def test_accepts_complete_patched_count_fixture_and_nonfinal_transfer_flag(self):

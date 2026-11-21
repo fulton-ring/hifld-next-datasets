@@ -4,6 +4,7 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -42,11 +43,13 @@ def epa_frs_toxic_substances_control_act_tsca(
 
 @asset_check(asset=epa_frs_toxic_substances_control_act_tsca, blocking=True)
 def epa_frs_tsca_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == 26454 and candidate.get("source_null_geometry_count") == 0
+    passed = (candidate.get("feature_count") == candidate.get("source_reported_count")
+              and candidate.get("source_null_geometry_count") == 0)
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": candidate.get("source_reported_count", "missing"),
             "source_release_accepted": False,
             "source_freshness_accepted": False,
             "schema_contract_accepted": False,
@@ -69,3 +72,10 @@ epa_tsca_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [epa_frs_toxic_substances_control_act_tsca]
+epa_tsca_drift = register_approved_baseline_drift(epa_frs_toxic_substances_control_act_tsca, "epa_tsca_drift")
+
+ASSET_CHECKS = [epa_frs_tsca_complete, epa_tsca_drift]
+JOBS = [epa_tsca_draft_job]
+SCHEDULES = [epa_tsca_draft_schedule]

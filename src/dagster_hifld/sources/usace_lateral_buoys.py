@@ -16,20 +16,30 @@ import pyarrow.parquet as pq
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import (
-    DECODE_BLOCK_BYTES, CaptureProgress, capture_roster_digests, validate_capture_roster,
+    DECODE_BLOCK_BYTES, CaptureProgress, capture_roster_digests, validate_retained_capture_replay,
 )
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
-    _canonical, _capture_identity,
-    _load_capture, _sha, _validate_spatial_reference,
+from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
+    read_ienc_layer_replay,
+    ienc_layer_capture_roster,
+    _canonical,
+    _sha,
+    _validate_spatial_reference,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    capture_identity,
+    load_capture,
+)
+
 
 DATASET_SLUG = "lateral-buoys-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -40,11 +50,6 @@ SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/LA
 LAYER_ID = 15
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 10
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "ef58d7c6937c627ace93d94e1045c06ff884c23bbb9f4aa5c1bb276842be4629"
-EXPECTED_RECORD_SHA256 = "4090ed48ffcc491ab7356633544d2ad56efb9e0c28ca8445776599f871159af0"
-EXPECTED_GEOMETRY_SHA256 = "138b1ed6d65a4901947154baad8ba3a18aafdd4d0d0bef9dd300e2c315d06c85"
 EXPECTED_SCHEMA_SHA256 = "78c8ab21fe31ad223172bae71ed4b0dcbd766582d5eabff9fac0410e6ca70a59"
 PAGE_SIZE = 250
 MAX_CAPTURE_BYTES = 4_000_000
@@ -71,9 +76,13 @@ EXPECTED_FIELD_DECLARATIONS = [
 EXPECTED_EXTENT = {"xmin": -93.27942469999994, "ymin": 35.27340060000006,
                    "xmax": -79.77055599999994, "ymax": 41.51746030000004}
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
-CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before",
-                 "ids_before", "layer_after", "count_after", "ids_after", "service_after",
-                 *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
+_BASE_CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer_before", "count_before", "ids_before", "layer_after", "count_after", "ids_after", "service_after"}
+
+
+def _capture_names(ids: list[int]) -> set[str]:
+    return set(_BASE_CAPTURE_NAMES) | {
+        f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
+
 
 
 def _query(params: dict[str, object]) -> str:
@@ -81,20 +90,15 @@ def _query(params: dict[str, object]) -> str:
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("bts_item", BTS_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
-            ("service_before", SERVICE_URL + "?f=pjson"), ("layer_before", LAYER_URL + "?f=json"),
-            ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-            ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds": ",".join(map(str, page_ids)),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=json"),
-                 ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                 ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                 ("service_after", SERVICE_URL + "?f=pjson")])
-    return urls
+    return ienc_layer_capture_roster(
+        ids,
+        bts_item_url=BTS_ITEM_URL,
+        service_directory_url=SERVICE_DIRECTORY_URL,
+        service_url=SERVICE_URL,
+        layer_url=LAYER_URL,
+        page_size=PAGE_SIZE,
+        layer_format="json",
+    )
 
 
 class _CaptureBudgetExceeded(ValueError):
@@ -116,7 +120,8 @@ def _validate_replay_budget(root: Path, *, capture_max_bytes: int,
     total = _capture_disk_bytes(root)
     if total > capture_max_bytes or total > MAX_CAPTURE_BYTES:
         raise ValueError("retained_capture_exceeds_total_byte_budget")
-    for name in CAPTURE_NAMES:
+    for body_path in root.glob("*.body"):
+        name = body_path.name.removesuffix(".body")
         limit = layer_response_max_bytes if name in {"layer_before", "layer_after"} else response_max_bytes
         for suffix in ("wire", "body"):
             path = root / f"{name}.{suffix}"
@@ -176,38 +181,15 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str, *, staging: 
     )
 
 
-def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
-    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
-            or receipt.get("final_url") != expected_url):
-        raise ValueError("retained_capture_request_identity_mismatch:" + name)
-
-
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
-    manifest_path = root / "capture_manifest.json"
-    if manifest_path.is_symlink():
-        raise ValueError("retained_capture_manifest_symlink_rejected")
-    manifest = json.loads(manifest_path.read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
-        raise ValueError("retained_capture_manifest_invalid")
-    roster = manifest.get("artifact_roster")
-    if not isinstance(roster, dict) or set(manifest["receipts"]) != CAPTURE_NAMES:
-        raise ValueError("retained_capture_roster_or_names_invalid")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
-        raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_roster(EXPECTED_IDS))
-    captures = {}
-    for name in sorted(CAPTURE_NAMES):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
-
+    return read_ienc_layer_replay(
+        root, capture_roster=_capture_roster,
+        load_capture=load_capture,
+        validate_request_identity=validate_capture_request_identity)
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
-    if set(captures) != CAPTURE_NAMES:
+    ids_before = capture_witness(captures)
+    if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     item = docs["bts_item"]
@@ -245,13 +227,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         _validate_spatial_reference(extent_reference, "source_layer_extent")
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
-    count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (count_before != EXPECTED_COUNT or count_after != count_before or not isinstance(ids_before, list)
-            or any(type(oid) is not int for oid in ids_before) or ids_before != EXPECTED_IDS
-            or ids_after != ids_before or len(set(ids_before)) != EXPECTED_COUNT
-            or _sha(_canonical(ids_before)) != EXPECTED_ID_SHA256):
-        raise ValueError("source_count_or_id_population_drift")
     features = []
     geometry_valid = 0
     for name in sorted(doc for doc in captures if doc.startswith("page_")):
@@ -261,7 +236,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         _validate_spatial_reference(page.get("spatialReference"), "source_" + name + "_page")
         rows = page.get("features")
         expected_index = int(name[-3:])
-        page_ids = EXPECTED_IDS[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
+        page_ids = ids_before[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
         if not isinstance(rows, list) or len(rows) != len(page_ids):
             raise ValueError("source_page_population_incomplete:" + name)
         observed = []
@@ -305,7 +280,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if sorted(observed) != page_ids or len(set(observed)) != len(observed):
             raise ValueError("source_page_id_population_drift:" + name)
     ids = [row["attributes"]["OBJECTID"] for row in features]
-    if sorted(ids) != EXPECTED_IDS or len(ids) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT:
+    if sorted(ids) != ids_before or len(ids) != len(ids_before) or len(set(ids)) != len(ids_before):
         raise ValueError("source_feature_id_population_drift")
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     coordinates = [[row["attributes"]["OBJECTID"], row["geometry"]["x"], row["geometry"]["y"]]
@@ -318,16 +293,12 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     records_sha = _sha(_canonical([row["attributes"] for row in features]))
     geometry_sha = _sha(_canonical(coordinates))
     schema_sha = _sha(_canonical(layer["fields"]))
-    if records_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_record_snapshot_drift")
-    if geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_snapshot_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise ValueError("source_schema_snapshot_drift")
     feature_id_values = [row["attributes"]["Feature_ID"] for row in features]
     source_dates = [row["attributes"]["Source_Date"] for row in features
                     if row["attributes"]["Source_Date"] is not None]
-    audit = {"source_feature_count": len(features), "source_id_sha256": EXPECTED_ID_SHA256,
+    audit = {"source_feature_count": len(features), "source_id_sha256": _sha(_canonical(sorted(ids))),
              "source_id_min": min(ids), "source_id_max": max(ids),
              "source_schema_sha256": schema_sha, "source_record_sha256": records_sha,
              "source_geometry_sha256": geometry_sha,
@@ -376,7 +347,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
 
 
 def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
-    return _sha(_canonical(_capture_identity(captures, root)))
+    return _sha(_canonical(capture_identity(captures, root)))
 
 
 def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str,
@@ -421,7 +392,7 @@ def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/141/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "141", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
@@ -435,8 +406,9 @@ def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str
                     layer_response_max_bytes=layer_response_max_bytes)
                 ids = json.loads(ids_body).get("objectIds")
                 captures["ids_before"] = (ids_body, ids_receipt)
-                if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-                        or ids != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT):
+                if (not isinstance(ids, list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
                     raise ValueError("source_seed_id_population_drift")
                 roster = _capture_roster(ids)
                 for name, url in roster:
@@ -471,7 +443,7 @@ def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str
     identity = processing_identity(Path(__file__).parents[3])
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
-        "source_capture_evidence": _capture_identity(captures, root),
+        "source_capture_evidence": capture_identity(captures, root),
         "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
         "bts_item_succession_accepted": False, "source_release_accepted": False,
         "source_freshness_accepted": False, "schema_contract_accepted": False,
@@ -525,7 +497,7 @@ def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
@@ -547,7 +519,7 @@ def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str
         if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            body, wire, _receipt = _load_capture(root, name)
+            body, wire, _receipt = load_capture(root, name)
             if (storage.read_key(f"{prefix}/raw/{name}.body") != body
                     or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
                 raise ValueError("cached_source_evidence_changed:" + name)
@@ -555,8 +527,8 @@ def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str
             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": EXPECTED_COUNT,
+            "feature_count": len(features), "source_reported_count": len(features), "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
             "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
@@ -581,8 +553,8 @@ def capture_usace_lateral_buoys(storage: StagingStorageResource, *, version: str
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
     )
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-        "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1, "source_id_max": EXPECTED_COUNT,
+        "feature_count": len(features), "source_reported_count": len(features), "source_population_complete": True,
+        "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
         "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],

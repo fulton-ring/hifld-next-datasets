@@ -1,0 +1,649 @@
+"""Complete native capture for the AO of the U.S. Courts circuit boundary layer."""
+from __future__ import annotations
+
+import json
+import math
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlencode, urlsplit
+from uuid import uuid4
+
+import httpx
+import pyarrow as pa
+import pyarrow.parquet as pq
+from shapely import from_wkb
+
+from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
+from dagster_hifld.output_policy import validate_output_policy
+from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.release_approval import validate_release_provenance
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
+    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
+    seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
+)
+from dagster_hifld.sources.arcgis_layer import esri_polygon_wkb as _esri_polygon_wkb
+from dagster_hifld.sources.arcgis_layer import (
+    _canonical, _capture_identity, _load_capture, _sha,
+    _validate_spatial_reference, capture_witness, layer_capture_roster, retained_capture_ids,
+)
+
+DATASET_SLUG = "us-courts-of-appeals-circuits"
+FILE_SLUG = DATASET_SLUG
+PUBLISHER = "Administrative Office of the U.S. Courts (AOUSC)"
+# Succession: the DHS HIFLD Open crosswalk (August 2025) row "US Courts of
+# Appeals Circuits" marks the retired HIFLD/GeoPlatform item edfc2120384f4dbaa
+# d9387bdfd1a704c as Deprecate with no successor ("No longer supported as part
+# of the HIFLD mission") and points the agency only to a static 1999 Federal
+# Judicial Center map PDF. Probes on 2026-11-14 found both the old REST service
+# and the old item dead. The federal judiciary itself maintains the operative
+# circuit boundary product in the ArcGIS Online organization of the
+# Administrative Office of the U.S. Courts ("Judicial Branch", urlKey AOUSC):
+# the public hosted feature service below, edited in December 2025.
+CATALOG_ITEM_ID = "d8ff459672c746a4b3d53bae9330701a"
+CATALOG_ITEM_OWNER = "Courts_GIS_AOUSC"
+CATALOG_ORG_ID = "LJKafwRzLHEkKeOL"
+CATALOG_ORG_NAME = "Judicial Branch (AOUSC)"
+CATALOG_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{CATALOG_ITEM_ID}?f=json"
+LANDING_URL = f"https://aousc.maps.arcgis.com/home/item.html?id={CATALOG_ITEM_ID}"
+SERVICE_URL = ("https://services9.arcgis.com/LJKafwRzLHEkKeOL/arcgis/rest/services/"
+               "Circuits_Overall_Boundary/FeatureServer")
+LAYER_URL = f"{SERVICE_URL}/0"
+LAYER_ID = 0
+LAYER_NAME = "US Courts Circuits"
+ITEM_TITLE = "U.S. Courts Circuits"
+ITEM_ACCESS_INFORMATION = ""
+ITEM_DESCRIPTION = ""
+ITEM_LICENSE = ""
+ITEM_TAGS = ["Final", "2025"]
+ITEM_SNIPPET = ("US Courts Circuit Boundary. Do not delete. This layer is used within the "
+                "TMB VAR U.S. Courts Asset Information Final group layer. ")
+ITEM_CATEGORIES = ["/Categories/FSO/TMB/GIS"]
+ITEM_EXTENT = [[-178.2175984, 13.23500013200004],
+               [145.8180822610001, 71.40623540900003]]
+SERVICE_DESCRIPTION = "US Courts Circuit Boundary"
+LAYER_COPYRIGHT = ""
+LAYER_DISPLAY_FIELD = "Circuit"
+PAGE_SIZE = 2000
+EXPECTED_EXTENT = {"xmin": -178.2175984, "ymin": 13.23500013200004,
+                   "xmax": 145.8180822610001, "ymax": 71.40623540900003}
+EXPECTED_EXTENT_TOLERANCE = 1e-9
+EXPECTED_GEOMETRY_PROPERTIES = {"shapeAreaFieldName": "Shape__Area",
+                                "shapeLengthFieldName": "Shape__Length",
+                                "units": "esriDecimalDegrees"}
+SERVICE_FULL_EXTENT = {"xmin": -178.2175984, "ymin": 13.23500013200004,
+                       "xmax": 145.8180822610001, "ymax": 71.40623540900003}
+LAYER_MAX_RECORD_COUNT = 2000
+SERVICE_MAX_RECORD_COUNT = 2000
+EXPECTED_FIELD_DECLARATIONS = [
+    {"name": "OBJECTID", "type": "esriFieldTypeOID", "alias": "OBJECTID",
+     "sqlType": "sqlTypeOther", "nullable": False, "editable": False,
+     "domain": None, "defaultValue": None},
+    {"name": "Circuit", "type": "esriFieldTypeString", "alias": "Circuit",
+     "sqlType": "sqlTypeOther", "length": 100, "nullable": True, "editable": True,
+     "domain": None, "defaultValue": None},
+    {"name": "Shape__Area", "type": "esriFieldTypeDouble", "alias": "Shape__Area",
+     "sqlType": "sqlTypeDouble", "nullable": True, "editable": False,
+     "domain": None, "defaultValue": None},
+    {"name": "Shape__Length", "type": "esriFieldTypeDouble", "alias": "Shape__Length",
+     "sqlType": "sqlTypeDouble", "nullable": True, "editable": False,
+     "domain": None, "defaultValue": None},
+    {"name": "GSA_Teams", "type": "esriFieldTypeString", "alias": "GSA_Teams",
+     "sqlType": "sqlTypeOther", "length": 255, "nullable": True, "editable": True,
+     "domain": None, "defaultValue": None},
+]
+ATTRIBUTE_FIELDS = EXPECTED_FIELD_DECLARATIONS
+PAGE_FIELD_KEYS = tuple(field["name"] for field in ATTRIBUTE_FIELDS)
+SHAPE_PARITY_TOLERANCE = 1e-9
+
+
+def _query(params: dict[str, object]) -> str:
+    return LAYER_URL + "/query?" + urlencode(params)
+
+
+PAGE_MAX_BYTES = 4_000_000
+CAPTURE_MAX_BYTES = 32_000_000
+
+
+def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
+    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire")
+                   for path in root.glob(suffix) if path.is_file())
+    if retained + 2 * PAGE_MAX_BYTES > CAPTURE_MAX_BYTES:
+        raise ValueError("source_capture_budget_exceeded_before_request")
+    body, receipt = capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
+    return body, receipt
+
+
+def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
+    return layer_capture_roster(
+        ids, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(("catalog_item", CATALOG_ITEM_URL),),
+        page_params={"returnZ": "false", "returnM": "false", "outSR": "4326"},
+    )
+
+
+def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+    urls = dict(_capture_roster(retained_capture_ids(root)))
+    return validate_retained_capture_replay(
+        root,
+        capture_names=set(urls),
+        expected_urls=urls,
+        load_capture=_load_capture,
+        validate_request_identity=validate_capture_request_identity,
+    )
+
+
+def _validate_page_fields(page_fields: object, layer_fields: list[dict]) -> None:
+    """Reject page-level physical schema drift before constructing a native table."""
+    if not isinstance(page_fields, list) or len(page_fields) != len(layer_fields):
+        raise ValueError("source_page_physical_schema_changed")
+    for page_field, layer_field in zip(page_fields, layer_fields):
+        if not isinstance(page_field, dict) or not isinstance(layer_field, dict):
+            raise ValueError("source_page_physical_schema_changed")
+        reduced = {key: value for key, value in layer_field.items()
+                   if key not in ("nullable", "editable")}
+        if page_field != reduced:
+            raise ValueError("source_page_physical_schema_changed")
+
+
+def _validate_catalog_item(item: dict) -> None:
+    if (item.get("id") != CATALOG_ITEM_ID or item.get("owner") != CATALOG_ITEM_OWNER
+            or item.get("orgId") != CATALOG_ORG_ID or item.get("type") != "Feature Service"
+            or item.get("title") != ITEM_TITLE or item.get("access") != "public"
+            or item.get("accessInformation") != ITEM_ACCESS_INFORMATION
+            or item.get("spatialReference") != "4326"):
+        raise ValueError("aousc_catalog_item_identity_drift")
+    if (item.get("description") != ITEM_DESCRIPTION or item.get("licenseInfo") != ITEM_LICENSE
+            or item.get("snippet") != ITEM_SNIPPET or item.get("tags") != ITEM_TAGS
+            or item.get("categories") != ITEM_CATEGORIES):
+        raise ValueError("aousc_catalog_item_text_drift")
+    extent = item.get("extent")
+    if (not isinstance(extent, list) or len(extent) != 2
+            or extent[0] != ITEM_EXTENT[0] or extent[1] != ITEM_EXTENT[1]):
+        raise ValueError("aousc_catalog_item_extent_drift")
+
+
+def _validate_service(service: dict, label: str) -> None:
+    if (service.get("serviceItemId") != CATALOG_ITEM_ID
+            or service.get("serviceDescription") != SERVICE_DESCRIPTION
+            or service.get("capabilities") != "Query"
+            or service.get("maxRecordCount") != SERVICE_MAX_RECORD_COUNT
+            or service.get("hasVersionedData") is not False
+            or service.get("supportedQueryFormats") != "JSON"):
+        raise ValueError(f"{label}_service_identity_drift")
+    _validate_spatial_reference(service.get("spatialReference"), label + "_service")
+    full = service.get("fullExtent")
+    if (not isinstance(full, dict)
+            or {key: full.get(key) for key in SERVICE_FULL_EXTENT} != SERVICE_FULL_EXTENT):
+        raise ValueError(f"{label}_service_extent_drift")
+    _validate_spatial_reference(full.get("spatialReference"), label + "_service_full_extent")
+    layers = service.get("layers")
+    if (not isinstance(layers, list) or len(layers) != 1
+            or layers[0].get("id") != LAYER_ID or layers[0].get("name") != LAYER_NAME
+            or layers[0].get("parentLayerId") != -1 or layers[0].get("subLayerIds") is not None
+            or layers[0].get("type") != "Feature Layer"
+            or layers[0].get("geometryType") != "esriGeometryPolygon"):
+        raise ValueError(f"{label}_service_layer_roster_drift")
+
+
+def _validate_layer(layer: dict) -> None:
+    if layer.get("fields") != EXPECTED_FIELD_DECLARATIONS:
+        raise ValueError("source_field_schema_drift")
+    if (layer.get("id") != LAYER_ID or layer.get("name") != LAYER_NAME
+            or layer.get("type") != "Feature Layer"
+            or layer.get("geometryType") != "esriGeometryPolygon"
+            or layer.get("maxRecordCount") != LAYER_MAX_RECORD_COUNT
+            or layer.get("objectIdField") != "OBJECTID" or layer.get("globalIdField") != ""
+            or layer.get("typeIdField") != "" or layer.get("displayField") != LAYER_DISPLAY_FIELD
+            or layer.get("hasZ") is not False or layer.get("hasM") is not False
+            or layer.get("enableNullGeometry") is not False
+            or layer.get("isDataVersioned") is not False
+            or layer.get("copyrightText") != LAYER_COPYRIGHT
+            or layer.get("serviceItemId") != CATALOG_ITEM_ID
+            or layer.get("geometryProperties") != EXPECTED_GEOMETRY_PROPERTIES
+            or {key: layer.get("extent", {}).get(key) for key in EXPECTED_EXTENT} != EXPECTED_EXTENT
+            or layer.get("advancedQueryCapabilities", {}).get("supportsPagination") is not True):
+        raise ValueError("source_layer_identity_extent_or_freshness_drift")
+    editing = layer.get("editingInfo")
+    if (not isinstance(editing, dict)
+            or any(type(editing.get(key)) is not int or editing[key] < 0
+                   for key in ("lastEditDate", "schemaLastEditDate", "dataLastEditDate"))):
+        raise ValueError("source_layer_editing_info_invalid")
+    _validate_spatial_reference(layer.get("spatialReference"), "source_layer")
+    extent_reference = layer.get("extent", {}).get("spatialReference")
+    if extent_reference is not None:
+        _validate_spatial_reference(extent_reference, "source_layer_extent")
+
+
+def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+    expected_roster = capture_witness(captures)
+    if not expected_roster:
+        raise ValueError("source_population_empty")
+    if set(captures) != set(dict(_capture_roster(expected_roster))):
+        raise ValueError("source_capture_name_roster_drift")
+    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    _validate_catalog_item(docs["catalog_item"])
+    service = docs["service_before"]
+    _validate_service(service, "service_before")
+    layer = docs["layer_before"]
+    _validate_layer(layer)
+    if docs["service_after"] != service or docs["layer_after"] != layer:
+        raise ValueError("source_service_or_layer_changed_during_capture")
+    features = []
+    vertices = 0
+    geometry_valid = geometry_empty = 0
+    null_geometry_ids = []
+    coverage = {key: EXPECTED_EXTENT[key] for key in ("xmin", "ymin", "xmax", "ymax")}
+    for name in sorted(n for n in captures if n.startswith("page_")):
+        page = docs[name]
+        if "error" in page or page.get("exceededTransferLimit") is True:
+            raise ValueError("source_page_error_or_transfer_limit")
+        if page.get("hasZ") or page.get("hasM"):
+            raise ValueError("source_page_dimensional_drift")
+        _validate_spatial_reference(page.get("spatialReference"), "source_" + name + "_page")
+        if (page.get("objectIdFieldName") != "OBJECTID"
+                or page.get("geometryType") != "esriGeometryPolygon"
+                or page.get("globalIdFieldName") != ""
+                or page.get("uniqueIdField") != {"name": "OBJECTID", "isSystemMaintained": True}):
+            raise ValueError("source_page_identity_drift")
+        if page.get("geometryProperties") != EXPECTED_GEOMETRY_PROPERTIES:
+            raise ValueError("source_page_geometry_properties_drift")
+        _validate_page_fields(page.get("fields"), layer["fields"])
+        expected_index = int(name.removeprefix("page_"))
+        expected_ids = expected_roster[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
+        rows = page.get("features")
+        if not isinstance(rows, list) or len(rows) != len(expected_ids):
+            raise ValueError("source_page_population_incomplete:" + name)
+        page_ids = []
+        for feature in rows:
+            attrs, geometry = feature.get("attributes"), feature.get("geometry")
+            if (not isinstance(attrs, dict) or len(attrs) != len(ATTRIBUTE_FIELDS)
+                    or tuple(attrs) != PAGE_FIELD_KEYS):
+                raise ValueError("source_attribute_roster_or_order_drift")
+            for field in ATTRIBUTE_FIELDS:
+                value = attrs[field["name"]]
+                if value is None:
+                    continue
+                kind = field["type"]
+                if kind == "esriFieldTypeOID" and (type(value) is not int or value <= 0):
+                    raise ValueError("source_oid_value_type_drift")
+                if kind == "esriFieldTypeString" and not isinstance(value, str):
+                    raise ValueError("source_string_value_type_drift:" + field["name"])
+                if kind == "esriFieldTypeDouble" and (type(value) not in (int, float)
+                                                      or not math.isfinite(float(value))):
+                    raise ValueError("source_double_value_type_drift:" + field["name"])
+            oid = attrs.get("OBJECTID")
+            if type(oid) is not int or oid not in expected_ids:
+                raise ValueError("source_feature_id_roster_drift")
+            if geometry is None:
+                null_geometry_ids.append(oid)
+                page_ids.append(oid)
+                features.append(feature)
+                continue
+            if not isinstance(geometry, dict) or set(geometry) - {"rings", "hasZ", "hasM", "spatialReference"}:
+                raise ValueError("source_polygon_geometry_structure_drift")
+            if "rings" not in geometry:
+                raise ValueError("source_polygon_rings_missing")
+            if geometry.get("hasZ") or geometry.get("hasM"):
+                raise ValueError("source_geometry_dimensional_drift")
+            if geometry.get("spatialReference") is not None:
+                _validate_spatial_reference(geometry.get("spatialReference"),
+                                            "source_" + name + "_feature")
+            rings = geometry.get("rings")
+            if not isinstance(rings, list) or not rings:
+                raise ValueError("source_polygon_rings_missing")
+            for ring in rings:
+                if not isinstance(ring, list) or len(ring) < 4:
+                    raise ValueError("source_polygon_ring_invalid")
+                if ring[0] != ring[-1]:
+                    raise ValueError("source_polygon_ring_not_closed")
+                for point in ring:
+                    if (not isinstance(point, list) or len(point) != 2
+                            or any(type(coord) not in (int, float) or not math.isfinite(coord) for coord in point)):
+                        raise ValueError("source_xy_ordinate_contract_drift")
+                    if not (coverage["xmin"] - EXPECTED_EXTENT_TOLERANCE <= point[0] <= coverage["xmax"] + EXPECTED_EXTENT_TOLERANCE
+                            and coverage["ymin"] - EXPECTED_EXTENT_TOLERANCE <= point[1] <= coverage["ymax"] + EXPECTED_EXTENT_TOLERANCE):
+                        raise ValueError("source_geometry_outside_declared_coverage")
+                    vertices += 1
+            geom = from_wkb(_esri_polygon_wkb(geometry))
+            if not geom.is_valid and not geom.is_empty:
+                raise ValueError("source_geometry_invalid")
+            geometry_valid += int(geom.is_valid and not geom.is_empty)
+            geometry_empty += int(geom.is_empty)
+            for parity_field, observed in (("source_shape_area_parity_drift", attrs.get("Shape__Area")),
+                                           ("source_shape_length_parity_drift", attrs.get("Shape__Length"))):
+                if observed is None:
+                    continue
+                computed = geom.area if parity_field.startswith("source_shape_area") else geom.length
+                if abs(computed - observed) > SHAPE_PARITY_TOLERANCE * max(abs(observed), 1e-12):
+                    raise ValueError(parity_field)
+            page_ids.append(oid)
+            features.append(feature)
+        if sorted(page_ids) != expected_ids or len(set(page_ids)) != len(page_ids):
+            raise ValueError("source_page_id_population_drift:" + name)
+    ids = [feature["attributes"]["OBJECTID"] for feature in features]
+    capture_witness(captures, captured_ids=ids)
+    geometry_invalid = len(features) - geometry_valid - geometry_empty - len(null_geometry_ids)
+    features.sort(key=lambda row: row["attributes"]["OBJECTID"])
+    record_sha = _sha(_canonical(
+        [[row["attributes"]["OBJECTID"], row["attributes"]] for row in features]))
+    geometry_sha = _sha(_canonical(
+        [[row["attributes"]["OBJECTID"], row.get("geometry")] for row in features]))
+    bounds = [from_wkb(_esri_polygon_wkb(row["geometry"])).bounds for row in features
+              if row.get("geometry") is not None]
+    audit = {
+        "source_feature_count": len(features), "source_id_sha256": _sha(_canonical(sorted(ids))),
+        "source_id_min": min(ids), "source_id_max": max(ids),
+        "source_id_note": "Publisher OBJECTIDs are retained unchanged; completeness uses capture-time witnesses.",
+        "source_schema_sha256": _sha(_canonical(layer["fields"])),
+        "source_record_sha256": record_sha,
+        "source_geometry_sha256": geometry_sha,
+        "source_geometry_type": "esriGeometryPolygon", "source_wkid": 4326,
+        "source_vertex_count": vertices, "geometry_valid_count": geometry_valid,
+        "geometry_empty_count": geometry_empty,
+        "geometry_null_count": len(null_geometry_ids),
+        "geometry_null_ids": sorted(null_geometry_ids),
+        "geometry_null_note": "Producer-null geometries are retained without substitute geometry.",
+        "geometry_invalid_count": geometry_invalid,
+        "geometry_bounds": [min(b[0] for b in bounds), min(b[1] for b in bounds),
+                            max(b[2] for b in bounds), max(b[3] for b in bounds)] if bounds else None,
+        "source_extent": layer["extent"],
+        "source_last_data_edit_utc": datetime.fromtimestamp(
+            layer["editingInfo"]["dataLastEditDate"] / 1000, timezone.utc).isoformat().replace("+00:00", "Z"),
+        "source_last_edit_utc": datetime.fromtimestamp(
+            layer["editingInfo"]["lastEditDate"] / 1000, timezone.utc).isoformat().replace("+00:00", "Z"),
+        "source_coverage_scope": ("Complete observed 'US Courts Circuits' layer 0 from the "
+                                  "Administrative Office of the U.S. Courts (Judicial Branch, "
+                                  "urlKey AOUSC) ArcGIS Online organization's hosted service. "
+                                  "The layer spans the twelve geographic circuits (01..11 and "
+                                  "DC) including their territorial members (01: Puerto Rico, "
+                                  "03: U.S. Virgin Islands, 09: Guam and the Northern Mariana "
+                                  "Islands) plus one unassigned null-geometry 'XX' placeholder "
+                                  "row; it is not asserted to cover any other judiciary level."),
+        "catalog_item_id": CATALOG_ITEM_ID, "catalog_item_owner": CATALOG_ITEM_OWNER,
+        "catalog_item_org": CATALOG_ORG_ID + " " + CATALOG_ORG_NAME,
+        "catalog_item_url": CATALOG_ITEM_URL, "landing_page_url": LANDING_URL,
+        "layer_copyright": LAYER_COPYRIGHT,
+        "dhs_crosswalk_row": {"layer_name": "US Courts of Appeals Circuits", "status": "Deprecate",
+                              "agency": "Federal Judicial Center",
+                              "old_hifld_item_id": "edfc2120384f4dbaad9387bdfd1a704c",
+                              "old_hosting_location": "https://geoplatform.maps.arcgis.com/home/item.html?id=edfc2120384f4dbaad9387bdfd1a704c",
+                              "crosswalk_new_hosting_location": "N/A",
+                              "crosswalk_deprecation_justification": "No longer supported as part of the HIFLD mission",
+                              "crosswalk_external_landing_page": "https://www.fjc.gov/sites/default/files/2012/IJR00007.pdf",
+                              "crosswalk_open_rest_service": "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/US_Courts_of_Appeal_Circuits1/FeatureServer",
+                              "successor_probes_2026_11_14": ("The crosswalk's Open REST service "
+                                  "answers HTTP 400 'Invalid URL' and the old hosting item answers "
+                                  "CONT_0001 on both portals; the crosswalk's External Landing Page "
+                                  "is a static January 1999 FJC map PDF. The live maintained "
+                                  "publication is this Administrative Office of the U.S. Courts "
+                                  "organization's hosted service."),
+                              "evidence_url": "https://atcoordinates.info/wp-content/uploads/2025/08/hifld_open_crosswalk_geoplatform.xlsx"},
+        "drift_guard": ("Publisher identity, schema, CRS, XY dimensions, exact capture-time "
+                        "count/ID witnesses and per-page coverage, transport integrity, ring "
+                        "structure, declared coverage and shape-measure parity are checked. "
+                        "Null geometries are retained and counted; invalid polygons are refused."),
+    }
+    return layer["fields"], features, audit
+
+
+def _arrow_type(field: dict) -> pa.DataType:
+    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeString": pa.string(),
+            "esriFieldTypeDouble": pa.float64()}[field["type"]]
+
+
+def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
+    import io
+    geometry_types = set()
+    columns = {field["name"]: pa.array([row["attributes"][field["name"]] for row in features],
+                                       type=_arrow_type(field)) for field in fields}
+    wkb_column = []
+    for row in features:
+        geometry = row.get("geometry")
+        if geometry is None:
+            wkb_column.append(None)
+        else:
+            wkb = _esri_polygon_wkb(geometry)
+            geometry_types.add("MultiPolygon" if from_wkb(wkb).geom_type == "MultiPolygon" else "Polygon")
+            wkb_column.append(wkb)
+    columns["geometry"] = pa.array(wkb_column, type=pa.binary())
+    table = pa.Table.from_arrays(list(columns.values()), names=list(columns))
+    crs = {"$schema": "https://proj.org/schemas/v0.7/projjson.schema.json", "type": "GeographicCRS", "name": "WGS 84",
+           "datum": {"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984",
+                     "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137, "inverse_flattening": 298.257223563},
+                     "id": {"authority": "EPSG", "code": 6326}},
+           "coordinate_system": {"subtype": "ellipsoidal", "axis": [{"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"},
+                                                                    {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}]},
+           "id": {"authority": "EPSG", "code": 4326}}
+    metadata = {b"geo": _canonical({"version": "1.1.0", "primary_column": "geometry",
+                                   "columns": {"geometry": {"encoding": "WKB", "geometry_types": sorted(geometry_types), "crs": crs}}})}
+    sink = io.BytesIO()
+    pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd", use_dictionary=False)
+    return sink.getvalue()
+
+
+def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
+    return _sha(_canonical(_capture_identity(captures, root)))
+
+
+def capture_us_courts_appeals_circuits(storage: StagingStorageResource, *, version: str,
+                                       capture_directory: str | None = None) -> dict[str, object]:
+    if (not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource)
+            or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix):
+        raise ValueError("explicit_local_staging_resource_required")
+    if (not isinstance(version, str) or not version or version in {".", ".."}
+            or Path(version).name != version or "/" in version or "\\" in version):
+        raise ValueError("unsafe_capture_version")
+    staging = Path(storage.local_dir).absolute()
+    if ".." in staging.parts or any(path.is_symlink() for path in (staging, *staging.parents)):
+        raise ValueError("unsafe_local_staging_root")
+    staging.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(staging).free < 300_000_000:
+        raise ValueError("disk_floor_before_acquisition")
+    requested = Path(capture_directory).absolute() if capture_directory else None
+    replay = bool(requested and (requested / "capture_manifest.json").exists())
+    if replay:
+        root = requested
+        if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
+            raise ValueError("unsafe_capture_directory")
+        captures = _read_replay(root)
+    else:
+        if requested and any(requested.glob("*.body")):
+            raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
+        root = ((requested / version / uuid4().hex) if requested else
+                default_capture_dir("hifld-native-reconstruction", "364", "captures") / (version + "-" + uuid4().hex))
+        if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
+            raise ValueError("unsafe_capture_directory")
+        root.mkdir(parents=True, exist_ok=False)
+        captures = {}
+        try:
+            with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
+                              headers={"User-Agent": "hifld-next-datasets/us-courts-of-appeals-circuits-draft"}) as client:
+                ids_body, ids_receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
+                captures["ids_before"] = (ids_body, ids_receipt)
+                ids = retained_capture_ids(root)
+                roster = _capture_roster(sorted(ids))
+                for name, url in roster:
+                    if name == "ids_before":
+                        continue
+                    captures[name] = _capture(client, url, root, name)
+            fields, features, audit = _validate(captures)
+        except Exception as exc:
+            receipts = {}
+            for path in sorted(root.glob("*.receipt.json")):
+                try:
+                    receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
+                except (OSError, ValueError):
+                    receipts[path.name] = {"receipt_readback_failed": True}
+            (root / "capture_manifest.json").write_bytes(_canonical({"complete": False,
+                "captured_at": datetime.now(timezone.utc).isoformat(), "error_code": type(exc).__name__,
+                "receipts": receipts}) + b"\n")
+            if captures:
+                quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captures, type(exc).__name__)
+            raise
+        (root / "capture_manifest.json").write_bytes(_canonical({"complete": True,
+            "captured_at": datetime.now(timezone.utc).isoformat(), "source_feature_count": audit["source_feature_count"],
+            "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
+            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
+        captures = _read_replay(root)
+
+    fields, features, audit = _validate(captures)
+    identity = processing_identity(Path(__file__).parents[3])
+    capture_hash = _capture_identity_hash(captures, root)
+    audit.update({"source_capture_evidence_sha256": capture_hash,
+        "source_capture_evidence": _capture_identity(captures, root),
+        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_release_accepted": False, "source_freshness_accepted": False,
+        "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
+        "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
+        "baseline_accepted": False})
+    parquet = _parquet_bytes(fields, features)
+    version = "v" + _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
+        "source_geometry_sha256": audit["source_geometry_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
+        "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
+    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+    output_path = f"geoparquet/{FILE_SLUG}.parquet"
+    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    inputs = [{"input_id": name, "producer": PUBLISHER,
+        "host": urlsplit(receipt["url"]).hostname,
+        "role": "producer_publication",
+        "canonical_url": CATALOG_ITEM_URL if name == "catalog_item" else LAYER_URL, "retrieval_url": receipt["url"],
+        "observed_final_url": receipt["final_url"], "retrieved_at": receipt["observed_at"],
+        "http_status": receipt["status"], "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+        "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
+        "release_date": None,
+        "release_date_unknown_reason": ("The service editingInfo.dataLastEditDate ("
+                                        + audit["source_last_data_edit_utc"] + ") is a service edit timestamp, "
+                                        "not a producer release date; the item publishes no release-date field."),
+        "license": ("The AOUSC item publishes no licenseInfo text; judicial branch work product of "
+                    "the Administrative Office of the U.S. Courts. Formal rights acceptance remains pending."),
+        "attribution": "Administrative Office of the U.S. Courts",
+        **({"delegation_evidence": {
+            "dhs_crosswalk_status": "Deprecate",
+            "dhs_crosswalk_layer_name": "US Courts of Appeals Circuits",
+            "dhs_crosswalk_agency": "Federal Judicial Center",
+            "old_hifld_item_id": "edfc2120384f4dbaad9387bdfd1a704c",
+            "crosswalk_open_rest_service": "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/US_Courts_of_Appeal_Circuits1/FeatureServer",
+            "crosswalk_evidence_url": "https://atcoordinates.info/wp-content/uploads/2025/08/hifld_open_crosswalk_geoplatform.xlsx",
+            "catalog_item_owner": CATALOG_ITEM_OWNER,
+            "catalog_item_org": CATALOG_ORG_ID + " " + CATALOG_ORG_NAME,
+            "producer_identity_basis": ("The August 2025 DHS HIFLD Open crosswalk marks 'US Courts of "
+                "Appeals Circuits' as Deprecate with no successor and names the Federal Judicial Center, "
+                "whose External Landing Page is a static January 1999 map PDF. Probes on 2026-11-14 found "
+                "the crosswalk's Open REST service dead (HTTP 400 'Invalid URL') and the old item deleted "
+                "(CONT_0001). The federal judiciary maintains the operative product itself: the item is "
+                "hosted in the ArcGIS Online organization 'Judicial Branch' (urlKey AOUSC) of the "
+                "Administrative Office of the U.S. Courts, published by account Courts_GIS_AOUSC, whose "
+                "snippet names the office's own 'TMB VAR U.S. Courts Asset Information Final group layer', "
+                "alongside sibling AO products (courts districts, divisions, states & territories). "
+                "Circuit composition is fixed by 28 U.S.C. Sec. 41. The captured service response, not the "
+                "item page, supplies the data.")}}
+           if name == "catalog_item" else {})}
+        for name, receipt in sorted(receipts.items())]
+    manifest = {"schema_version": 1, "approved": False, "title": "US Courts of Appeals Circuits",
+        "description": ("Complete observed 'US Courts Circuits' layer 0 from the Administrative Office "
+                        "of the U.S. Courts (Judicial Branch, AOUSC) ArcGIS Online organization after the "
+                        "DHS HIFLD Open crosswalk retired the layer with no named successor. Unapproved "
+                        "faithful candidate; source acceptance, baseline, schema/ID contract, coverage, "
+                        "rights and release decisions remain pending."),
+        "publisher": PUBLISHER, "agency": "Administrative Office of the U.S. Courts", "source_url": LAYER_URL,
+        "license": None, "source_modified": audit["source_last_data_edit_utc"], "date_issued": None, "date_modified": None,
+        "processor": "HIFLD Next", "code_commit": identity["code_commit"],
+        "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
+        "transformations": [{"operation": "Esri XY Polygon to GeoParquet WKB candidate", "parameters": {
+            "source_fields": "all 5 declared attributes retained in source order and declared types",
+            "source_ids": "OBJECTID retained unchanged; the unassigned null-geometry 'XX' row is retained, not dropped or reidentified",
+            "source_crs": "EPSG:4326",
+            "geometry": ("2D ring order, winding and hole ownership preserved; no reprojection or "
+                         "simplification; the null-geometry 'XX' row stays null"),
+            "raw_evidence": "complete decoded response and wire bodies retained with checksummed receipts",
+            "candidate_status": "unapproved; source/schema/ID/coverage/rights/release decisions pending"}}],
+        "lineage": ("DHS HIFLD Open crosswalk (August 2025) row 'US Courts of Appeals Circuits' marks the "
+                    "retired HIFLD/GeoPlatform item edfc2120384f4dbaad9387bdfd1a704c as Deprecate ('No "
+                    "longer supported as part of the HIFLD mission') with no successor, pointing only to a "
+                    "static 1999 Federal Judicial Center map PDF; the crosswalk's Open REST service and old "
+                    "item were verified dead on 2026-11-14. The Administrative Office of the U.S. Courts "
+                    "maintains the same product (the twelve geographic circuit jurisdictions plus an "
+                    "unassigned 'XX' placeholder) in its own 'Judicial Branch' ArcGIS Online organization as "
+                    + LAYER_URL + " with data edited in December 2025. No third-party mirror or archive is "
+                    "used; DataLumos/PASDA copies are research context only and were never fetched."),
+        "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Native attributes, IDs and 2D rings are retained in a typed candidate.",
+            "objects": [{"path": output_path, "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
+        "unsupported_output_formats": {"geopackage": "No format-specific mapping has been approved.",
+            "pmtiles": "No display generalization or release policy has been approved."}}
+    validate_release_provenance(manifest); validate_output_policy(manifest); provenance_projection(manifest)
+    audit.update({"source_fields": fields, "official_layer_name": LAYER_NAME, "official_layer_id": LAYER_ID,
+                  "official_source_item": CATALOG_ITEM_OWNER + " " + CATALOG_ITEM_ID,
+                  "source_population_complete": True})
+    outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
+        "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
+    for name, (body, receipt) in sorted(captures.items()):
+        _body, wire, _receipt = _load_capture(root, name)
+        outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
+        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
+    ready = {"approved": False, "version": version,
+        "objects": {output_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
+        "source_population_complete": True, "source_record_sha256": audit["source_record_sha256"],
+        "source_schema_sha256": audit["source_schema_sha256"], "source_release_accepted": False,
+        "freshness_accepted": False, "schema_contract_accepted": False, "id_contract_accepted": False,
+        "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
+    outputs["metadata/candidate_ready.json"] = _canonical(ready) + b"\n"
+    fingerprint = _sha(_canonical({"identity": identity, "source_record_sha256": audit["source_record_sha256"],
+        "source_schema_sha256": audit["source_schema_sha256"], "source_capture_sha256": capture_hash}))
+    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+    if storage.object_snapshot(state_key) is not None:
+        original = json.loads(load_first_construction(storage, state_key, version, fingerprint)).get("payload")
+        if not isinstance(original, dict) or not isinstance(original.get("capture_receipts"), dict):
+            raise ValueError("cached_first_candidate_receipts_missing")
+        original_receipts = original["capture_receipts"]
+        if set(original_receipts) != set(captures):
+            raise ValueError("cached_candidate_capture_roster_changed")
+        for name in captures:
+            body, wire, _receipt = _load_capture(root, name)
+            if (storage.read_key(f"{prefix}/raw/{name}.body") != body
+                    or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
+                raise ValueError("cached_source_evidence_changed:" + name)
+        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version, fingerprint,
+            identity, audit["source_record_sha256"], audit["source_schema_sha256"],
+            original.get("objects", {}), original_receipts)
+        return _candidate_result(audit, prefix, version, capture_hash, reused=True, root=root)
+    descriptors = {}
+    for name, body in sorted(outputs.items()):
+        key = f"{prefix}/{name}"
+        write_immutable(storage, key, body)
+        snapshot = storage.object_snapshot(key)
+        descriptor = {"bytes": len(body), "sha256": _sha(body)}
+        if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
+            raise ValueError("candidate_object_readback_failed:" + name)
+        descriptors[name] = descriptor
+    seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
+        "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
+        "capture_receipts": receipts, "objects": descriptors})
+    validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
+    return _candidate_result(audit, prefix, version, capture_hash, reused=False, root=root)
+
+
+def _candidate_result(audit: dict, prefix: str, version: str, capture_hash: str, *,
+                      reused: bool, root: Path) -> dict[str, object]:
+    return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
+            "source_schema_sha256": audit["source_schema_sha256"],
+            "source_coverage_scope": audit["source_coverage_scope"],
+            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": reused,
+            "source_capture_evidence_sha256": capture_hash,
+            "geometry_valid_count": audit["geometry_valid_count"],
+            "geometry_null_count": audit["geometry_null_count"],
+            "geometry_invalid_count": audit["geometry_invalid_count"],
+            "geometry_empty_count": audit["geometry_empty_count"],
+            "source_release_accepted": False, "source_freshness_accepted": False,
+            "schema_contract_accepted": False, "id_contract_accepted": False,
+            "coverage_accepted": False, "rights_accepted": False,
+            "mapping_approved": False, "release_accepted": False,
+            "capture_directory": str(root)}

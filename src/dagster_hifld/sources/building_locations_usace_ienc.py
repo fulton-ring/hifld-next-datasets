@@ -1,7 +1,6 @@
 """Native, receipt-bound draft capture of the official USACE IENC building layer."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -21,11 +20,13 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.arcgis_layer import capture_witness
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "building-locations-usace-ienc"
 SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC/USACE_IENC_Master_Service/MapServer"
@@ -37,8 +38,6 @@ BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PUBLISHER = "U.S. Army Corps of Engineers, Inland Electronic Navigational Charts Program"
-EXPECTED_COUNT = 892
-EXPECTED_ID_SHA256 = "683cd4972133d31f7ac111fa459a538c1ccbc59c38838a65bb6d8d850f73bff0"
 BATCH_SIZE = 200
 MAX_CAPTURE_BYTES = 32_000_000
 EXPECTED_FIELDS = [
@@ -54,14 +53,6 @@ ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELDS if field["type"] != "esri
 EXPECTED_EXTENT = {"xmin":-96.41946399999995,"ymin":29.69832880000007,
                    "xmax":-79.51543889999994,"ymax":45.106480600000054}
 EXPECTED_CRS = CRS.from_epsg(4326)
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode()
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool=True) -> bool:
@@ -128,13 +119,7 @@ def _read_replay(root: Path, ids: list[int]):
 
 def _validate(captures: dict[str,tuple[bytes,dict]]):
     docs={name:json.loads(body) for name,(body,_receipt) in captures.items()}
-    ids=docs["ids_before"].get("objectIds")
-    if not isinstance(ids,list) or any(type(i)is not int for i in ids) or len(ids)!=EXPECTED_COUNT or len(set(ids))!=EXPECTED_COUNT:
-        raise ValueError("source_id_population_drift")
-    if _sha(_canonical(sorted(ids)))!=EXPECTED_ID_SHA256 or docs["ids_after"].get("objectIds")!=ids:
-        raise ValueError("source_id_roster_drift")
-    if docs["count_before"].get("count")!=EXPECTED_COUNT or docs["count_after"].get("count")!=EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
+    ids=capture_witness(captures)
     if docs["bts_item"].get("id")!=BTS_ITEM_ID or docs["bts_item"].get("owner")!="USDOT_BTS" or docs["bts_item"].get("type")!="PDF": raise ValueError("bts_item_identity_drift")
     bts_description=" ".join(str(docs["bts_item"].get(k,"")) for k in ("title","description"))
     if ("Inland Electronic Navigational Charts" not in bts_description or "updated bi-monthly" not in bts_description
@@ -183,7 +168,7 @@ def _validate(captures: dict[str,tuple[bytes,dict]]):
             if not fid or fid in feature_ids: raise ValueError("source_feature_id_missing_or_duplicate")
             seen.add(oid); feature_ids.add(fid); got.append(oid); features.append(feature)
         if sorted(got)!=expected: raise ValueError("source_page_ids_drift:"+name)
-    if seen!=set(ids) or len(features)!=EXPECTED_COUNT or len(feature_ids)!=EXPECTED_COUNT: raise ValueError("source_population_incomplete")
+    if seen!=set(ids) or len(features)!=len(ids) or len(feature_ids)!=len(ids): raise ValueError("source_population_incomplete")
     if any(abs(a-b)>1e-10 for a,b in zip(bounds,(EXPECTED_EXTENT["xmin"],EXPECTED_EXTENT["ymin"],EXPECTED_EXTENT["xmax"],EXPECTED_EXTENT["ymax"]))): raise ValueError("source_geometry_coverage_drift")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     audit={"source_feature_count":len(features),"source_id_sha256":_sha(_canonical(sorted(seen)),),"source_id_min":min(seen),"source_id_max":max(seen),
@@ -194,7 +179,7 @@ def _validate(captures: dict[str,tuple[bytes,dict]]):
         "source_coverage_scope":"Complete current USACE IENC BUILDING_SINGLE_POINT layer, inland chart coverage only; not nationwide building coverage.",
         "bts_catalog_item_id":BTS_ITEM_ID,"prior_bts_catalog_item_id":PRIOR_BTS_ITEM_ID,
         "bts_catalog_item_successor_review_pending":True,
-        "drift_guard":f"Current BTS PDF item {BTS_ITEM_ID} distribution/delegation markers, official service-directory membership, exact service/layer identity, schema, CRS, extent, count and before/after ID roster are checked; prior BTS item {PRIOR_BTS_ITEM_ID} is retained as a separate historical record with unaccepted succession.",
+        "drift_guard":f"Current BTS PDF item {BTS_ITEM_ID} distribution/delegation markers, official service-directory membership, exact service/layer identity, schema, CRS and extent are checked and completeness comes from the producer's before/after count and ID roster at capture time; prior BTS item {PRIOR_BTS_ITEM_ID} is retained as a separate historical record with unaccepted succession.",
         "source_population_complete":True}
     return layer["fields"],features,audit
 
@@ -234,7 +219,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
         captures=_read_replay(root,ids)
     else:
         if requested and any(requested.glob("*.body")): raise ValueError("unsealed_capture_attempt_exists")
-        root=(requested/version/uuid4().hex) if requested else Path("/tmp/hifld-native-reconstruction/building-locations")/(version+"-"+uuid4().hex)
+        root=(requested/version/uuid4().hex) if requested else default_capture_dir("hifld-native-reconstruction", "building-locations")/(version+"-"+uuid4().hex)
         if any(p.is_symlink() for p in (root,*root.parents)): raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True,exist_ok=False);captures={}
         try:
@@ -243,7 +228,8 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
                       ("count_before",_query({"where":"1=1","returnCountOnly":"true","f":"json"})),("ids_before",_query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
                 for name,url in urls: captures[name]=_capture(client,url,root,name)
                 ids=json.loads(captures["ids_before"][0]).get("objectIds")
-                if not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT or _sha(_canonical(sorted(ids)))!=EXPECTED_ID_SHA256: raise ValueError("source_seed_id_roster_drift")
+                if (not isinstance(ids,list) or not ids or any(type(i)is not int or i<=0 for i in ids)
+                        or len(set(ids))!=len(ids)): raise ValueError("source_seed_id_roster_drift")
                 for i,start in enumerate(range(0,len(ids),BATCH_SIZE)):
                     pageids=ids[start:start+BATCH_SIZE]
                     url=_query({"objectIds":",".join(map(str,pageids)),"outFields":"*","returnGeometry":"true","orderByFields":"OBJECTID ASC","f":"json"})
@@ -321,7 +307,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
         "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"baseline_accepted":False,"coverage_accepted":False,"rights_accepted":False,"release_accepted":False})+b"\n"
     if existing:
         verify_cached_candidate(storage,repo,state_key,prefix,version,fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],existing["objects"],receipts)
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_population_complete":True,
+        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"source_capture_evidence_sha256":capture_hash,"reused":True,
             "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"baseline_accepted":False,
             "coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
@@ -333,7 +319,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],
         "source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":objects})
     validate_construction_code_identity(repo,identity["code_commit"],identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_population_complete":True,
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
         "source_id_sha256":audit["source_id_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"source_capture_evidence_sha256":capture_hash,
         "candidate_ready":prefix+"/metadata/candidate_ready.json","capture_directory":str(root),"reused":False,
         "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,

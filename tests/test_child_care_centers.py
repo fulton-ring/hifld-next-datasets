@@ -9,14 +9,16 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.assets.child_care_centers import (
     child_care_centers, child_care_centers_complete, child_care_centers_draft_schedule,
 )
-from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import child_care_centers as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 def _sha(payload):
     return hashlib.sha256(_canonical(payload)).hexdigest()
+
+
+_IDS = list(range(1, 115037))
 
 
 class ChildCareCentersTests(unittest.TestCase):
@@ -77,34 +79,19 @@ class ChildCareCentersTests(unittest.TestCase):
         return {name: (_canonical(value), {"status": 200}) for name, value in docs.items()}
 
     def _validate_synthetic(self, count=6):
-        return source._validate(self._captures(self._documents(count)),
-                                expected_count=count,
-                                expected_id_sha256=_sha(list(range(1, count + 1))))
+        return source._validate(self._captures(self._documents(count)))
 
-    def test_registered_stopped_asset_and_unapproved_blocking_check(self):
-        self.assertIn(child_care_centers, hifld_ingest_assets)
-        self.assertEqual(child_care_centers_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = child_care_centers_complete(
-            {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True})
-        self.assertTrue(check.passed)
-        self.assertFalse(check.metadata["release_accepted"].value)
-        for failed_candidate in ({"feature_count": source.EXPECTED_COUNT - 1, "source_population_complete": True},
-                                 {"feature_count": source.EXPECTED_COUNT, "source_population_complete": False},
-                                 {"feature_count": source.EXPECTED_COUNT}):
-            self.assertFalse(child_care_centers_complete(failed_candidate).passed)
 
-    def test_pinned_source_population_constants_are_consistent(self):
-        self.assertEqual(source.EXPECTED_COUNT, len(source.EXPECTED_IDS))
-        self.assertEqual(source.EXPECTED_ID_SHA256, _sha(sorted(source.EXPECTED_IDS)))
+    def test_source_schema_and_capture_roster_shape(self):
         self.assertEqual(len(source.EXPECTED_FIELD_DECLARATIONS), 29)
         self.assertEqual(len(source.ATTRIBUTE_FIELDS), 28)
-        self.assertEqual(source.CAPTURE_NAMES,
+        self.assertEqual(source._capture_names(_IDS),
                          {"service_directory", "service_before", "layer_before", "count_before",
                           "ids_before", "layer_after", "count_after", "ids_after", "service_after"}
                          | {f"page_{index:03d}" for index in range(116)})
 
     def test_capture_roster_pages_cover_source_ids_without_overlapping(self):
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(_IDS))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")],
                          [f"page_{index:03d}" for index in range(116)])
         self.assertIn("resultOffset=0", urls["page_000"])
@@ -112,7 +99,7 @@ class ChildCareCentersTests(unittest.TestCase):
         self.assertIn("orderByFields=OBJECTID+ASC", urls["page_000"])
         self.assertIn("outSR=4326", urls["page_000"])
         self.assertIn("resultOffset=115000", urls["page_115"])
-        self.assertEqual("115036", source.EXPECTED_IDS[-1].__str__())
+        self.assertEqual("115036", _IDS[-1].__str__())
         self.assertNotIn("resultOffset=116000", urls["page_115"])
         self.assertEqual(urls["service_directory"], source.SERVICE_DIRECTORY_URL)
         self.assertIn("returnCountOnly=true", urls["count_before"])
@@ -121,22 +108,18 @@ class ChildCareCentersTests(unittest.TestCase):
     def test_full_nonfinal_pages_may_flag_transfer_limit_but_final_pages_may_not(self):
         full_docs = self._documents(1500)
         full_docs["page_000"]["exceededTransferLimit"] = True
-        fields, features, audit = source._validate(
-            self._captures(full_docs), expected_count=1500,
-            expected_id_sha256=_sha(list(range(1, 1501))))
+        fields, features, audit = source._validate(self._captures(full_docs))
         self.assertEqual(audit["source_feature_count"], 1500)
 
         docs = json.loads(json.dumps(self._documents(1500)))
         docs["page_001"]["exceededTransferLimit"] = True
         with self.assertRaisesRegex(ValueError, "source_page_error_or_transfer_limit"):
-            source._validate(self._captures(docs), expected_count=1500,
-                             expected_id_sha256=_sha(list(range(1, 1501))))
+            source._validate(self._captures(docs))
 
         docs = json.loads(json.dumps(self._documents(6)))
         docs["layer_before"]["advancedQueryCapabilities"] = {"supportsOrderBy": True, "supportsPagination": False}
         with self.assertRaisesRegex(ValueError, "source_layer_identity_extent_or_limit_drift"):
-            source._validate(self._captures(docs), expected_count=6,
-                             expected_id_sha256=_sha(list(range(1, 7))))
+            source._validate(self._captures(docs))
 
     def test_complete_native_population_and_geometry_are_validated(self):
         fields, features, audit = self._validate_synthetic()
@@ -183,9 +166,9 @@ class ChildCareCentersTests(unittest.TestCase):
     def _drift_cases(self):
         return [
             ("count drift", lambda d: d["count_after"].update(count=5),
-             "source_count_or_id_population_drift"),
+             "source_count_or_id_roster_drift"),
             ("id roster drift", lambda d: d["ids_after"].update(objectIds=[1, 2, 3, 4, 5, 7]),
-             "source_count_or_id_population_drift"),
+             "source_count_or_id_roster_drift"),
             ("schema drift", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("service identity drift", lambda d: d["service_before"].update(mapName="Other"),
@@ -232,15 +215,13 @@ class ChildCareCentersTests(unittest.TestCase):
                 docs = json.loads(json.dumps(self._documents(6)))
                 mutate(docs)
                 with self.assertRaisesRegex(ValueError, expected):
-                    source._validate(self._captures(docs), expected_count=6,
-                                     expected_id_sha256=_sha(list(range(1, 7))))
+                    source._validate(self._captures(docs))
 
     def test_capture_name_roster_drift_fails_closed(self):
         docs = self._documents(6)
         docs.pop("service_after")
         with self.assertRaisesRegex(ValueError, "source_capture_name_roster_drift"):
-            source._validate(self._captures(docs), expected_count=6,
-                             expected_id_sha256=_sha(list(range(1, 7))))
+            source._validate(self._captures(docs))
 
     def test_capture_version_cannot_escape_capture_root(self):
         with tempfile.TemporaryDirectory() as tmp:

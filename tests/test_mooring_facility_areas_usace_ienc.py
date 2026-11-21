@@ -19,7 +19,11 @@ from dagster_hifld.definitions import defs
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import mooring_facility_areas_usace_ienc as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
+
+
+FEATURE_COUNT = 5750
+FEATURE_IDS = list(range(1, FEATURE_COUNT + 1))
 
 
 def _clockwise_square(x: float, y: float, d: float) -> list[list[float]]:
@@ -32,18 +36,22 @@ class MooringFacilityAreasUsaceIencTests(unittest.TestCase):
         resolved = defs.resolve_job_def("mooring_facility_areas_usace_ienc_draft_refresh")
         self.assertEqual(resolved.asset_layer.executable_asset_keys, {mooring_facility_areas_usace_ienc.key})
         self.assertEqual(mooring_facility_areas_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        good = {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True,
-                 "geometry_valid_count": source.EXPECTED_COUNT, "geometry_invalid_count": 0, "geometry_empty_count": 0}
+        good = {"feature_count": FEATURE_COUNT, "source_reported_count": FEATURE_COUNT,
+                 "source_population_complete": True,
+                 "geometry_valid_count": FEATURE_COUNT, "geometry_invalid_count": 0, "geometry_empty_count": 0}
         passed = mooring_facility_areas_usace_ienc_complete(good)
         self.assertTrue(passed.passed)
         self.assertFalse(passed.metadata["release_accepted"].value)
-        for bad in ({"feature_count": source.EXPECTED_COUNT - 1, "source_population_complete": True,
-                     "geometry_valid_count": source.EXPECTED_COUNT, "geometry_invalid_count": 0,
+        for bad in ({"feature_count": FEATURE_COUNT - 1, "source_reported_count": FEATURE_COUNT,
+                     "source_population_complete": True,
+                     "geometry_valid_count": FEATURE_COUNT, "geometry_invalid_count": 0,
                      "geometry_empty_count": 0},
-                    {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True,
-                     "geometry_valid_count": source.EXPECTED_COUNT - 1, "geometry_invalid_count": 1,
+                    {"feature_count": FEATURE_COUNT, "source_reported_count": FEATURE_COUNT,
+                     "source_population_complete": True,
+                     "geometry_valid_count": FEATURE_COUNT - 1, "geometry_invalid_count": 1,
                      "geometry_empty_count": 0},
-                    {"feature_count": source.EXPECTED_COUNT, "source_population_complete": True}):
+                    {"feature_count": FEATURE_COUNT, "source_reported_count": FEATURE_COUNT,
+                     "source_population_complete": True}):
             self.assertFalse(mooring_facility_areas_usace_ienc_complete(bad).passed)
 
     def test_capture_version_cannot_escape_capture_root(self):
@@ -66,18 +74,18 @@ class MooringFacilityAreasUsaceIencTests(unittest.TestCase):
         fields, features, audit = source._validate(captures)
         self.assertEqual([field["name"] for field in fields],
                          [name for name, _kind in source.EXPECTED_FIELDS])
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(len(features), FEATURE_COUNT)
+        self.assertEqual(audit["source_id_sha256"], source._sha(source._canonical(list(FEATURE_IDS))))
         self.assertEqual(audit["source_id_min"], 1)
-        self.assertEqual(audit["source_id_max"], source.EXPECTED_COUNT)
-        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["source_id_max"], FEATURE_COUNT)
+        self.assertEqual(audit["geometry_valid_count"], FEATURE_COUNT)
         self.assertEqual(audit["geometry_invalid_count"], 0)
         self.assertEqual(audit["geometry_empty_count"], 0)
-        self.assertEqual(audit["source_ring_count_histogram"], {"1": source.EXPECTED_COUNT - 1, "2": 1})
-        self.assertEqual(audit["source_shell_ring_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["source_ring_count_histogram"], {"1": FEATURE_COUNT - 1, "2": 1})
+        self.assertEqual(audit["source_shell_ring_count"], FEATURE_COUNT)
         self.assertEqual(audit["source_hole_ring_count"], 1)
         self.assertEqual(audit["feature_id_distinct_count"], 10)
-        self.assertEqual(audit["feature_id_duplicate_count"], source.EXPECTED_COUNT - 10)
+        self.assertEqual(audit["feature_id_duplicate_count"], FEATURE_COUNT - 10)
         self.assertEqual(audit["feature_id_null_count"], 0)
         first = features[0]
         self.assertEqual(first["attributes"]["OBJECTID"], 1)
@@ -92,7 +100,7 @@ class MooringFacilityAreasUsaceIencTests(unittest.TestCase):
         import io
         import pyarrow.parquet as pq
         table = pq.read_table(io.BytesIO(parquet))
-        self.assertEqual(table.num_rows, source.EXPECTED_COUNT)
+        self.assertEqual(table.num_rows, FEATURE_COUNT)
         self.assertEqual(table.column_names,
                          [name for name, _kind in source.EXPECTED_FIELDS] + ["geometry"])
         geo_meta = json.loads(table.schema.metadata[b"geo"])
@@ -139,8 +147,8 @@ class MooringFacilityAreasUsaceIencTests(unittest.TestCase):
 
     def test_count_id_and_page_drift_is_rejected(self):
         mutations = [
-            (lambda d: d["count_before"].update(count=5749), "source_count_drift"),
-            (lambda d: d["ids_after"].update(objectIds=d["ids_after"]["objectIds"][:-1]), "source_id_population_drift"),
+            (lambda d: d["count_before"].update(count=5749), "source_count_or_id_roster_drift"),
+            (lambda d: d["ids_after"].update(objectIds=d["ids_after"]["objectIds"][:-1]), "source_count_or_id_roster_drift"),
             (lambda d: d["page_002"]["features"].pop(), "source_page_features_missing_or_incomplete"),
             (lambda d: d["page_002"].update(exceededTransferLimit=True), "source_page_transfer_limit_truncated"),
             (lambda d: d["page_001"].update(geometryType="esriGeometryPolyline"), "source_page_geometry_type_drift"),
@@ -205,7 +213,7 @@ class MooringFacilityAreasUsaceIencTests(unittest.TestCase):
         ring[-1][0] = ring[0][0]
         ring[-1][1] = ring[0][1]
         _fields, _features, audit = source._validate({name: (_canonical(doc), {}) for name, doc in docs.items()})
-        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["geometry_valid_count"], FEATURE_COUNT)
         self.assertEqual(audit["source_vertex_bounds"]["xmin"], source.EXPECTED_EXTENT["xmin"] - 1e-12)
 
     def test_crs_representations_are_validated(self):
@@ -300,7 +308,7 @@ class MooringFacilityAreasUsaceIencTests(unittest.TestCase):
             self._capture_directory(root)
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
             with patch.object(source, "validate_construction_code_identity"), patch(
-                    "dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                    "dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = source.capture_mooring_facility_areas_usace_ienc(storage, version="draft",
                                                                         capture_directory=str(root))
             prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{first['version']}"
@@ -324,7 +332,7 @@ class MooringFacilityAreasUsaceIencTests(unittest.TestCase):
             capture_manifest["artifact_roster"] = capture_roster_digests(root, exclude={"capture_manifest.json"})
             (root / "capture_manifest.json").write_bytes(_canonical(capture_manifest) + b"\n")
             with patch.object(source, "validate_construction_code_identity"), patch(
-                    "dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                    "dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 second = source.capture_mooring_facility_areas_usace_ienc(storage, version="draft",
                                                                           capture_directory=str(root))
             self.assertTrue(second["reused"])
@@ -351,7 +359,7 @@ class MooringFacilityAreasUsaceIencTests(unittest.TestCase):
                              **({"length": field["length"]} if "length" in field else {})}
                             for field in source.ATTRIBUTE_FIELDS]}
         rows = []
-        for oid in source.EXPECTED_IDS:
+        for oid in FEATURE_IDS:
             values = {}
             for name, kind in source.EXPECTED_FIELDS:
                 if name == "OBJECTID":
@@ -369,34 +377,34 @@ class MooringFacilityAreasUsaceIencTests(unittest.TestCase):
             x = source.EXPECTED_EXTENT["xmin"] + (oid % 100) * 0.01
             y = source.EXPECTED_EXTENT["ymin"] + (oid % 90) * 0.01
             geometry = {"rings": [_clockwise_square(x, y, 0.005)]}
-            if oid == source.EXPECTED_COUNT:
+            if oid == FEATURE_COUNT:
                 hole = list(reversed(_clockwise_square(x + 0.001, y + 0.001, 0.002)))
                 geometry = {"rings": [_clockwise_square(x, y, 0.005), hole]}
             rows.append({"attributes": values, "geometry": geometry})
         pages = {}
-        for index, name in enumerate(source._page_names()):
+        for index, name in enumerate(f"page_{index:03d}" for index in range((FEATURE_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE)):
             start = index * source.PAGE_SIZE
             page_rows = rows[start:start + source.PAGE_SIZE]
             page = {"spatialReference": {"wkid": 4326, "latestWkid": 4326},
                     "geometryType": "esriGeometryPolygon", "features": page_rows}
-            if start + len(page_rows) < source.EXPECTED_COUNT:
+            if start + len(page_rows) < FEATURE_COUNT:
                 page["exceededTransferLimit"] = True
             pages[name] = page
         return {
             "agc_item": {"id": source.AGC_ITEM_ID, "owner": source.AGC_ITEM_OWNER, "type": "Feature Service",
                          "title": "USACE_IENC_Master_Service", "url": source.SERVICE_URL,
                          "accessInformation": source.SERVICE_COPYRIGHT, "modified": 1794259368000},
-            "service_before": service, "layer_before": layer, "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "service_before": service, "layer_before": layer, "count_before": {"count": FEATURE_COUNT},
+            "ids_before": {"objectIds": FEATURE_IDS},
             **pages,
-            "layer_after": json.loads(json.dumps(layer)), "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "layer_after": json.loads(json.dumps(layer)), "count_after": {"count": FEATURE_COUNT},
+            "ids_after": {"objectIds": FEATURE_IDS},
         }
 
     def _capture_directory(self, root: Path):
         docs = self._documents()
         receipts = {}
-        expected_urls = dict(source._capture_urls(source.EXPECTED_IDS))
+        expected_urls = dict(source._capture_urls(FEATURE_IDS))
         for name, doc in docs.items():
             body = _canonical(doc)
             (root / f"{name}.body").write_bytes(body)

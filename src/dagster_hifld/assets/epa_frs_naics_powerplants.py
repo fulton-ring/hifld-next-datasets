@@ -24,8 +24,8 @@ from dagster import (
 
 from dagster_hifld.construction_state import ConstructionStateError, load_first_construction
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     content_derived_version,
     processing_identity,
@@ -43,15 +43,16 @@ from dagster_hifld.sources.epa_frs_arcgis_table import (
 
 DATASET_SLUG = "epa-frs-eia-860-power-generation-facilities-naics-codes"
 FILE_SLUG = DATASET_SLUG
-TABLE_URL = "https://geodata.epa.gov/arcgis/rest/services/OEI/FRS_PowerPlants/MapServer/14"
-SERVICE_URL = "https://geodata.epa.gov/arcgis/rest/services/OEI/FRS_PowerPlants/MapServer"
+ITEM_ID = "2a1459ac9b03469e87c2e7785cc188a9"
+SERVICE_URL = "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_PowerPlants/FeatureServer"
+TABLE_URL = f"{SERVICE_URL}/1"
 PAGE_SIZE = 500
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
-EXPECTED_SOURCE_ROWS = 1395
-EXPECTED_SOURCE_RECORDS_SHA256 = "5281573910df7d293625278e87cbca80c0807535ef96f8ff40db515dc0ae0a13"
-EXPECTED_SOURCE_TRIPLETS_SHA256 = "a6c8b02a2a0f57733a16ca23f72adec675a258272584780fab22e9e686b4e311"
-EXPECTED_SOURCE_IDS_SHA256 = "fd121d92498cda5f2a2f1fa04cc7ea0378828d449dd3cb367ab6c8af1deef891"
-EXPECTED_SOURCE_SCHEMA_SHA256 = "65fd1168a343a5f4c6a8cc97f0cc6df6e6b62332b836259062fcff89d64b9124"
+EXPECTED_SOURCE_ROWS = 1392
+EXPECTED_SOURCE_RECORDS_SHA256 = "0f08552a1a57b8c9f4c2c4800078f13507a072c2ac8dc3df583ee29338a71861"
+EXPECTED_SOURCE_TRIPLETS_SHA256 = "b1b79639da7cda3147c72d8f8ffeb6ee76c91952cf554842ea7fadaf7e1c14c9"
+EXPECTED_SOURCE_IDS_SHA256 = "73864eeddbbd28d9920ebbedd29d9babce866719a0c91bea90971f78bf589bbf"
+EXPECTED_SOURCE_SCHEMA_SHA256 = "4d4f5335328b58bc62cce05ae7ea4c7ac9f19963a7a48dec65b17e9d19807ef0"
 EXPECTED_FIELDS = ("OBJECTID", "REGISTRY_ID", "NAICS_CODE", "PRIMARY_INDICATOR")
 EXPECTED_ARCGIS_FIELDS = (
     ("OBJECTID", "esriFieldTypeOID", False, None),
@@ -61,13 +62,16 @@ EXPECTED_ARCGIS_FIELDS = (
 )
 TABLE_PROFILE = ArcGISTableProfile(
     service_url=SERVICE_URL,
-    table_id=14,
-    table_name="FRS_NAICS_POWERPLANTS",
+    table_id=1,
+    table_name="EPA Facility Registry Service - EIA-860 Power Generation Facilities NAICS Codes",
     fields=EXPECTED_ARCGIS_FIELDS,
-    relationship_name="POWERPLANT_LAYER",
-    related_table_id=12,
-    relationship_key="REGISTRY_ID",
-    relationship_cardinality="esriRelCardinalityOneToMany",
+    relationship_name=None,
+    related_table_id=None,
+    relationship_key=None,
+    relationship_cardinality=None,
+    portal_item_id=ITEM_ID,
+    portal_item_owner="EPA_GEO",
+    portal_item_title="FRS US Power Generation Facilities",
     source_vintage="2014-06",
     expected_rows=EXPECTED_SOURCE_ROWS,
     page_size=PAGE_SIZE,
@@ -112,7 +116,7 @@ def _typed_parquet(records: list[dict[str, Any]], fields: tuple[dict[str, Any], 
         arrow_fields,
         metadata={
             b"hifld:source_url": TABLE_URL.encode(),
-            b"hifld:source_table": b"FRS_NAICS_POWERPLANTS",
+            b"hifld:source_table": TABLE_PROFILE.table_name.encode(),
             b"hifld:geometry": b"absent",
         },
     )
@@ -154,7 +158,7 @@ def _reuse_candidate(
                       "metadata/processing_identity.json", "metadata/candidate_ready.json"}
     receipts = payload.get("capture_receipts")
     objects = payload.get("objects")
-    expected_receipt_names = {"service", "table_before", "count_before", "ids_before",
+    expected_receipt_names = {"service", "portal_item", "table_before", "count_before", "ids_before",
                               "table_after", "service_after", "count_after", "ids_after",
                               *(f"page_{index:03d}" for index in range((EXPECTED_SOURCE_ROWS + PAGE_SIZE - 1) // PAGE_SIZE))}
     if (not isinstance(receipts, dict) or not isinstance(objects, dict)
@@ -226,7 +230,7 @@ def capture_epa_frs_naics_table(
         return _reuse_candidate(staging_storage, version=offline_replay_version, identity=identity,
                                 fingerprint=fingerprint, offline=True)
 
-    capture_base = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/70/captures")
+    capture_base = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "70", "captures")
     capture_root = capture_base / f"refresh-{uuid4().hex}"
     captures: dict[str, tuple[bytes, dict[str, Any]]] = {}
     owned_client = client is None
@@ -237,7 +241,7 @@ def capture_epa_frs_naics_table(
             capture_mode = "offline_retained_source_replay"
             source_prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, offline_capture_version)
             retained_names = {
-                "service", "table_before", "count_before", "ids_before", "table_after",
+                "service", "portal_item", "table_before", "count_before", "ids_before", "table_after",
                 "service_after", "count_after", "ids_after",
                 *(f"page_{index:03d}" for index in range(
                     (EXPECTED_SOURCE_ROWS + PAGE_SIZE - 1) // PAGE_SIZE
@@ -314,7 +318,7 @@ def capture_epa_frs_naics_table(
     })
     source_manifest = {
         "title": "EPA Facility Registry Service - EIA-860 Power Generation Facilities NAICS Codes",
-        "description": "EPA OEI FRS_POWERPLANTS MapServer table FRS_NAICS_POWERPLANTS; nonspatial exact NAICS table. The service describes EIA-860 source vintage as June 2014. Published-candidate membership differs; release is blocked pending maintainer review.",
+        "description": "EPA_GEO hosted FRS_PowerPlants FeatureServer table 1 (EPA Facility Registry Service - EIA-860 Power Generation Facilities NAICS Codes); nonspatial exact NAICS table. The service description dates the joined EIA-860 attribute compilation to June 2014, while EPA's FRS tables refresh process maintains the publication (tables last edited 2026-11-09). Published-candidate membership differs; release is blocked pending maintainer review.",
         "publisher": "U.S. Environmental Protection Agency, Office of Environmental Information (EPA_GEO)",
         "agency": "Environmental Protection Agency", "source_url": TABLE_URL,
         "license": (
@@ -322,9 +326,9 @@ def capture_epa_frs_naics_table(
             "but no licenseInfo or explicit reuse terms; rights review remains required."
         ),
         "date_issued": None, "date_modified": None, "source_modified": None,
-        "lineage": ["EPA_GEO FRS_POWERPLANTS MapServer table 14: FRS_NAICS_POWERPLANTS",
-                    "Declared one-to-many POWERPLANT_LAYER relationship to table 12 on REGISTRY_ID",
-                    "Service description states EIA-860 powerplant source vintage most-current as of June 2014"],
+        "lineage": ["EPA_GEO FRS_PowerPlants FeatureServer table 1: EPA Facility Registry Service - EIA-860 Power Generation Facilities NAICS Codes",
+                    "No table relationship declared on the maintained FeatureServer",
+                    "Service description states EIA-860 powerplant source vintage most-current as of June 2014; tables last edited 2026-11-09 in the maintained FRS tables refresh batch"],
         "source_vintage": "2014-06", "native_geometry": "absent", "refresh_status": "STOPPED",
         "publication_approval": "not_established_by_source_capture",
     }
@@ -433,3 +437,7 @@ epa_frs_naics_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
     run_config={"ops": {epa_frs_naics_powerplants.op.name: {"config": {"offline_replay_version": ""}}}},
 )
+ASSET_CHECKS = [epa_frs_naics_complete, epa_frs_naics_published_membership_compatible]
+INGEST_ASSETS = [epa_frs_naics_powerplants]
+JOBS = [epa_frs_naics_draft_job]
+SCHEDULES = [epa_frs_naics_draft_schedule]

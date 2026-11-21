@@ -28,16 +28,21 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
-    _canonical, _sha, candidate_prefix, processing_identity,
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
+    candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
 )
-from dagster_hifld.sources.usace_pylon_areas import (
-    _load_replay, _write_outputs,
-    PAGE_SIZE,
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
+    ienc_layer_capture_roster,
+    load_replay as _load_replay, validate_crs as _validate_crs,
+    validate_dimensions as _validate_dimensions, write_outputs as _write_outputs,
 )
-from dagster_hifld.sources.usace_pylon_locations import _validate_crs, _validate_dimensions
+
+# Page size previously inherited from usace_pylon_areas.
+PAGE_SIZE = 250
 
 DATASET_SLUG = "crane-locations-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -47,8 +52,6 @@ SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_
 BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 148
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
 MAX_RESPONSE_BYTES = 8_000_000
 MAX_CAPTURE_BYTES = 16_000_000
 EXPECTED_LAYER_EXTENT = {
@@ -170,24 +173,18 @@ def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: 
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("bts_item", BTS_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
-            ("service_before", SERVICE_URL + "?f=pjson"),
-            ("layer_before", LAYER_URL + "?f=pjson"),
-            ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-            ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds":",".join(map(str,page_ids)),
-            "outFields":"*", "returnGeometry":"true", "returnZ":"true", "returnM":"true",
-            "outSR":"4326", "orderByFields":"OBJECTID ASC", "f":"json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
-                 ("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                 ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
-                 ("service_after", SERVICE_URL + "?f=pjson")])
-    return urls
+    return ienc_layer_capture_roster(
+        ids,
+        bts_item_url=BTS_ITEM_URL,
+        service_directory_url=SERVICE_DIRECTORY_URL,
+        service_url=SERVICE_URL,
+        layer_url=LAYER_URL,
+        page_size=PAGE_SIZE,
+    )
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
+    before = capture_witness(captures)
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
     layer = docs["layer_before"]
     fields = layer.get("fields")
@@ -226,24 +223,15 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
             or docs["layer_after"].get("extent") != layer.get("extent")
             or docs["layer_after"].get("spatialReference") != layer.get("spatialReference")):
         raise ValueError("source_schema_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    seed = docs["ids_seed"].get("objectIds")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(seed,list) or not isinstance(before,list) or not isinstance(after,list)
-            or any(type(value) is not int for value in [*seed, *before, *after])
-            or sorted(seed) != EXPECTED_IDS or sorted(before) != EXPECTED_IDS
-            or sorted(after) != EXPECTED_IDS):
-        raise ValueError("source_id_population_drift")
     if (docs["ids_before"].get("objectIdFieldName") != "OBJECTID"
             or any(type(value) is not int for value in before)):
         raise ValueError("source_object_id_field_or_type_drift")
     if (docs["count_before"].get("count") != len(before)
-            or docs["count_after"].get("count") != len(after)):
+            or docs["count_after"].get("count") != len(before)):
         raise ValueError("source_count_id_roster_mismatch")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1)//PAGE_SIZE:
+    if len(pages) != (len(before) + PAGE_SIZE - 1)//PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page=docs[name]
@@ -258,7 +246,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         if page_schema != expected_page_schema or page.get("geometryType") != "esriGeometryPoint":
             raise ValueError("source_page_schema_or_geometry_type_drift")
         page_index = int(name.removeprefix("page_"))
-        expected_ids = EXPECTED_IDS[page_index * PAGE_SIZE:(page_index + 1) * PAGE_SIZE]
+        expected_ids = before[page_index * PAGE_SIZE:(page_index + 1) * PAGE_SIZE]
         returned_ids = [feature.get("attributes", {}).get("OBJECTID") for feature in rows]
         if returned_ids != expected_ids:
             raise ValueError("source_page_id_order_or_membership_drift")
@@ -286,7 +274,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         empty_geometry_count += int(parsed_geometry.is_empty)
         invalid_geometry_count += int(not parsed_geometry.is_valid)
         got.append(attrs.get("OBJECTID"))
-    if len(features)!=EXPECTED_COUNT or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT:
+    if len(features)!=len(before) or sorted(got)!=sorted(before) or len(set(got))!=len(before):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     rows=[{"attributes":f["attributes"],"geometry":f["geometry"]} for f in features]
@@ -303,13 +291,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "source_has_z":bool(layer.get("hasZ")),"source_has_m":bool(layer.get("hasM")),
         "source_coverage_scope":"Complete official IENC CRANES_POINT feature class; not a claim of all crane locations.",
         "drift_guard":"Exact layer id/name, count, field names/types, CRS, page errors, and before/after ID membership are checked."}
-
-
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
-            "esriFieldTypeSmallInteger": pa.int16(), "esriFieldTypeSingle": pa.float32(),
-            "esriFieldTypeDouble": pa.float64(), "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDate": pa.int64()}.get(field.get("type"), pa.string())
 
 
 def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
@@ -362,7 +343,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root=requested/(version+"-"+uuid4().hex)
     else:
-        root=Path("/tmp/hifld-native-reconstruction/47/captures")/(version+"-"+uuid4().hex)
+        root=default_capture_dir("hifld-native-reconstruction", "47", "captures")/(version+"-"+uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)
@@ -404,10 +385,12 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
         elif recover_receipted:
             ids_body, ids_receipt = _load_replay(root, "ids_seed")
             ids = json.loads(ids_body).get("objectIds")
-            if (not isinstance(ids, list) or len(ids) != EXPECTED_COUNT
-                    or any(type(value) is not int for value in ids) or sorted(ids) != EXPECTED_IDS):
+            if (not isinstance(ids, list) or not ids
+                    or any(type(value) is not int or value <= 0 for value in ids)
+                    or len(set(ids)) != len(ids)):
                 raise ValueError("retained_unsealed_seed_roster_invalid")
-            names_urls = [("ids_seed", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})), *_capture_roster(EXPECTED_IDS)]
+            ids = sorted(ids)
+            names_urls = [("ids_seed", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})), *_capture_roster(ids)]
             expected_names = {name for name, _url in names_urls}
             actual_names = {path.name.removesuffix(".receipt.json") for path in root.glob("*.receipt.json")}
             if actual_names != expected_names:
@@ -431,10 +414,11 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
                 seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
                 ids=json.loads(seed_body).get("objectIds")
-                if (not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT
-                        or any(type(value) is not int for value in ids) or sorted(ids)!=EXPECTED_IDS):
+                if (not isinstance(ids,list) or not ids
+                        or any(type(value) is not int or value <= 0 for value in ids)
+                        or len(set(ids))!=len(ids)):
                     raise ValueError("source_seed_id_roster_drift")
-                ids=EXPECTED_IDS
+                ids=sorted(ids)
                 captures["ids_seed"]=(seed_body,seed_receipt)
                 for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name,capture_budget)
         fields,features,audit=_validate(captures)
@@ -491,7 +475,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],
             payload.get("objects",{}),original_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":audit["source_feature_count"],"source_population_complete":True,
+            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
             "source_null_geometry_count":audit["source_null_geometry_count"],
@@ -507,4 +491,4 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
     )
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_empty_geometry_count":audit["source_empty_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_empty_geometry_count":audit["source_empty_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

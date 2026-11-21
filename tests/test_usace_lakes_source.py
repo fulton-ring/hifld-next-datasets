@@ -10,10 +10,11 @@ import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
+
+COUNT = 4940
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "fb91a645d4baaa152f5a47e77505a91a1b521b82a72e42696228d7c49f163794"
 from dagster_hifld.sources.usace_lakes import (
-    EXPECTED_COUNT,
-    EXPECTED_ID_SHA256,
-    EXPECTED_IDS,
     EXPECTED_FIELD_DECLARATIONS,
     _arrow_type,
     _parquet_bytes,
@@ -27,9 +28,9 @@ from dagster_hifld.sources.usace_lakes import (
 
 class UsaceLakesSourceTest(unittest.TestCase):
     def test_pinned_native_roster_and_count(self) -> None:
-        self.assertEqual(EXPECTED_COUNT, 4940)
-        self.assertEqual((EXPECTED_IDS[0], EXPECTED_IDS[-1]), (1, 4940))
-        self.assertEqual(_sha(_canonical(EXPECTED_IDS)), EXPECTED_ID_SHA256)
+        self.assertEqual(COUNT, 4940)
+        self.assertEqual((IDS[0], IDS[-1]), (1, 4940))
+        self.assertEqual(_sha(_canonical(IDS)), ID_SHA256)
 
     def test_scale_minimum_remains_nullable_int32(self) -> None:
         field = next(field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] == "Scale_Minimum")

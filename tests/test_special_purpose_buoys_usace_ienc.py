@@ -11,12 +11,17 @@ from dagster_hifld.sources import special_purpose_buoys_usace_ienc as source
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.special_purpose_buoys_usace_ienc import (
+
     usace_special_purpose_buoys_complete, usace_special_purpose_buoys_draft_job,
     usace_special_purpose_buoys_draft_schedule, usace_special_purpose_buoys_usace_ienc,
 )
 
+COUNT = 104
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "477ba57f962b706da2dd318e4bfda2db512463ce943b7216bdf22615caa49f8a"
 
-def _capture_docs(count=source.EXPECTED_COUNT):
+
+def _capture_docs(count=COUNT):
     layer = {
         "id": source.LAYER_ID, "name": "BUOY_SPECIAL_PURPOSE_POINT", "geometryType": "esriGeometryPoint",
         "maxRecordCount": 2000, "fields": source.EXPECTED_FIELD_DECLARATIONS,
@@ -35,7 +40,7 @@ def _capture_docs(count=source.EXPECTED_COUNT):
         "count_before": {"count": count}, "count_after": {"count": count},
         "ids_before": {"objectIds": ids}, "ids_after": {"objectIds": ids},
     }
-    for page_idx in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+    for page_idx in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
         page_ids = ids[page_idx * source.PAGE_SIZE:(page_idx + 1) * source.PAGE_SIZE]
         rows = []
         for oid in page_ids:
@@ -67,23 +72,23 @@ class SpecialPurposeBuoysTests(unittest.TestCase):
         self.assertIn(usace_special_purpose_buoys_draft_schedule.name,
                       {schedule.name for schedule in registered.schedule_defs})
         self.assertEqual(usace_special_purpose_buoys_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_special_purpose_buoys_complete({"feature_count": source.EXPECTED_COUNT, "source_population_complete": True})
+        check = usace_special_purpose_buoys_complete({"feature_count": COUNT, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["bts_item_succession_accepted"].value)
 
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
-        name, url = source._capture_roster(source.EXPECTED_IDS)[0]
+        name, url = source._capture_roster(IDS)[0]
         receipt = {"method": "GET", "url": url, "final_url": url}
-        source._validate_capture_request_identity(name, receipt, url)
+        source.validate_capture_request_identity(name, receipt, url)
         receipt["final_url"] = "https://example.invalid/wrong"
         with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
-            source._validate_capture_request_identity(name, receipt, url)
+            source.validate_capture_request_identity(name, receipt, url)
 
     def test_complete_population_native_geometry_and_declared_parquet_types(self):
         fields, features, audit = source._validate(_capture_docs())
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "spbuoy-1")
         self.assertEqual(features[0]["attributes"]["Category_of_Special_Purpose_Mark"], "Foul Ground Mark")
         parquet = source._parquet_bytes(fields, features)
@@ -150,11 +155,11 @@ class SpecialPurposeBuoysTests(unittest.TestCase):
         for observed, key in zip(audit["geometry_bounds"], ("xmin", "ymin", "xmax", "ymax")):
             self.assertLessEqual(abs(observed - source.EXPECTED_EXTENT[key]), source.EXTENT_TOLERANCE_DEGREES)
         self.assertEqual(audit["geometry_invalid_count"], 0)
-        self.assertEqual(audit["geometry_valid_count"], source.EXPECTED_COUNT)
+        self.assertEqual(audit["geometry_valid_count"], COUNT)
         self.assertEqual(audit["source_extent_tolerance_degrees"], source.EXTENT_TOLERANCE_DEGREES)
 
     def test_point_queries_request_z_and_m_and_reject_returned_dimensions(self):
-        pages = [(name, url) for name, url in source._capture_roster(source.EXPECTED_IDS)
+        pages = [(name, url) for name, url in source._capture_roster(IDS)
                  if name.startswith("page_")]
         self.assertEqual(len(pages), 1)
         for _name, url in pages:

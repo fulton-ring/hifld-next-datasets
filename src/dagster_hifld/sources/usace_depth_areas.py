@@ -9,7 +9,6 @@ import hashlib
 import json
 import math
 import shutil
-import struct
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -21,17 +20,20 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
-from pyproj import CRS
-from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_witness
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import (
+    _validate_spatial_reference, esri_polygon_wkb as _esri_polygon,
+)
 from dagster_hifld.validation import sha256_file
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -45,9 +47,6 @@ SERVICE_DIRECTORY_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_
 BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PUBLISHER = "U.S. Army Corps of Engineers, USACE IENC Feature Classes service"
-EXPECTED_COUNT = 5778
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "b3f5daae6c2a30af51ca89fb68353fd6a5bf0e75b9133a594940ac430accc28e"
 PAGE_SIZE = 200
 PAGE_SIZE_AFTER_14 = 50
 PAGE_SIZE_TRANSITION_ID = 2801
@@ -67,44 +66,6 @@ EXPECTED_FIELD_DECLARATIONS = [
      **({"length":254} if kind == "esriFieldTypeString" else {})}
     for name,kind in EXPECTED_FIELDS
 ]
-SOURCE_CRS = CRS.from_epsg(4326)
-
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Require every advertised ArcGIS CRS representation to agree with EPSG:4326."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
@@ -202,61 +163,6 @@ def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: 
     raise last
 
 
-def _esri_polygon(geometry: dict):
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
-    if type(has_z) is not bool or type(has_m) is not bool:
-        raise ValueError("source_ordinate_flags_invalid")
-    shells, holes = [], []
-    dimension = None
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise ValueError("source_polygon_ring_invalid")
-        if coords[0] != coords[-1]:
-            raise ValueError("source_polygon_ring_not_closed")
-        if any(not isinstance(point,list) for point in coords):
-            raise ValueError("source_polygon_coordinate_invalid")
-        dims={len(point) for point in coords}
-        if len(dims)!=1:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        point_dims=next(iter(dims))
-        if dimension is None: dimension=point_dims
-        if dimension!=point_dims: raise ValueError("source_polygon_ordinate_count_drift")
-        expected_dims=2+int(has_z)+int(has_m)
-        if point_dims!=expected_dims:
-            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        xy=[point[:2] for point in coords]
-        ring = LinearRing(xy)
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon([point[:2] for point in ring])
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(ring)
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    dim_code={2:0,3:(1000 if has_z else 2000),4:3000}[dimension]
-    def polygon_wkb(shell, hole_rings):
-        out=bytearray(struct.pack("<BI",1,dim_code+3))
-        out.extend(struct.pack("<I",1+len(hole_rings)))
-        for ring in [shell,*hole_rings]:
-            out.extend(struct.pack("<I",len(ring)))
-            for point in ring: out.extend(struct.pack("<"+"d"*dimension,*point))
-        return bytes(out)
-    polygons=[polygon_wkb(shell,assignments[i]) for i,shell in enumerate(shells)]
-    if len(polygons)==1: return polygons[0]
-    multi=bytearray(struct.pack("<BI",1,dim_code+6));multi.extend(struct.pack("<I",len(polygons)))
-    for polygon in polygons: multi.extend(polygon)
-    return bytes(multi)
-
-
 def _arrow_type(field: dict):
     return {"esriFieldTypeOID":pa.int64(), "esriFieldTypeInteger":pa.int32(),
             "esriFieldTypeSmallInteger":pa.int16(), "esriFieldTypeSingle":pa.float32(),
@@ -335,7 +241,8 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
-    expected_names = {name for name,_url in _capture_roster(EXPECTED_IDS)}
+    before = capture_witness(captures)
+    expected_names = {name for name,_url in _capture_roster(before)}
     if not expected_names <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
@@ -381,14 +288,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     extent = layer.get("extent", {})
     if "spatialReference" in extent:
         _validate_spatial_reference(extent["spatialReference"], "source_layer_extent")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if not isinstance(before,list) or before != after or before != EXPECTED_IDS or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT or _sha(_canonical(before)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_population_drift")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
-    batches=_page_batches(EXPECTED_IDS)
+    batches=_page_batches(before)
     if pages != [f"page_{index:03d}" for index in range(len(batches))]:
         raise ValueError("source_page_roster_incomplete")
     for index, name in enumerate(pages):
@@ -449,7 +351,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         geometry=shapely.from_wkb(_esri_polygon(geom))
         geometry_empty += int(geometry.is_empty)
         geometry_valid += int(geometry.is_valid and not geometry.is_empty)
-    if len(features)!=EXPECTED_COUNT or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT:
+    if len(features)!=len(before) or sorted(got)!=sorted(before) or len(set(got))!=len(before):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     rows=[{"attributes":f["attributes"],"geometry":f["geometry"]} for f in features]
@@ -502,7 +404,7 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
     elif requested:
         root=requested/(version+"-"+uuid4().hex)
     else:
-        root=Path("/tmp/hifld-native-reconstruction/54/captures")/(version+"-"+uuid4().hex)
+        root=default_capture_dir("hifld-native-reconstruction", "54", "captures")/(version+"-"+uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)
@@ -519,9 +421,10 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
                 raise ValueError("retained_capture_artifact_digest_mismatch")
             ids_body,ids_receipt=_load_replay(root,"ids_before")
             ids=json.loads(ids_body).get("objectIds")
-            if not isinstance(ids,list): raise ValueError("retained_id_roster_invalid")
-            if ids != EXPECTED_IDS or _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-                raise ValueError("retained_id_population_drift")
+            if (not isinstance(ids,list) or not ids
+                    or any(type(oid) is not int or oid <= 0 for oid in ids)
+                    or len(set(ids)) != len(ids)):
+                raise ValueError("retained_id_roster_invalid")
             names=[name for name,_url in _capture_roster(ids)]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
@@ -549,29 +452,44 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
             existing_bytes=sum(p.stat().st_size for p in budget_root.rglob("*") if p.is_file() and p.suffix in {".body",".wire"})
             capture_budget=[existing_bytes]
             if existing_bytes>MAX_CAPTURE_BYTES: raise ValueError("source_capture_budget_exceeded_before_request")
+            found=set()
             if preexisting:
-                expected_urls=dict(_capture_roster(EXPECTED_IDS))
-                expected_names=set(expected_urls)
                 found={path.name.removesuffix(".body") for path in root.glob("*.body")}
-                if not found or not found <= expected_names:
+                if not found:
                     raise ValueError("partial_capture_name_roster_invalid")
-                for name in found:
-                    body,receipt=_load_replay(root,name)
-                    if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
-                            or receipt.get("final_url") != expected_urls[name]):
-                        raise ValueError("partial_capture_request_identity_mismatch:" + name)
-                    captures[name]=(body,receipt)
-                for name in found:
-                    if not (root/f"{name}.wire").is_file() or not (root/f"{name}.receipt.json").is_file():
-                        raise ValueError("partial_capture_artifact_trio_incomplete:" + name)
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
-                expected_urls=dict(_capture_roster(EXPECTED_IDS))
+                if "ids_before" in found:
+                    ids_body,ids_receipt=_load_replay(root,"ids_before")
+                else:
+                    ids_body,ids_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_before",capture_budget)
+                    found.add("ids_before")
+                ids=json.loads(ids_body).get("objectIds")
+                if (not isinstance(ids,list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
+                    raise ValueError("source_seed_id_population_drift")
+                captures["ids_before"]=(ids_body,ids_receipt)
+                expected_urls=dict(_capture_roster(ids))
                 if preexisting:
+                    expected_names=set(expected_urls)
+                    if not found <= expected_names:
+                        raise ValueError("partial_capture_name_roster_invalid")
+                    for name in found:
+                        if name == "ids_before":
+                            continue
+                        body,receipt=_load_replay(root,name)
+                        if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
+                                or receipt.get("final_url") != expected_urls[name]):
+                            raise ValueError("partial_capture_request_identity_mismatch:" + name)
+                        captures[name]=(body,receipt)
+                    for name in found:
+                        if not (root/f"{name}.wire").is_file() or not (root/f"{name}.receipt.json").is_file():
+                            raise ValueError("partial_capture_artifact_trio_incomplete:" + name)
                     for suffix in ("body", "wire", "receipt.json"):
                         artifact_names={path.name.removesuffix("."+suffix) for path in root.glob("*."+suffix)}
                         if artifact_names != found:
                             raise ValueError("partial_capture_artifact_roster_mismatch")
-                for name,url in _capture_roster(EXPECTED_IDS):
+                for name,url in _capture_roster(ids):
                     if name in captures:
                         continue
                     captures[name]=_fetch_retry(client,url,root,name,capture_budget)
@@ -651,7 +569,7 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
             fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],
             payload.get("objects",{}),original_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":audit["source_feature_count"],"source_population_complete":True,
+            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_capture_sha256":audit["source_capture_sha256"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
@@ -661,7 +579,7 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
             "rights_accepted":False,"mapping_approved":False,"release_accepted":False,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
-    from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
+    from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_capture_sha256":audit["source_capture_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_capture_sha256":audit["source_capture_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

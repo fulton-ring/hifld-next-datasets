@@ -1,14 +1,13 @@
 """Immutable native-CRS capture and typed GeoParquet candidate for official USGS plates."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -23,11 +22,13 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
+from dagster_hifld.sources.arcgis_layer import layer_capture_roster
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = FILE_SLUG = "plate-boundaries"
@@ -56,11 +57,11 @@ EXPECTED_CAPTURE_NAMES = {"service_before","layer_before","count_before","ids_be
 EXPECTED_CRS = CRS.from_epsg(3857)
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode("utf-8")
-
-def _sha(body: bytes) -> str: return hashlib.sha256(body).hexdigest()
-def _query(params: dict[str,object]) -> str: return LAYER_URL+"/query?"+urlencode(params)
+def _urls(ids: list[int]) -> list[tuple[str,str]]:
+    """Return the ordered layer capture roster for the discovered IDs."""
+    return layer_capture_roster(
+        ids, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=BATCH_SIZE,
+        page_params={"returnZ": "true", "returnM": "true"})
 
 
 def _validate_spatial_reference(value: object,label: str,*,required: bool=True) -> bool:
@@ -233,24 +234,19 @@ def capture_plate_boundaries(storage:StagingStorageResource,*,version:str,captur
         root=requested; captures=_read_replay(root)
     else:
         if requested and any(requested.glob("*.body")): raise ValueError("unsealed_capture_attempt_exists")
-        root=(requested/version/uuid4().hex) if requested else Path("/tmp/hifld-native-reconstruction/plate-boundaries")/(version+"-"+uuid4().hex)
+        root=(requested/version/uuid4().hex) if requested else default_capture_dir("hifld-native-reconstruction", "plate-boundaries")/(version+"-"+uuid4().hex)
         if any(p.is_symlink() for p in (root,*root.parents)): raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True,exist_ok=False); captures={}
         try:
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usgs-plates-draft"}) as client:
-                for name,url in (("service_before",SERVICE_URL+"?f=pjson"),("layer_before",LAYER_URL+"?f=pjson"),
-                    ("count_before",_query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                    ("ids_before",_query({"where":"1=1","returnIdsOnly":"true","f":"json"}))):
-                    captures[name]=_capture(client,url,root,name)
+                metadata=dict(_urls([]))
+                for name in ("service_before","layer_before","count_before","ids_before"):
+                    captures[name]=_capture(client,metadata[name],root,name)
                 ids=json.loads(captures["ids_before"][0]).get("objectIds")
                 if not isinstance(ids,list) or len(ids)!=COUNT or _sha(_canonical(sorted(ids)))!=EXPECTED_ID_SHA: raise ValueError("source_seed_id_roster_drift")
-                for i,start in enumerate(range(0,len(ids),BATCH_SIZE)):
-                    pageids=ids[start:start+BATCH_SIZE]
-                    url=_query({"objectIds":",".join(map(str,pageids)),"outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","orderByFields":"OBJECTID ASC","f":"json"})
-                    captures[f"page_{i:03d}"]=_capture(client,url,root,f"page_{i:03d}")
-                for name,url in (("layer_after",LAYER_URL+"?f=pjson"),("count_after",_query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                    ("ids_after",_query({"where":"1=1","returnIdsOnly":"true","f":"json"})),("service_after",SERVICE_URL+"?f=pjson")):
-                    captures[name]=_capture(client,url,root,name)
+                for name,url in _urls(ids):
+                    if name not in captures:
+                        captures[name]=_capture(client,url,root,name)
             fields,features,audit=_validate(captures)
         except Exception as exc:
             receipts={}; names=set()

@@ -1,10 +1,11 @@
 """Bounded, source-faithful capture for the NOAA OCS ENCDirect shipping fairways layer."""
 from __future__ import annotations
 
+from functools import partial
+
 import json
 import math
 import shutil
-import struct
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,23 +16,34 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 from shapely import from_wkb
-from shapely.geometry import LinearRing, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
-    _canonical, _capture_identity, _load_capture, _sha,
-    _validate_capture_request_identity, _validate_spatial_reference,
+from dagster_hifld.sources.arcgis_layer import (
+    _canonical,
+    _sha,
+    _validate_spatial_reference,
+    capture_witness,
+    layer_capture_roster,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    capture_identity,
+    load_capture,
+)
+
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
+
+_esri_polygon_wkb = partial(esri_polygon_wkb, allow_zm=False)
 
 DATASET_SLUG = "shipping-fairways"
 FILE_SLUG = DATASET_SLUG
@@ -55,40 +67,6 @@ PUBLISHER = ("NOAA National Ocean Service, Office of Coast Survey; ENCDirect "
              "NavigationChartData MarineTransportation map service")
 SERVICE_COPYRIGHT = ("Department of Commerce (DOC), National Oceanic and Atmospheric "
                      "Administration (NOAA), National Ocean Service (NOS), Office Coast Survey (OCS) ")
-EXPECTED_COUNT = 346
-EXPECTED_IDS = [144533, 144534, 144535, 144536, 144537, 144538, 144539, 144540, 144541,
-    144542, 144543, 144544, 144833, 144834, 144835, 144836, 144837, 144838, 144839, 144840,
-    144841, 144842, 144843, 144844, 144845, 144846, 144847, 144848, 144849, 144850, 144851,
-    144852, 144853, 144854, 144855, 144856, 144857, 144858, 144859, 144860, 144861, 144862,
-    144863, 144864, 144865, 144866, 144867, 144868, 144869, 144870, 144871, 144872, 144873,
-    144874, 144875, 144876, 144877, 144878, 144879, 144880, 144881, 144882, 144883, 144884,
-    144885, 144886, 144887, 144888, 144889, 144890, 144891, 144892, 144893, 144894, 144895,
-    144896, 144897, 144898, 144899, 144900, 144901, 144902, 144903, 144904, 144905, 144906,
-    144907, 144908, 144909, 144910, 144911, 144912, 144913, 144914, 144915, 144916, 144917,
-    144918, 144919, 144920, 144921, 144922, 144923, 144924, 144925, 144926, 144927, 144928,
-    144929, 144930, 144931, 144932, 144933, 144934, 144935, 144936, 144937, 144938, 144939,
-    144940, 144941, 144942, 144943, 144944, 144945, 144946, 144947, 144948, 144949, 144950,
-    144951, 144952, 144953, 144954, 144955, 144956, 144957, 144958, 144959, 144960, 144961,
-    144962, 144963, 144964, 144965, 144966, 144967, 144968, 144969, 144970, 144971, 144972,
-    144973, 144974, 144975, 144976, 144977, 144978, 144979, 144980, 144981, 144982, 144983,
-    144984, 144985, 144986, 144987, 144988, 144989, 144990, 144991, 144992, 144993, 144994,
-    144995, 144996, 144997, 144998, 144999, 145000, 145001, 145002, 145003, 145004, 145005,
-    145006, 145007, 145008, 145009, 145010, 145011, 145012, 145013, 145014, 145015, 145016,
-    145017, 145018, 145019, 145020, 145021, 145022, 145023, 145024, 145025, 145026, 145027,
-    145028, 145029, 145030, 145031, 145032, 145033, 145034, 145035, 145036, 145037, 145038,
-    145039, 145040, 145041, 145042, 145043, 145044, 145045, 145046, 145047, 145048, 145049,
-    145050, 145051, 145052, 145053, 145054, 145055, 145056, 145057, 145058, 145059, 145060,
-    145061, 145062, 145063, 145064, 145065, 145066, 145067, 145068, 145069, 145070, 145071,
-    145072, 145073, 145074, 145075, 145076, 145077, 145078, 145079, 145080, 145081, 145082,
-    145083, 145084, 145085, 145086, 145087, 145088, 145089, 145090, 145091, 145092, 145093,
-    145094, 145095, 145096, 145097, 145098, 145099, 145100, 145101, 145102, 145103, 145104,
-    145105, 145106, 145107, 145108, 145109, 145110, 145111, 145112, 145113, 145114, 145115,
-    145116, 145117, 145118, 145119, 145120, 145121, 145122, 145123, 145124, 145125, 145126,
-    145127, 145128, 145129, 145130, 145131, 145132, 145133, 145134, 145135, 145136, 145137,
-    145138, 145139, 145140, 145141, 145142, 145143, 145144, 145145, 145146, 145147, 145148,
-    145149, 145150, 145151, 145152, 145153, 145154, 145155, 145156, 145157, 145158, 145159,
-    145160, 145161, 145162, 145163, 145164, 145165, 145166]
-EXPECTED_ID_SHA256 = "a2588be717502bf3999fbff37d4459b9d5db4adbc1a04cb400f37118dcabd589"
 PAGE_SIZE = 100
 PAGE_MAX_BYTES = 8_000_000
 MAX_CAPTURE_BYTES = 192_000_000
@@ -106,33 +84,22 @@ EXPECTED_FIELD_DECLARATIONS = [
 ]
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
 EXPECTED_EXTENT = {"xmin": -180, "ymin": 9.30976600000002, "xmax": 180, "ymax": 66.566622}
-CAPTURE_NAMES = {"inport_item", "service_directory", "service_before", "layer_before",
-                 "count_before", "ids_before", "layer_after", "count_after", "ids_after",
-                 "service_after",
-                 *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
+def _capture_names(ids: list[int]) -> set[str]:
+    return {"inport_item", "service_directory", "service_before", "layer_before",
+            "count_before", "ids_before", "layer_after", "count_after", "ids_after",
+            "service_after",
+            *{f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}}
 RETRYABLE_HTTP_STATUS = {500, 502, 503, 504, 429}
 
 
-def _query(params: dict[str, object]) -> str:
-    return LAYER_URL + "/query?" + urlencode(params)
-
-
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("inport_item", INPORT_URL),
-            ("service_directory", SERVICE_DIRECTORY_URL),
-            ("service_before", SERVICE_URL + "?f=json"), ("layer_before", LAYER_URL + "?f=json"),
-            ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-            ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds": ",".join(map(str, page_ids)),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=json"),
-                 ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                 ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                 ("service_after", SERVICE_URL + "?f=json")])
-    return urls
+    return layer_capture_roster(
+        ids, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(("inport_item", INPORT_URL),
+                         ("service_directory", SERVICE_DIRECTORY_URL)),
+        service_format="json", layer_format="json",
+        page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"},
+    )
 
 
 def _retry_budget(attempt: int) -> float:
@@ -199,85 +166,19 @@ def _capture_with_retry(client: httpx.Client, url: str, root: Path, name: str) -
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
-    manifest_path = root / "capture_manifest.json"
-    if manifest_path.is_symlink():
-        raise ValueError("retained_capture_manifest_symlink_rejected")
-    manifest = json.loads(manifest_path.read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
-        raise ValueError("retained_capture_manifest_invalid")
-    roster = manifest.get("artifact_roster")
-    if not isinstance(roster, dict) or set(manifest["receipts"]) != CAPTURE_NAMES:
-        raise ValueError("retained_capture_roster_or_names_invalid")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
-        raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_roster(EXPECTED_IDS))
-    captures = {}
-    for name in sorted(CAPTURE_NAMES):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
-
-
-def _esri_polygon_wkb(geometry: dict) -> bytes:
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
-    if type(has_z) is not bool or type(has_m) is not bool:
-        raise ValueError("source_ordinate_flags_invalid")
-    if has_z or has_m:
-        # The pinned layer contract is XY-only; correctly flagged dimensional
-        # geometry is source drift and must fail closed, never be sealed.
-        raise ValueError("source_polygon_dimensional_flags_rejected")
-    shells, holes = [], []
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise ValueError("source_polygon_ring_invalid")
-        if coords[0] != coords[-1]:
-            raise ValueError("source_polygon_ring_not_closed")
-        if any(not isinstance(point, list) for point in coords):
-            raise ValueError("source_polygon_coordinate_invalid")
-        dims = {len(point) for point in coords}
-        if len(dims) != 1:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        if next(iter(dims)) != 2:
-            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        ring = LinearRing(coords)
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon([point[:2] for point in ring])
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(ring)
-
-    def polygon_wkb(shell, hole_rings):
-        out = bytearray(struct.pack("<BI", 1, 3))
-        out.extend(struct.pack("<I", 1 + len(hole_rings)))
-        for ring in [shell, *hole_rings]:
-            out.extend(struct.pack("<I", len(ring)))
-            for point in ring:
-                out.extend(struct.pack("<dd", *point))
-        return bytes(out)
-
-    polygons = [polygon_wkb(shells[i], assignments[i]) for i in range(len(shells))]
-    if len(polygons) == 1:
-        return polygons[0]
-    multi = bytearray(struct.pack("<BI", 1, 6))
-    multi.extend(struct.pack("<I", len(polygons)))
-    for polygon in polygons:
-        multi.extend(polygon)
-    return bytes(multi)
+    ids_body, _ids_wire, _ids_receipt = load_capture(root, "ids_before")
+    replay_ids = json.loads(ids_body).get("objectIds")
+    if (not isinstance(replay_ids, list) or not replay_ids
+            or any(type(oid) is not int or oid <= 0 for oid in replay_ids)
+            or len(set(replay_ids)) != len(replay_ids)):
+        raise ValueError("retained_capture_id_roster_invalid")
+    return validate_retained_capture_replay(
+        root,
+        capture_names=_capture_names(replay_ids),
+        expected_urls=dict(_capture_roster(replay_ids)),
+        load_capture=load_capture,
+        validate_request_identity=validate_capture_request_identity,
+    )
 
 
 def _validate_inport_item(body: bytes) -> None:
@@ -291,7 +192,8 @@ def _validate_inport_item(body: bytes) -> None:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
-    if set(captures) != CAPTURE_NAMES:
+    ids_before = capture_witness(captures)
+    if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()
             if not name.startswith("inport")}
@@ -322,13 +224,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         _validate_spatial_reference(extent_reference, "source_layer_extent")
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_service_or_layer_changed_during_capture")
-    count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (count_before != EXPECTED_COUNT or count_after != count_before or not isinstance(ids_before, list)
-            or any(type(oid) is not int for oid in ids_before) or ids_before != EXPECTED_IDS
-            or ids_after != ids_before
-            or len(set(ids_before)) != EXPECTED_COUNT or _sha(_canonical(ids_before)) != EXPECTED_ID_SHA256):
-        raise ValueError("source_count_or_id_population_drift")
     features = []
     vertices = 0
     geometry_valid = geometry_empty = 0
@@ -341,7 +236,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         _validate_spatial_reference(page.get("spatialReference"), "source_" + name + "_page")
         rows = page.get("features")
         expected_index = int(name[-3:])
-        expected_ids = EXPECTED_IDS[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
+        expected_ids = ids_before[expected_index * PAGE_SIZE:(expected_index + 1) * PAGE_SIZE]
         if not isinstance(rows, list) or len(rows) != len(expected_ids):
             raise ValueError("source_page_population_incomplete:" + name)
         page_ids = []
@@ -396,7 +291,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         if sorted(page_ids) != expected_ids or len(set(page_ids)) != len(page_ids):
             raise ValueError("source_page_id_population_drift:" + name)
     ids = [feature["attributes"]["OBJECTID"] for feature in features]
-    if sorted(ids) != EXPECTED_IDS or len(features) != EXPECTED_COUNT or len(set(ids)) != EXPECTED_COUNT:
+    if sorted(ids) != ids_before or len(features) != len(ids_before) or len(set(ids)) != len(ids_before):
         raise ValueError("source_feature_id_population_drift")
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     bounds = [from_wkb(_esri_polygon_wkb(row["geometry"])).bounds for row in features]
@@ -448,7 +343,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
 
 
 def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
-    return _sha(_canonical(_capture_identity(captures, root)))
+    return _sha(_canonical(capture_identity(captures, root)))
 
 
 def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
@@ -476,7 +371,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/310/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "310", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
@@ -484,7 +379,18 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(60, connect=15),
                               headers={"User-Agent": "hifld-next-datasets/noaa-ocs-draft"}) as client:
-                for name, url in _capture_roster(EXPECTED_IDS):
+                ids_body, ids_receipt = _capture_with_retry(
+                    client, LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
+                    root, "ids_before")
+                seed = json.loads(ids_body).get("objectIds")
+                if (not isinstance(seed, list) or not seed
+                        or any(type(oid) is not int or oid <= 0 for oid in seed)
+                        or len(set(seed)) != len(seed)):
+                    raise ValueError("source_seed_id_roster_drift")
+                captures["ids_before"] = (ids_body, ids_receipt)
+                for name, url in _capture_roster(seed):
+                    if name == "ids_before":
+                        continue
                     captures[name] = _capture_with_retry(client, url, root, name)
             fields, features, audit = _validate(captures)
         except Exception as exc:
@@ -511,7 +417,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
     identity = processing_identity(Path(__file__).parents[3])
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
-        "source_capture_evidence": _capture_identity(captures, root),
+        "source_capture_evidence": capture_identity(captures, root),
         "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
@@ -565,7 +471,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
@@ -586,7 +492,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            body, wire, _receipt = _load_capture(root, name)
+            body, wire, _receipt = load_capture(root, name)
             if (storage.read_key(f"{prefix}/raw/{name}.body") != body
                     or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
                 raise ValueError("cached_source_evidence_changed:" + name)
@@ -594,9 +500,10 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"], "source_id_min": min(EXPECTED_IDS),
-            "source_id_max": max(EXPECTED_IDS), "source_schema_sha256": audit["source_schema_sha256"],
+            "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],
+            "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+            "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
@@ -618,9 +525,10 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         "capture_receipts": receipts, "objects": descriptors})
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_COUNT, "source_population_complete": True,
-        "source_id_sha256": audit["source_id_sha256"], "source_id_min": min(EXPECTED_IDS),
-        "source_id_max": max(EXPECTED_IDS), "source_schema_sha256": audit["source_schema_sha256"],
+        "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],
+        "source_population_complete": True,
+        "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
+        "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],

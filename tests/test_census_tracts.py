@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -15,7 +16,13 @@ from dagster_hifld.assets.census_tracts import (
 )
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import defs
+from dagster_hifld.sources import census_latest
 from dagster_hifld.sources import census_tracts as source
+
+FIXTURE_URL = "https://www2.census.gov/geo/tiger/TGRGDB25/tlgdb_2025_a_us_substategeo.gdb.zip"
+RELEASE = census_latest.geodatabase_release_from_url(FIXTURE_URL, source.GEODATABASE_PRODUCT)
+ARCHIVE_SHA = hashlib.sha256(b"fixture-substategeo-archive-bytes").hexdigest()
+ARCHIVE_BYTES = 512_000_000
 
 
 class CensusTractsTests(unittest.TestCase):
@@ -33,20 +40,22 @@ class CensusTractsTests(unittest.TestCase):
             DefaultScheduleStatus.STOPPED,
         )
 
-    def test_source_check_requires_exact_full_native_candidate(self):
+    def test_source_check_requires_range_population_and_native_candidate(self):
         candidate = {
-            "feature_count": source.SOURCE_FEATURE_COUNT,
+            "feature_count": 85_529,
             "source_population_complete": True,
-            "source_archive_bytes": source.SOURCE_BYTES,
-            "source_archive_sha256": source.SOURCE_SHA256,
+            "source_archive_bytes": ARCHIVE_BYTES,
+            "source_archive_sha256": ARCHIVE_SHA,
             "source_id_sha256": "1" * 64,
             "native_parquet_sha256": "2" * 64,
             "native_value_parity": True,
             "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
         }
         self.assertTrue(census_tracts_source_complete(candidate).passed)
-        self.assertFalse(census_tracts_source_complete(dict(candidate, feature_count=source.SOURCE_FEATURE_COUNT - 1)).passed)
+        self.assertFalse(census_tracts_source_complete(dict(candidate, feature_count=source.FEATURE_COUNT_RANGE[0] - 1)).passed)
+        self.assertFalse(census_tracts_source_complete(dict(candidate, feature_count=source.FEATURE_COUNT_RANGE[1] + 1)).passed)
         self.assertFalse(census_tracts_source_complete(dict(candidate, native_value_parity=False)).passed)
+        self.assertFalse(census_tracts_source_complete(dict(candidate, source_archive_sha256="")).passed)
 
     def test_stream_preserves_all_source_values_fids_wkb_and_native_crs(self):
         geoms = [
@@ -79,7 +88,7 @@ class CensusTractsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, \
              patch.object(source.pyogrio, "read_info", return_value={}), \
              patch.object(source.pyogrio, "open_arrow", side_effect=open_arrow), \
-             patch.object(source, "SOURCE_FEATURE_COUNT", 2):
+             patch.object(source, "FEATURE_COUNT_RANGE", (1, 3)):
             output_path = Path(temp) / "tracts.parquet"
             result = source._stream_layer("unused", output_path)
             output = pq.read_table(output_path)
@@ -107,19 +116,25 @@ class CensusTractsTests(unittest.TestCase):
         with self.assertRaisesRegex(source.CensusTractsError, "physical_type_or_width_drift:GEOID"):
             source._parse_layer_definition(xml.replace("<Length>11</Length>", "<Length>12</Length>", 1))
 
-    def test_source_manifest_keeps_vintage_explicit_and_release_unapproved(self):
+    def test_source_manifest_records_resolved_vintage_and_release_unapproved(self):
         identity = {
             "code_commit": "packaged-sha256:" + "a" * 64,
             "code_identity_scheme": "sha256-packaged-dagster-hifld-v1",
         }
+        receipt = {"url": FIXTURE_URL, "final_url": FIXTURE_URL, "status": 200, "complete_body": True,
+                   "bytes": ARCHIVE_BYTES, "sha256": ARCHIVE_SHA,
+                   "observed_at": "2026-10-21T17:04:58.415344+00:00"}
         manifest = source._manifest(
             identity,
-            {"parquet_bytes": 1234, "parquet_sha256": "b" * 64},
-            {"observed_at": "2026-10-21T17:04:58.415344+00:00"},
+            {"parquet_bytes": 1234, "parquet_sha256": "b" * 64, "feature_count": 85_529},
+            receipt,
+            RELEASE,
             {"source_shape_type": "esriGeometryPolygon"},
         )
         self.assertIs(manifest["approved"], False)
-        self.assertIn("2024", manifest["title"])
+        self.assertIn(str(RELEASE.vintage), manifest["title"])
+        self.assertEqual(manifest["source_release"]["tiger_vintage"], str(RELEASE.vintage))
+        self.assertEqual(manifest["inputs"][0]["sha256"], ARCHIVE_SHA)
         self.assertIn("release_date_unknown_reason", manifest["inputs"][0])
         self.assertEqual(manifest["prebuilt_output_policy"]["formats"]["geoparquet"]["objects"][0]["bytes"], 1234)
         self.assertNotIn("promotion_allowed", manifest)

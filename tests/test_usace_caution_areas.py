@@ -13,13 +13,18 @@ from dagster import DefaultScheduleStatus
 from dagster_hifld.sources import usace_caution_areas as source
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usace_caution_areas import (
+
     usace_caution_areas_complete, usace_caution_areas_draft_schedule,
     usace_caution_areas_usace_ienc,
 )
 
+COUNT = 36
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "02e99fd62f6f540ab038420ccae4d559eeff82837530ee80520686aea761e7b7"
+
 
 def _captures():
-    ids = source.EXPECTED_IDS
+    ids = IDS
     layer = {"id": 7, "name": "CAUTION_AREA_POINT", "geometryType": "esriGeometryPoint",
         "maxRecordCount": 2000, "fields": source.EXPECTED_FIELD_DECLARATIONS,
         "spatialReference": {"wkid": 4326, "latestWkid": 4326},
@@ -50,17 +55,17 @@ class CautionAreaTests(unittest.TestCase):
     def test_registered_draft_refresh_is_stopped_and_release_remains_unapproved(self):
         self.assertIn(usace_caution_areas_usace_ienc, hifld_ingest_assets)
         self.assertEqual(usace_caution_areas_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_caution_areas_complete({"feature_count": 36, "source_population_complete": True})
+        check = usace_caution_areas_complete({"feature_count": 36, "source_reported_count": COUNT, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
 
     def test_exact_get_request_guard(self):
-        name, url = source._capture_roster(source.EXPECTED_IDS)[0]
+        name, url = source._capture_roster(IDS)[0]
         receipt = {"method": "GET", "url": url, "final_url": url}
-        source._validate_capture_request_identity(name, receipt, url)
+        source.validate_capture_request_identity(name, receipt, url)
         receipt["final_url"] = "https://example.invalid/altered"
         with self.assertRaisesRegex(ValueError, "retained_capture_request_identity_mismatch"):
-            source._validate_capture_request_identity(name, receipt, url)
+            source.validate_capture_request_identity(name, receipt, url)
 
     def test_retained_capture_file_budget_checked_before_read(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -83,7 +88,7 @@ class CautionAreaTests(unittest.TestCase):
     def test_complete_native_population_and_typed_geo_parquet_round_trip(self):
         fields, features, audit = source._validate(_captures())
         self.assertEqual(len(features), 36)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_wkid"], 4326)
         data = pq.read_table(io.BytesIO(source._parquet_bytes(fields, features)))
         self.assertTrue(data.schema.field("Scale_Minimum").type.equals(pa.int32()))

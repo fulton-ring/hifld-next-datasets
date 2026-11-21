@@ -4,6 +4,7 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -42,13 +43,22 @@ def usace_fuds_program_district_boundaries(
 
 @asset_check(asset=usace_fuds_program_district_boundaries, blocking=True)
 def usace_fuds_program_district_boundaries_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == 13 and candidate.get("candidate_approved") is False
+    passed = (candidate.get("capture_complete") is True
+              and type(candidate.get("feature_count")) is int
+              and candidate["feature_count"] > 0
+              and candidate.get("candidate_approved") is False)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
     })
+
+
+usace_fuds_program_district_boundaries_approved_baseline_drift = \
+    register_approved_baseline_drift(
+        usace_fuds_program_district_boundaries,
+        "usace_fuds_program_district_boundaries_approved_baseline_drift")
 
 
 fuds_district_boundaries_draft_job = define_asset_job(
@@ -62,3 +72,12 @@ fuds_district_boundaries_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+ASSET_CHECKS = [
+    usace_fuds_program_district_boundaries_complete,
+    usace_fuds_program_district_boundaries_approved_baseline_drift,
+]
+INGEST_ASSETS = [usace_fuds_program_district_boundaries]
+JOBS = [fuds_district_boundaries_draft_job]
+SCHEDULES = [fuds_district_boundaries_draft_schedule]

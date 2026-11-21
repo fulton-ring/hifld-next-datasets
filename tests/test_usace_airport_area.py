@@ -97,7 +97,7 @@ class UsaceAirportAreaContractTests(unittest.TestCase):
         ids = list(range(1, 73))
         captures = _base_captures(ids)
         captures["ids_after"] = (json.dumps({"objectIds": ids[:-1] + [73]}).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             _validate(captures)
 
     def test_metadata_contract_pins_complete_official_class(self):

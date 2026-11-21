@@ -21,11 +21,23 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.usace_administrative_areas import (
-    _canonical, _sha, _fetch_retry, _parquet_bytes, _load_replay,
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
+    fetch_capture_retry, layer_parquet_bytes as _parquet_bytes,
+    load_replay as _load_replay,
 )
+
+
+def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int], *,
+                 allow_arcgis_item_redirect: bool = False):
+    """Retry one transient transport/incomplete read, retaining every attempt."""
+    return fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                               prefill_empty_artifacts=True,
+                               allow_arcgis_item_redirect=allow_arcgis_item_redirect)
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -39,7 +51,6 @@ PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{CURRENT_BTS_ITEM_ID}?f=json"
 BTS_PDF_URL = f"https://www.arcgis.com/sharing/rest/content/items/{CURRENT_BTS_ITEM_ID}/data"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 109
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 48_000_000
 MAX_CAPTURE_BYTES = 350_000_000
@@ -99,14 +110,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         raise ValueError("source_spatial_reference_or_page_limit_drift")
     if docs["layer_after"].get("fields") != fields or docs["layer_after"].get("geometryType") != "esriGeometryPolygon":
         raise ValueError("source_schema_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if not isinstance(before,list) or before != after or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT:
-        raise ValueError("source_id_population_drift")
+    before = capture_witness(captures)
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1)//PAGE_SIZE:
+    if len(pages) != (len(before) + PAGE_SIZE - 1)//PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page=docs[name]
@@ -126,7 +133,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         if set(geom)-{"rings","hasZ","hasM","spatialReference"}:
             raise ValueError("unexpected_source_geometry_ordinates")
         got.append(attrs.get("OBJECTID"))
-    if len(features)!=EXPECTED_COUNT or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT:
+    if len(features)!=len(before) or sorted(got)!=sorted(before) or len(set(got))!=len(before):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     rows=[{"attributes":f["attributes"],"geometry":f["geometry"]} for f in features]
@@ -215,7 +222,9 @@ def capture_usace_nautical_publication_information_areas(storage: StagingStorage
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
                 seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
                 ids=json.loads(seed_body).get("objectIds")
-                if not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT: raise ValueError("source_seed_id_count_drift")
+                if (not isinstance(ids,list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)): raise ValueError("source_seed_id_roster_drift")
                 captures["ids_seed"]=(seed_body,seed_receipt)
                 for name,url in _capture_roster(ids):
                     captures[name]=_fetch_retry(client,url,root,name,capture_budget,
@@ -271,7 +280,7 @@ def capture_usace_nautical_publication_information_areas(storage: StagingStorage
             fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],
             payload.get("objects",{}),original_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":audit["source_feature_count"],"source_population_complete":True,
+            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
             "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
@@ -281,10 +290,10 @@ def capture_usace_nautical_publication_information_areas(storage: StagingStorage
             "rights_accepted":False,"mapping_approved":False,"release_accepted":False,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
-    from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
+    from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
     )
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","prior_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","prior_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
 

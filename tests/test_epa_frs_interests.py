@@ -1,6 +1,8 @@
 """Focused tests for the full-universe EPA FRS INTERESTS draft pipeline."""
 import io
+import gzip
 import json
+import shutil
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -9,13 +11,16 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+import pyarrow as pa
 import pyarrow.parquet as pq
+import shapely
 
 from dagster_hifld.assets.epa_frs_interests import epa_frs_interests
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import epa_frs_common
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import epa_frs_interests as src
+from dagster_hifld.capture_completeness import approved_baseline_drift
 
 FIXTURE_COUNT = 5
 
@@ -132,21 +137,15 @@ def make_responder(rows: list[dict], *, portal=None, layer_fields=None, count=No
 
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport):
-    import dagster_hifld.assets.epa_frs_interests as asset_module
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
-        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
-        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
-        patch.object(src, "EXPECTED_IDS_SHA256", ""),
-        patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_code_identity",
                      return_value={"code_identity_scheme": "test", "code_commit": "synthetic",
                                    "files": [], "working_tree_status": "unknown"}),
         patch.object(src, "validate_construction_code_identity"),
-        patch.object(epa_frs_common, "validate_construction_code_identity"),
+        patch.object(capture_common, "validate_construction_code_identity"),
     ]
     for context in contexts:
         context.start()
@@ -158,12 +157,231 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport):
 
 
 class EpaFrsInterestsTests(unittest.TestCase):
+    def test_real_changed_population_replay_and_native_values(self):
+        from dagster import AssetCheckSeverity, DagsterInstance, materialize
+        from dagster_hifld.assets import epa_frs_interests as primary_assets
+        from dagster_hifld.assets import epa_facility_registry_service_frs_interests as duplicate_assets
+
+        def transport_for(rows):
+            base = make_responder(rows)
+
+            def respond(request):
+                response = base.handler(request)
+                body = response.read()
+                return httpx.Response(response.status_code, headers={'Content-Encoding': 'gzip'},
+                    stream=httpx.ByteStream(gzip.compress(body, mtime=0)))
+
+            return httpx.MockTransport(respond)
+
+        schema_sha = src._profile_schema({'fields': _fixture_layer_fields()})[1]
+        rows = _fixture_rows(FIXTURE_COUNT)
+        with tempfile.TemporaryDirectory() as tmp, DagsterInstance.ephemeral() as instance, \
+                patch.multiple(src, EXPECTED_SCHEMA_SHA256=schema_sha, PAGE_SIZE=2):
+            root = Path(tmp)
+            capture_root = root / 'first'
+            storage = StagingStorageResource(local_dir=str(root / 'stage'))
+            transport = transport_for(rows)
+            with patch.object(src, '_default_client', side_effect=lambda: httpx.Client(transport=transport)):
+                baseline = {slug: src.capture_epa_frs_interests(storage, version='fixture',
+                    capture_directory=str(capture_root), dataset_slug=slug) for slug in src.DATASET_SLUGS}
+            originals = {slug: {key: storage.read_key(key) for key in storage.list_prefix(
+                candidate['candidate_ready'].removesuffix('/metadata/candidate_ready.json'))}
+                for slug, candidate in baseline.items()}
+            table = pq.read_table(capture_root / f'{src.DATASET_SLUG}.parquet')
+            self.assertEqual(table.column_names, [field[0] for field in src.NATIVE_FIELDS] + ['geometry'])
+            self.assertEqual(str(table.schema.field('CREATE_DATE').type), 'timestamp[ms, tz=UTC]')
+            self.assertFalse(table.schema.field('REGISTRY_ID').nullable)
+            for name, kind, nullable, _ in src.NATIVE_FIELDS:
+                column = table.column(name)
+                values = column.cast(pa.int64()).to_pylist() if kind == 'esriFieldTypeDate' else column.to_pylist()
+                self.assertEqual(values, [row['attributes'][name] for row in rows])
+                self.assertEqual(table.schema.field(name).nullable, nullable)
+            self.assertEqual(shapely.get_coordinates(shapely.from_wkb(table.column('geometry').to_pylist())).tolist(),
+                [[row['geometry']['x'], row['geometry']['y']] for row in rows])
+            self.assertEqual(json.loads(table.schema.metadata[b'geo'])['columns']['geometry']['crs']['id']['code'], 4269)
+            with patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected replay HTTP')):
+                for slug in src.DATASET_SLUGS:
+                    replay = src.capture_epa_frs_interests(storage, version='warm',
+                        capture_directory=str(capture_root), dataset_slug=slug)
+                    self.assertTrue(replay['reused'])
+                    self.assertEqual(replay['version'], baseline[slug]['version'])
+                cold = src.capture_epa_frs_interests(StagingStorageResource(local_dir=str(root / 'cold-stage')),
+                    version='cold', capture_directory=str(capture_root))
+                self.assertEqual(cold['version'], baseline[src.DATASET_SLUG]['version'])
+            transport = transport_for(rows)
+            with patch.object(src, '_default_client', side_effect=lambda: httpx.Client(transport=transport)):
+                refreshed = src.capture_epa_frs_interests(storage, version='refresh', capture_directory=str(root / 'fresh'))
+            self.assertTrue(refreshed['reused'])
+            added_rows = _fixture_rows(FIXTURE_COUNT + 1)
+            transport = transport_for(added_rows)
+            with patch.object(src, '_default_client', side_effect=lambda: httpx.Client(transport=transport)):
+                modules = (primary_assets, duplicate_assets)
+                result = materialize([item for module in modules for item in (*module.INGEST_ASSETS, *module.ASSET_CHECKS)],
+                    instance=instance, resources={'staging_storage': storage}, run_config={'ops': {
+                        asset.op.name: {'config': {'capture_directory': str(root / 'added')}}
+                        for module in modules for asset in module.INGEST_ASSETS}})
+            self.assertTrue(result.success)
+            checks = result.get_asset_check_evaluations()
+            self.assertEqual(len(checks), 4)
+            for check in checks:
+                if check.check_name.endswith('_complete'):
+                    self.assertTrue(check.passed)
+                else:
+                    self.assertEqual(check.severity, AssetCheckSeverity.WARN)
+                    self.assertEqual(check.metadata['comparison_status'].value, 'skipped_no_approved_baseline')
+            for module, slug in zip(modules, src.DATASET_SLUGS, strict=True):
+                added = result.output_for_node(module.INGEST_ASSETS[0].op.name)
+                self.assertEqual(added['feature_count'], FIXTURE_COUNT + 1)
+                drift = approved_baseline_drift(added, {**baseline[slug], 'release_accepted': True})
+                self.assertFalse(drift.passed)
+                self.assertEqual(drift.metadata['feature_count_delta'].value, 1)
+                prefix = added['candidate_ready'].removesuffix('/metadata/candidate_ready.json')
+                audit = json.loads(storage.read_key(prefix + '/metadata/source_audit.json'))
+                self.assertEqual(audit['source_feature_count'], FIXTURE_COUNT + 1)
+                self.assertEqual(audit['unique_source_id_count'], FIXTURE_COUNT + 1)
+                self.assertEqual(audit['pagination']['pages'], 3)
+            transport = transport_for(_fixture_rows(FIXTURE_COUNT - 1))
+            with patch.object(src, '_default_client', side_effect=lambda: httpx.Client(transport=transport)):
+                removed = src.capture_epa_frs_interests(storage, version='removed', capture_directory=str(root / 'removed'))
+            self.assertEqual(removed['feature_count'], FIXTURE_COUNT - 1)
+            self.assertNotEqual(removed['version'], baseline[src.DATASET_SLUG]['version'])
+            for slug, candidate in baseline.items():
+                prefix = candidate['candidate_ready'].removesuffix('/metadata/candidate_ready.json')
+                self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix(prefix)}, originals[slug])
+            first = baseline[src.DATASET_SLUG]
+            prefix = first['candidate_ready'].removesuffix('/metadata/candidate_ready.json')
+            manifest_path = Path(storage.local_dir) / prefix / 'metadata/source_manifest.json'
+            manifest_body = manifest_path.read_bytes()
+            manifest_path.write_bytes(b'{}')
+            with patch.object(httpx.Client, 'send', side_effect=AssertionError('unexpected replay HTTP')):
+                with self.assertRaisesRegex(ValueError, 'cached_candidate_object_integrity_failed'):
+                    src.capture_epa_frs_interests(storage, version='conflict', capture_directory=str(capture_root))
+                manifest_path.write_bytes(manifest_body)
+                (Path(storage.local_dir) / f"_construction-state/{src.DATASET_SLUG}/{first['version']}.json").unlink()
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, 'unsealed_candidate_prefix'):
+                    src.capture_epa_frs_interests(storage, version='unsealed', capture_directory=str(capture_root))
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix(prefix)}, originals[src.DATASET_SLUG])
+
+    def test_retained_wire_request_and_budget_are_verified(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({'fields': _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(src, 'EXPECTED_SCHEMA_SHA256', schema_sha), \
+                patch.object(src, 'PAGE_SIZE', 2), \
+                patch.object(src, '_default_client', side_effect=lambda: httpx.Client(transport=transport)):
+            root = Path(tmp)
+            retained = root / 'retained'
+            src.fetch_frs_interests_pages(retained)
+            storage = StagingStorageResource(local_dir=str(root / 'stage'))
+            for mode in ('missing_wire', 'forged_gzip', 'page_url', 'tail_url'):
+                directory = root / mode
+                shutil.copytree(retained, directory)
+                name = 'page_tail' if mode == 'tail_url' else 'page_000000'
+                if mode == 'missing_wire':
+                    (directory / f'{name}.wire').unlink()
+                else:
+                    path = directory / f'{name}.receipt.json'
+                    receipt = json.loads(path.read_bytes())
+                    if mode == 'forged_gzip':
+                        wire = b'not-valid-gzip'
+                        (directory / f'{name}.wire').write_bytes(wire)
+                        receipt.update(wire_bytes=len(wire), wire_sha256=src._sha(wire), content_encoding='gzip')
+                    else:
+                        receipt.update(url=src._page_url(999), final_url=src._page_url(999))
+                    path.write_bytes(src._canonical(receipt))
+                with self.subTest(mode=mode), self.assertRaisesRegex(src.EPAFRSInterestsError, 'retained_capture_receipt_invalid'):
+                    src.capture_epa_frs_interests(storage, version=mode, capture_directory=str(directory))
+            max_size = max((retained / f'page_000000.{suffix}').stat().st_size for suffix in ('body', 'wire', 'receipt.json'))
+            with patch.object(src, 'MAX_BODY_BYTES', max_size - 1), \
+                    patch.object(Path, 'read_bytes', side_effect=AssertionError('read before admission')):
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, 'retained_capture_receipt_invalid'):
+                    src._read_capture(retained, 'page_000000')
+            self.assertFalse(storage.list_prefix(src.DATASET_SLUG))
+            self.assertTrue(storage.list_prefix('_quarantine/' + src.DATASET_SLUG))
+
+    def test_missing_tail_refreshes_closing_group_and_rejects_changed_count(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        for row in rows:
+            row['attributes']['OBJECTID'] *= 10
+        extra = _fixture_rows(FIXTURE_COUNT + 1)[-1]
+        extra['attributes']['OBJECTID'] = 15
+        current_rows = sorted([*rows, extra], key=lambda row: row['attributes']['OBJECTID'])
+        schema_sha = src._profile_schema({'fields': _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp, patch.object(src, 'EXPECTED_SCHEMA_SHA256', schema_sha):
+            root = Path(tmp)
+            with httpx.Client(transport=make_responder(rows)) as client:
+                src.fetch_frs_interests_pages(root, client=client)
+            closing = {f'{name}.{suffix}': (root / f'{name}.{suffix}').read_bytes()
+                for name in ('layer_after', 'service_after', 'count_after') for suffix in ('body', 'wire', 'receipt.json')}
+            for suffix in ('body', 'wire', 'receipt.json'):
+                (root / f'page_tail.{suffix}').unlink()
+            current = make_responder(current_rows)
+            calls = []
+            states = []
+
+            def recover(request):
+                calls.append(str(request.url))
+                states.append(src._load_state(root)['complete'])
+                return current.handler(request)
+
+            with httpx.Client(transport=httpx.MockTransport(recover)) as client:
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, 'source_metadata_or_count_changed_during_capture'):
+                    src.fetch_frs_interests_pages(root, client=client)
+            self.assertFalse(src._load_state(root)['complete'])
+            self.assertTrue(states)
+            self.assertFalse(any(states))
+            self.assertEqual(calls[-3:], [src.LAYER_URL + '?f=pjson', src.SERVICE_URL + '?f=pjson', src._count_url()])
+            for filename, body in closing.items():
+                name, suffix = filename.split('.', 1)
+                self.assertIn(body, [path.read_bytes() for path in root.glob(f'{name}.error-*.{suffix}')])
+
+    def test_closing_interruption_keeps_checkpoint_incomplete_and_refreshes_again(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({'fields': _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp, patch.object(src, 'EXPECTED_SCHEMA_SHA256', schema_sha):
+            root = Path(tmp)
+            base = make_responder(rows)
+            with httpx.Client(transport=base) as client:
+                src.fetch_frs_interests_pages(root, client=client)
+            state = src._load_state(root)
+            state['complete'] = False
+            src._save_state(root, state)
+            calls = []
+
+            def interrupted(request):
+                calls.append(str(request.url))
+                self.assertFalse(src._load_state(root)['complete'])
+                if str(request.url) == src.SERVICE_URL + '?f=pjson':
+                    raise httpx.ConnectError('fixture closing interruption', request=request)
+                return base.handler(request)
+
+            with httpx.Client(transport=httpx.MockTransport(interrupted)) as client:
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, 'source_capture_failed'):
+                    src.fetch_frs_interests_pages(root, client=client)
+            self.assertEqual(calls, [src.LAYER_URL + '?f=pjson', src.SERVICE_URL + '?f=pjson'])
+            self.assertFalse(src._load_state(root)['complete'])
+            first_layer = (root / 'layer_after.receipt.json').read_bytes()
+            calls.clear()
+            current = make_responder(rows, count=FIXTURE_COUNT + 1)
+
+            def resumed(request):
+                calls.append(str(request.url))
+                self.assertFalse(src._load_state(root)['complete'])
+                return current.handler(request)
+
+            with httpx.Client(transport=httpx.MockTransport(resumed)) as client:
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, 'source_metadata_or_count_changed_during_capture'):
+                    src.fetch_frs_interests_pages(root, client=client)
+            self.assertEqual(calls, [src.LAYER_URL + '?f=pjson', src.SERVICE_URL + '?f=pjson', src._count_url()])
+            self.assertFalse(src._load_state(root)['complete'])
+            self.assertIn(first_layer, [path.read_bytes() for path in root.glob('layer_after.error-*.receipt.json')])
+
     def test_source_is_explicit_and_draft_only(self):
         self.assertEqual(src.DATASET_SLUG, "frs-interests")
         self.assertEqual(src.ITEM_ID, "cdff193a3e3743a5bc770e2743f215b3")
         self.assertEqual(src.LAYER_ID, 0)
         self.assertEqual(src.LAYER_NAME, "FRS_INTERESTS")
-        self.assertEqual(src.EXPECTED_COUNT, 7_068_559)
+        self.assertEqual(src.METADATA_NAMES, ('portal_item', 'service_before', 'layer_before', 'count_before'))
         self.assertEqual(len(src.NATIVE_FIELDS), 32)
         self.assertIsNone(src.SOURCE_VINTAGE)
         keys = defs.resolve_asset_graph().get_all_asset_keys()
@@ -284,7 +502,7 @@ class EpaFrsInterestsTests(unittest.TestCase):
                 self.assertEqual(sealed["feature_count"], FIXTURE_COUNT)
                 self.assertTrue(sorted(capture_root.glob("page_*.error-*.body")))
 
-    def test_pinned_record_baseline_drift_is_refused_and_quarantined(self):
+    def test_retained_record_drift_is_refused_and_quarantined(self):
         rows = _fixture_rows(FIXTURE_COUNT)
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         transport = make_responder(rows)
@@ -296,15 +514,14 @@ class EpaFrsInterestsTests(unittest.TestCase):
                                                  prefix="", backend="local")
                 src.capture_epa_frs_interests(storage, version="pin-run",
                                               capture_directory=str(capture_root))
-                with patch.object(src, "EXPECTED_RECORD_SHA256", "0" * 64):
-                    with self.assertRaisesRegex(src.EPAFRSInterestsError,
-                                                "source_value_or_geometry_baseline_drift"):
-                        src.capture_epa_frs_interests(storage, version="pin-run-drift",
-                                                      capture_directory=str(capture_root))
+                (capture_root / 'page_000000.body').write_bytes(b'{}')
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, "retained_capture_receipt_invalid"):
+                    src.capture_epa_frs_interests(storage, version="pin-run-drift",
+                                                  capture_directory=str(capture_root))
                 quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
                 self.assertTrue(quarantined)
                 failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
-                self.assertEqual(failure["reason_code"], "source_value_or_geometry_baseline_drift")
+                self.assertEqual(failure["reason_code"], "retained_capture_receipt_invalid:page_000000")
 
     def test_resume_reuses_retained_pages_and_discards_torn_evidence(self):
         rows = _fixture_rows(FIXTURE_COUNT)
@@ -350,7 +567,7 @@ class EpaFrsInterestsTests(unittest.TestCase):
         rows = _fixture_rows(FIXTURE_COUNT)
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         cases = {
-            "source_count_drift": dict(count=FIXTURE_COUNT + 1),
+            "source_page_population_incomplete": dict(count=FIXTURE_COUNT + 1),
             "source_schema_drift": dict(layer_fields=_fixture_layer_fields()
                                         + [{"name": "EXTRA", "type": "esriFieldTypeString",
                                             "alias": "EXTRA", "nullable": True, "length": 4,
@@ -477,9 +694,9 @@ class EpaFrsInterestsTests(unittest.TestCase):
                 parquet_path = capture_root / f"{src.FILE_SLUG}.parquet"
                 good_bytes = parquet_path.read_bytes()
                 sealed_before = storage.read_key(f"{prefix}/geoparquet/{src.DATASET_SLUG}.parquet")
-                with patch.object(src, "EXPECTED_RECORD_SHA256", "0" * 64):
+                with patch.object(src, "EXPECTED_SCHEMA_SHA256", "0" * 64):
                     with self.assertRaisesRegex(src.EPAFRSInterestsError,
-                                                "source_value_or_geometry_baseline_drift"):
+                                                "source_schema_baseline_drift"):
                         src.capture_epa_frs_interests(storage, version="preserve-run-drift",
                                                       capture_directory=str(capture_root))
                 self.assertEqual(parquet_path.read_bytes(), good_bytes)
@@ -489,6 +706,124 @@ class EpaFrsInterestsTests(unittest.TestCase):
                 again = src.capture_epa_frs_interests(storage, version="preserve-run-again",
                                                      capture_directory=str(capture_root))
                 self.assertTrue(again["reused"])
+
+
+class EpaFacilityRegistryServiceFrsInterestsTests(unittest.TestCase):
+    """The duplicate ``epa-facility-registry-service-frs-interests`` inventory entry (issue #390).
+
+    The HIFLD Open catalog lists the same EPA full-universe FRS interests product
+    twice; this entry stages its own candidate identity from the same maintained
+    source and pins.
+    """
+
+    def test_registry_entry_is_registered_with_its_own_identity(self):
+        self.assertEqual(src.EPA_ITEM_DATASET_SLUG, "epa-facility-registry-service-frs-interests")
+        self.assertIn(src.EPA_ITEM_DATASET_SLUG, src.DATASET_SLUGS)
+        self.assertEqual(src._DEFAULT_CAPTURE_ROOTS[src.EPA_ITEM_DATASET_SLUG], "390")
+        keys = defs.resolve_asset_graph().get_all_asset_keys()
+        self.assertTrue(any(key.path == ["ingest", src.EPA_ITEM_DATASET_SLUG, src.EPA_ITEM_DATASET_SLUG]
+                            for key in keys))
+        check_keys = defs.resolve_asset_graph().asset_check_keys
+        self.assertTrue(any(key.to_user_string().endswith(":epa_facility_registry_service_frs_interests_complete")
+                            for key in check_keys))
+        job = defs.get_job_def("epa_facility_registry_service_frs_interests_draft_refresh")
+        self.assertIsNotNone(job)
+        schedule = defs.get_schedule_def("epa_facility_registry_service_frs_interests_draft_refresh_schedule")
+        self.assertIsNotNone(schedule)
+        self.assertEqual(schedule.default_status.value if hasattr(schedule.default_status, "value")
+                         else schedule.default_status, "STOPPED")
+
+    def test_unknown_dataset_slug_is_refused(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with fixture_mode(schema_sha, transport):
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                with self.assertRaisesRegex(src.EPAFRSInterestsError,
+                                            "unknown_dataset_slug:not-a-known-inventory-entry"):
+                    src.capture_epa_frs_interests(storage, version="slug-run",
+                                                  dataset_slug="not-a-known-inventory-entry")
+            self.assertEqual(sorted(p.name for p in (root / "staging").rglob("*") if p.is_file()), [])
+
+    def test_registry_entry_fixture_capture_stages_under_its_own_identity(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                first = src.capture_epa_frs_interests(
+                    storage, version="registry-entry-run", capture_directory=str(capture_root),
+                    dataset_slug=src.EPA_ITEM_DATASET_SLUG)
+                self.assertEqual(first["dataset_slug"], src.EPA_ITEM_DATASET_SLUG)
+                self.assertEqual(first["file_slug"], src.EPA_ITEM_DATASET_SLUG)
+                self.assertFalse(first["reused"])
+                self.assertFalse(first["release_accepted"])
+                second = src.capture_epa_frs_interests(
+                    storage, version="registry-entry-run-2", capture_directory=str(capture_root),
+                    dataset_slug=src.EPA_ITEM_DATASET_SLUG)
+            self.assertEqual(second["version"], first["version"])
+            self.assertTrue(second["reused"])
+            self.assertTrue((capture_root / f"{src.EPA_ITEM_DATASET_SLUG}.parquet").exists())
+            table = pq.read_table(capture_root / f"{src.EPA_ITEM_DATASET_SLUG}.parquet")
+            self.assertEqual(table.num_rows, FIXTURE_COUNT)
+            prefix = f"{src.EPA_ITEM_DATASET_SLUG}/{src.EPA_ITEM_DATASET_SLUG}/{first['version']}"
+            sealed = storage.read_key(f"{prefix}/geoparquet/{src.EPA_ITEM_DATASET_SLUG}.parquet")
+            self.assertEqual(pq.read_table(io.BytesIO(sealed)).num_rows, FIXTURE_COUNT)
+            manifest = json.loads(storage.read_key(f"{prefix}/metadata/source_manifest.json"))
+            self.assertEqual(manifest["title"], src.LAYER_NAME)
+            self.assertEqual(manifest["agency"], "Environmental Protection Agency")
+            self.assertFalse(manifest["approved"])
+            self.assertEqual(manifest["inputs"][0]["host"], "services.arcgis.com")
+            self.assertTrue(storage.read_key(f"{prefix}/raw/page_000000.receipt.json"))
+            self.assertTrue(storage.read_key(f"{prefix}/raw/portal_item.receipt.json"))
+
+    def test_registry_entry_drift_quarantines_under_its_own_slug(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                src.capture_epa_frs_interests(storage, version="registry-pin-run",
+                                              capture_directory=str(capture_root),
+                                              dataset_slug=src.EPA_ITEM_DATASET_SLUG)
+                (capture_root / 'page_000000.body').write_bytes(b'{}')
+                with self.assertRaisesRegex(src.EPAFRSInterestsError, "retained_capture_receipt_invalid"):
+                    src.capture_epa_frs_interests(
+                        storage, version="registry-pin-drift",
+                        capture_directory=str(capture_root),
+                        dataset_slug=src.EPA_ITEM_DATASET_SLUG)
+            quarantined = sorted((root / "staging" / "_quarantine"
+                                  / src.EPA_ITEM_DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "retained_capture_receipt_invalid:page_000000")
+
+    def test_registry_entry_resolves_its_own_inventory_row(self):
+        from dagster_hifld.source_manifest import _inventory_metadata_for
+
+        metadata = _inventory_metadata_for(src.EPA_ITEM_DATASET_SLUG, src.EPA_ITEM_DATASET_SLUG, "v1.0.0")
+        self.assertIsNotNone(metadata)
+        self.assertEqual(metadata["inventory_match_type"], "filename_same_root")
+        self.assertEqual(metadata["title"], "EPA Facility Registry Service (FRS) Interests")
+        self.assertEqual(metadata["publisher"],
+                         "U.S. Environmental Protection Agency, Office of Environmental Information")
+        self.assertEqual(metadata["agency"], "US Army Corps of Engineers")
+        other = _inventory_metadata_for(src.DATASET_SLUG, src.DATASET_SLUG, "v1.0.0")
+        self.assertIsNotNone(other)
+        self.assertEqual(other["inventory_match_type"], "filename_same_root")
+        self.assertEqual(other["title"], "FRS INTERESTS")
+        self.assertEqual(other["agency"], "Environmental Protection Agency")
 
 
 if __name__ == "__main__":

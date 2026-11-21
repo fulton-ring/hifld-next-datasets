@@ -3,10 +3,11 @@ from dagster import (AssetCheckResult, AssetKey, AssetSelection, Config,
                      DefaultScheduleStatus, ScheduleDefinition, asset, asset_check,
                      define_asset_job)
 
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.courthouses_usgs import EXPECTED_COUNT, capture_courthouses
+from dagster_hifld.sources.courthouses_usgs import capture_courthouses
 
 DATASET_SLUG = FILE_SLUG = "courthouses-3"
 
@@ -42,14 +43,26 @@ def courthouses_usgs(context, config: CourthousesUSGSConfig,
 
 @asset_check(asset=courthouses_usgs, blocking=True)
 def courthouses_population_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("source_population_complete") is True and candidate.get("feature_count") == EXPECTED_COUNT
+    count = candidate.get("source_reported_count")
+    passed = (type(count) is int and count > 0
+              and candidate.get("source_population_complete") is True
+              and candidate.get("feature_count") == count)
     return AssetCheckResult(passed=passed, metadata={
         "feature_count": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
     })
 
 
+@asset_check(asset=courthouses_usgs, blocking=False)
+def courthouses_approved_baseline_drift(candidate: dict) -> AssetCheckResult:
+    # No independently approved release is wired for this source. Development
+    # captures and removed code pins must never masquerade as approved baselines.
+    return approved_baseline_drift(candidate)
+
+
+ASSET_CHECKS = [courthouses_population_complete, courthouses_approved_baseline_drift]
 courthouses_draft_job = define_asset_job(
     "courthouses_draft_refresh", selection=AssetSelection.assets(courthouses_usgs),
 )
@@ -60,3 +73,7 @@ courthouses_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [courthouses_usgs]
+JOBS = [courthouses_draft_job]
+SCHEDULES = [courthouses_draft_schedule]

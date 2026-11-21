@@ -6,9 +6,9 @@ release, field-ID, and date interpretation decisions remain pending.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -25,12 +25,20 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.source_release import (
+    decide_release, decide_unchanged_poll, load_release_state, record_release_state,
+    release_state_record, unchanged_result,
+)
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.arcgis_layer import (
+    layer_release_signal, offset_layer_capture_roster, poll_layer_release,
+)
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 ITEM_ID = "0b30c57359194330bb89c9b3cf9c0bd5"
 SERVICE_URL = "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_INTERESTS_RCRA_TSD/FeatureServer"
@@ -47,15 +55,20 @@ FRS_URL = "https://www.epa.gov/frs"
 PAGE_SIZE = 1000
 MAX_BODY_BYTES = 32 * 1024 * 1024
 EXPECTED_SCHEMA_SHA256 = "f0f50c2204dfd72bcc5df3b2faae12f45b9b9c0f02c059078a1bfc2d2054184c"
+RELEASE_SELECTION_RULE = (
+    "EPA_GEO live layer: compare the publisher editingInfo.lastEditDate plus the "
+    "count, sorted OBJECTID roster and field schema; the service publishes no "
+    "edition label, so changed content is a same-release correction."
+)
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+def _release_content_sha256(audit: Mapping[str, object]) -> str:
+    """Digest exactly the values the candidate version already binds."""
+    return _sha(_canonical({
+        "source_record_sha256": audit["source_record_sha256"],
+        "source_geometry_sha256": audit["source_geometry_sha256"],
+        "source_schema_sha256": audit["source_schema_sha256"],
+    }))
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -63,23 +76,12 @@ def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
 
 
 def _urls(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [
-        ("epa_item", EPA_ITEM_URL), ("service_before", SERVICE_URL + "?f=pjson"),
-        ("layer_before", LAYER_URL + "?f=pjson"),
-        ("count_before", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnCountOnly":"true", "f":"json"})),
-        ("ids_before", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})),
-    ]
-    for offset in range(0, len(ids), PAGE_SIZE):
-        params = {"where":"1=1", "outFields":"*", "returnGeometry":"true",
-                  "outSR":"4269", "orderByFields":"OBJECTID ASC", "resultOffset":offset,
-                  "resultRecordCount":min(PAGE_SIZE, len(ids) - offset), "f":"json"}
-        urls.append((f"page_{offset // PAGE_SIZE:03d}", LAYER_URL + "/query?" + urlencode(params)))
-    urls.extend([
-        ("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson"),
-        ("count_after", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnCountOnly":"true", "f":"json"})),
-        ("ids_after", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})),
-    ])
-    return urls
+    return offset_layer_capture_roster(
+        len(ids), layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        extra_documents=(("epa_item", EPA_ITEM_URL),),
+        page_params={"outSR": "4269"},
+        after_order=("layer_after", "service_after", "count_after", "ids_after"),
+    )
 
 
 def _fields(layer: dict) -> tuple[list[dict], str]:
@@ -265,14 +267,30 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < 256_000_000:
         raise ValueError("disk_floor_before_acquisition")
-    root = Path(capture_directory or "/tmp/hifld-native-reconstruction/74/captures").absolute()
+    root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "74", "captures"))).absolute()
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)
     capture_root = root / f"{version}-{uuid4().hex}"
+    prior = load_release_state(storage, DATASET_SLUG, FILE_SLUG)
     captures: dict[str, tuple[bytes, dict]] = {}
     try:
         with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/epa-rcra-tsd-draft"}) as client:
+            poll = poll_layer_release(
+                client, service_url=SERVICE_URL, layer_url=LAYER_URL,
+                capture_root=capture_root / "release-poll",
+                extra_documents=(("epa_item", EPA_ITEM_URL),), max_bytes=MAX_BODY_BYTES,
+                capture=capture_get,
+            )
+            signal = layer_release_signal(poll, selection_rule=RELEASE_SELECTION_RULE)
+            poll_decision = decide_unchanged_poll(prior, signal)
+            if poll_decision.action == "unchanged":
+                return unchanged_result(
+                    prior, dataset_slug=DATASET_SLUG, file_slug=FILE_SLUG,
+                    source_release_accepted=False, schema_contract_accepted=False,
+                    id_contract_accepted=False, freshness_accepted=False,
+                    rights_accepted=False, mapping_approved=False,
+                )
             seed_body, seed_receipt = capture_get(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed", max_bytes=MAX_BODY_BYTES)
             seed = json.loads(seed_body).get("objectIds")
             if not isinstance(seed, list) or not seed:
@@ -335,6 +353,14 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
              "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
              "rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"], audit["source_schema_sha256"], identity)
+    signal = replace(signal, content_sha256=_release_content_sha256(audit))
+    decision = decide_release(prior, signal)
+    audit.update({
+        "release_id": signal.release_id,
+        "release_content_sha256": signal.content_sha256,
+        "release_state_fingerprint": signal.content_fingerprint,
+        "release_selection_rule": RELEASE_SELECTION_RULE,
+    })
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     (capture_root / "capture_manifest.json").write_bytes(_canonical({"complete":True,"source_count":len(records),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"source_id_sha256":audit["source_id_sha256"],"receipts":{n:r for n,(_,r) in sorted(captures.items())}})+b"\n")
@@ -350,19 +376,29 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
     outputs["metadata/candidate_ready.json"] = _canonical(ready)+b"\n"
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
-        return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs),parquet)
-    for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
-    descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    for name,desc in descriptors.items():
-        key=f"{prefix}/{name}"; snap=storage.object_snapshot(key)
-        if snap is None or snap.size != desc["bytes"] or storage.sha256_key(key) != desc["sha256"] or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-        "source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
-        "capture_receipts":{n:r for n,(_,r) in captures.items()},"objects":descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(records),
-            "source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json",
-            "capture_directory":str(capture_root),"source_release_accepted":False,"schema_contract_accepted":False,
-            "id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,
-            "mapping_approved":False,"release_accepted":False}
+        result = _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs),parquet)
+    else:
+        for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
+        descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
+        for name,desc in descriptors.items():
+            key=f"{prefix}/{name}"; snap=storage.object_snapshot(key)
+            if snap is None or snap.size != desc["bytes"] or storage.sha256_key(key) != desc["sha256"] or storage.object_snapshot(key) != snap:
+                raise ValueError("candidate_output_physical_readback_failed:"+name)
+        seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
+            "source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
+            "capture_receipts":{n:r for n,(_,r) in captures.items()},"objects":descriptors})
+        validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
+        result = {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(records),
+                "source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json",
+                "source_release_accepted":False,"schema_contract_accepted":False,
+                "id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,
+                "mapping_approved":False,"release_accepted":False}
+    record_release_state(storage, release_state_record(
+        signal, dataset_slug=DATASET_SLUG, file_slug=FILE_SLUG, version=version,
+        accepted_at=str(captures["service_before"][1]["observed_at"]),
+        action=decision.action, candidate_summary=result, note=decision.note,
+    ))
+    return {**result, "unchanged": decision.action == "unchanged",
+            "release_action": decision.action, "release_note": decision.note,
+            "release_state_fingerprint": signal.state_fingerprint,
+            "capture_directory": str(capture_root)}

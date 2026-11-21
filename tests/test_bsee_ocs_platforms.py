@@ -18,7 +18,7 @@ from shapely.geometry import Point
 
 from dagster_hifld.sources.bsee_ocs_platforms import SOURCE_URL, _candidate_version, _read_capture, _validate_capture
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.epa_frs_common import CODE_IDENTITY_PACKAGED, processing_identity
+from dagster_hifld.sources.capture_common import CODE_IDENTITY_PACKAGED, processing_identity
 
 
 class BseeOcsPlatformsTests(unittest.TestCase):
@@ -39,20 +39,22 @@ class BseeOcsPlatformsTests(unittest.TestCase):
                 for name in sorted(expected-set(zf.namelist())): zf.writestr(name,b"")
             mapping=b"/Mapping/Files/platform.zip Platforms Identifies the location of platforms in GOA. All platforms existing in the database are included."
             metadata=("Publication_Date: 20260302 Only platforms in the Gulf of Mexico, Federal Outer Continental Shelf (OCS) waters are included. "
-                      "Maintenance_and_Update_Frequency: Monthly Point_and_Vector_Object_Count: 7317 Horizontal_Datum_Name: D North American 1927").encode()
+                      "Maintenance_and_Update_Frequency: Monthly Point_and_Vector_Object_Count: 1 Horizontal_Datum_Name: D North American 1927").encode()
             captures={"mapping_page":(mapping,{"status":200}),"platform_metadata":(metadata,{"status":200}),"platform":(archive.read_bytes(),{"status":200})}
             yield captures
 
     def test_tiny_native_schema_geometry_and_nulls_validate(self):
-        with self.fixture() as captures, patch("dagster_hifld.sources.bsee_ocs_platforms.EXPECTED_COUNT",1):
+        with self.fixture() as captures:
             frame,audit=_validate_capture(captures)
             self.assertEqual(len(frame),1)
             self.assertEqual(audit["source_crs_epsg"],4267)
             self.assertEqual(audit["identifier_pair_unique_count"],1)
+            self.assertEqual(audit["source_count_witness"],1)
+            self.assertTrue(audit["source_population_complete"])
             self.assertTrue(pd.isna(frame.iloc[0]["STRUCTURE1"]))
 
     def test_incomplete_or_scope_drift_capture_rejected(self):
-        with self.fixture() as captures, patch("dagster_hifld.sources.bsee_ocs_platforms.EXPECTED_COUNT",1):
+        with self.fixture() as captures:
             broken=dict(captures)
             body,receipt=broken["platform_metadata"]
             broken["platform_metadata"]=(body.replace(b"Only platforms in the Gulf",b"Only platforms outside the Gulf"),receipt)
@@ -60,6 +62,16 @@ class BseeOcsPlatformsTests(unittest.TestCase):
                 _validate_capture(broken)
             with self.assertRaisesRegex(ValueError,"source_capture_roster_incomplete_or_unexpected"):
                 _validate_capture({k:v for k,v in captures.items() if k!="platform"})
+
+    def test_metadata_count_is_the_capture_time_witness(self):
+        with self.fixture() as captures:
+            body,receipt=captures["platform_metadata"]
+            for replacement in (b"Point_and_Vector_Object_Count: 2", b"Point_and_Vector_Object_Count: 0"):
+                broken=dict(captures)
+                broken["platform_metadata"]=(body.replace(b"Point_and_Vector_Object_Count: 1", replacement),receipt)
+                with self.subTest(replacement=replacement):
+                    with self.assertRaisesRegex(ValueError,"source_dbf_physical_schema_drift|source_count_or_crs_drift|official_platform_metadata_contract_drift"):
+                        _validate_capture(broken)
 
     def test_candidate_identity_binds_wire_and_body_bytes_not_receipt_times(self):
         records="same normalized records"; schema="same schema"; identity={"code":"same"}
@@ -94,7 +106,7 @@ class BseeOcsPlatformsTests(unittest.TestCase):
                 _read_capture("unknown", root)
 
     def test_nonfinite_point_is_rejected_before_zero_invalid_audit(self):
-        with self.fixture() as captures, patch("dagster_hifld.sources.bsee_ocs_platforms.EXPECTED_COUNT", 1):
+        with self.fixture() as captures:
             frame, _ = _validate_capture(captures)
             for coordinate in (float("inf"), float("nan")):
                 with self.subTest(coordinate=coordinate):

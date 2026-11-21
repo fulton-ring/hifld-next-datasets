@@ -22,9 +22,41 @@ from dagster import ConfigurableResource
 from google.cloud import storage
 from google.cloud.storage.blob import Blob
 
+from dagster_hifld.validation import sha256_file
+
 logger = logging.getLogger(__name__)
 
 _GCS_DOWNLOAD_TIMEOUT_SECONDS = 60
+
+CAPTURE_ROOT_ENV = "HIFLD_CAPTURE_ROOT"
+
+
+def capture_root(root: str | Path | None = None) -> Path:
+    """The single capture/scratch root every adapter shares.
+
+    The root comes from ``HIFLD_CAPTURE_ROOT`` and defaults to the system
+    temporary directory, so no adapter depends on a workspace path that may
+    not exist. The path is made absolute without resolving symlinks: adapters
+    reject aliased capture roots themselves.
+    """
+    configured = os.environ.get(CAPTURE_ROOT_ENV) if root is None else (str(root) if root else "")
+    base = Path(configured) if configured else Path(tempfile.gettempdir())
+    return base if base.is_absolute() else base.absolute()
+
+
+def default_capture_dir(*components: str, root: str | Path | None = None) -> Path:
+    """Capture directory under the shared root: ``root/<dataset>/<file>/<run_id>``.
+
+    Components are literal path segments; callers pass the slugs and run token
+    their retained-capture layout needs. Keep an existing adapter's components
+    unchanged: an interrupted capture resumes only from the path its capture
+    state was written to, so a rollout maps the previous root through
+    ``HIFLD_CAPTURE_ROOT`` instead of renaming its directories.
+    """
+    if not components or any(not component or component in {".", ".."} or "/" in component
+                             or "\\" in component for component in components):
+        raise ValueError("invalid_capture_directory_components")
+    return capture_root(root).joinpath(*components)
 
 
 class _GCSWritable(Protocol):
@@ -322,7 +354,7 @@ class StagingStorageResource(ConfigurableResource):
         elif self._uses_s3():
             with source.open("rb") as body:
                 self._s3().put_object(Bucket=self.bucket, Key=key, Body=body,
-                                      Metadata={"sha256": _file_sha256(source)},
+                                      Metadata={"sha256": sha256_file(source)},
                                       CacheControl="no-cache")
         else:
             import gcsfs
@@ -398,7 +430,7 @@ class StagingStorageResource(ConfigurableResource):
             with tempfile.TemporaryDirectory(prefix="hifld-gcs-sha256-") as temporary:
                 local_path = Path(temporary) / "object"
                 self.download_key_to(key, local_path)
-                return _file_sha256(local_path)
+                return sha256_file(local_path)
         if self.use_local or not self.bucket:
             stream = (Path(self.local_dir).resolve() / key).open("rb")
         else:
@@ -448,7 +480,7 @@ class StagingStorageResource(ConfigurableResource):
                 target_path = Path(temporary) / "target"
                 self.download_key_to(key, source_path)
                 destination.download_key_to(destination_key, target_path)
-                return _file_sha256(source_path) == _file_sha256(target_path)
+                return sha256_file(source_path) == sha256_file(target_path)
 
         source_is_local = self.use_local or not self.bucket
         destination_is_local = destination.use_local or not destination.bucket
@@ -457,7 +489,7 @@ class StagingStorageResource(ConfigurableResource):
             destination_path = Path(destination.local_dir).resolve() / destination_key
             if source_path.stat().st_size != destination_path.stat().st_size:
                 return False
-            return _file_sha256(source_path) == _file_sha256(destination_path)
+            return sha256_file(source_path) == sha256_file(destination_path)
 
         if not source_is_local and not destination_is_local:
             import gcsfs
@@ -980,22 +1012,6 @@ class StagingStorageResource(ConfigurableResource):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-class GreatExpectationsResource(ConfigurableResource):
-    """Optional GX helper for ad hoc validation experiments; not wired into the live graph."""
-
-    def get_validator(self, df, expectation_suite_name: str = "asset_check_suite"):
-        """Return a GX Validator for the given DataFrame (e.g. GeoDataFrame or first chunk)."""
-        import great_expectations as gx
-
-        ctx = gx.get_context(mode="ephemeral")
-        ds = ctx.data_sources.add_pandas("pandas_ds")
-        batch = ds.read_dataframe(df, asset_name="df_asset")
-        return ctx.get_validator(
-            batch_list=[batch],
-            create_expectation_suite_with_name=expectation_suite_name,
-        )
-
-
 class PublishedStorageResource(StagingStorageResource):
     """Published storage: destination bucket/path for promoted dataset files."""
 
@@ -1220,14 +1236,6 @@ def _require_string_object_mapping(
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise RuntimeError(f"{context} was not an object.")
     return {key: item for key, item in value.items() if isinstance(key, str)}
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as file_obj:
-        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _file_checksums(path: Path) -> tuple[str, str, str]:

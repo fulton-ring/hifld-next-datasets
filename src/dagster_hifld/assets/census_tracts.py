@@ -1,4 +1,4 @@
-"""Registered, stopped local refresh for the exact Census 2024 Census_Tract source."""
+"""Registered, stopped local refresh for the current Census Census_Tract source."""
 from dagster import (
     AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus,
     ScheduleDefinition, asset, asset_check, define_asset_job,
@@ -7,7 +7,7 @@ from dagster import (
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.census_tracts import (
-    DATASET_SLUG, FILE_SLUG, SOURCE_BYTES, SOURCE_FEATURE_COUNT, SOURCE_SHA256,
+    DATASET_SLUG, FILE_SLUG, FEATURE_COUNT_RANGE,
     stage_census_tracts,
 )
 
@@ -22,8 +22,9 @@ class CensusTractsConfig(Config):
     group_name="census_bureau",
     compute_kind="local_file_geodatabase",
     description=(
-        "Streams the complete Census_Tract layer from the pinned 2024 national Census substate GDB "
-        "to native GeoParquet. This local reconstruction remains unapproved; its refresh schedule is stopped."
+        "Streams the complete Census_Tract layer from the newest published national Census substate GDB "
+        "(edition resolved from the retained capture receipt) to native GeoParquet. "
+        "This local reconstruction remains unapproved; its refresh schedule is stopped."
     ),
 )
 def census_bureau_tracts(context, config: CensusTractsConfig,
@@ -43,11 +44,13 @@ def census_bureau_tracts(context, config: CensusTractsConfig,
 
 @asset_check(asset=census_bureau_tracts, blocking=True)
 def census_tracts_source_complete(candidate: dict) -> AssetCheckResult:
+    feature_count = candidate.get("feature_count")
     passed = (
-        candidate.get("feature_count") == SOURCE_FEATURE_COUNT
+        isinstance(feature_count, int)
+        and FEATURE_COUNT_RANGE[0] <= feature_count <= FEATURE_COUNT_RANGE[1]
         and candidate.get("source_population_complete") is True
-        and candidate.get("source_archive_bytes") == SOURCE_BYTES
-        and candidate.get("source_archive_sha256") == SOURCE_SHA256
+        and isinstance(candidate.get("source_archive_bytes"), int) and candidate["source_archive_bytes"] > 0
+        and bool(candidate.get("source_archive_sha256"))
         and candidate.get("native_value_parity") is True
         and bool(candidate.get("source_id_sha256"))
         and bool(candidate.get("native_parquet_sha256"))
@@ -77,3 +80,9 @@ census_tracts_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+ASSET_CHECKS = [census_tracts_source_complete]
+INGEST_ASSETS = [census_bureau_tracts]
+JOBS = [census_tracts_draft_job]
+SCHEDULES = [census_tracts_draft_schedule]

@@ -7,6 +7,7 @@ from dagster import (
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.sources.fuds_mrs import DATASET_SLUG, FILE_SLUG, capture_fuds_mrs
 
 
@@ -42,7 +43,10 @@ def usace_fuds_munitions_response_sites(
 
 @asset_check(asset=usace_fuds_munitions_response_sites, blocking=True)
 def usace_fuds_munitions_response_sites_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == 1685 and candidate.get("candidate_approved") is False
+    passed = (candidate.get("capture_complete") is True
+              and type(candidate.get("feature_count")) is int
+              and candidate["feature_count"] > 0
+              and candidate.get("candidate_approved") is False)
     return AssetCheckResult(passed=passed, metadata={
         "complete_population_captured": passed,
         "source_release_accepted": False,
@@ -53,6 +57,10 @@ def usace_fuds_munitions_response_sites_complete(candidate: dict) -> AssetCheckR
         "mapping_approved": False,
         "release_accepted": False,
     })
+
+
+usace_fuds_munitions_response_sites_approved_baseline_drift = register_approved_baseline_drift(
+    usace_fuds_munitions_response_sites, "usace_fuds_munitions_response_sites_approved_baseline_drift")
 
 
 fuds_mrs_draft_job = define_asset_job(
@@ -66,3 +74,12 @@ fuds_mrs_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+ASSET_CHECKS = [
+    usace_fuds_munitions_response_sites_complete,
+    usace_fuds_munitions_response_sites_approved_baseline_drift,
+]
+INGEST_ASSETS = [usace_fuds_munitions_response_sites]
+JOBS = [fuds_mrs_draft_job]
+SCHEDULES = [fuds_mrs_draft_schedule]

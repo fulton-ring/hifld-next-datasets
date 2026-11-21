@@ -5,13 +5,13 @@ publishes BOTH a native ESRI point geometry (Web Mercator) and CMT
 latitude/longitude attribute columns. The two representations disagree on a
 measured subset of rows and no first-party documentation establishes precedence,
 so this adapter preserves BOTH losslessly and never reconciles, corrects, or
-chooses an authoritative published geometry. Snapshot-verified baseline counts
-(feature count, null-coordinate count, geometry-vs-attribute disagreement
-count) are pinned fail-closed drift gates: any change raises instead of being
-silently absorbed.
+chooses an authoritative published geometry. Completeness uses stable source
+count/ID witnesses; null-coordinate and disagreement counts are observations,
+not development-snapshot release baselines.
 """
 from __future__ import annotations
 
+import io
 import json
 import math
 import shutil
@@ -28,18 +28,28 @@ from pyproj import CRS
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
-    PAGE_MAX_BYTES, _capture, _canonical, _capture_identity, _load_capture, _sha,
+from dagster_hifld.sources.arcgis_layer import (
+    _canonical,
+    _sha,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    PAGE_MAX_BYTES,
+    capture_page,
+    capture_identity,
+    load_capture,
+)
+
 
 DATASET_SLUG = "usfws-corporate-master-table"
 FILE_SLUG = DATASET_SLUG
@@ -59,16 +69,6 @@ PUBLISHER = ("US Fish and Wildlife Service, Information Resources and Technology
              "Branch of Geospatial Data Services (FWSGIS); official FWS ArcGIS Online organization")
 AUTHORITY_URL = "https://www.fws.gov/policy-library/260fw14"
 
-# Snapshot-verified counts (2026-11-08 bounded capture, independently recomputed
-# 2026-11-09 from the hash-verified preserved pages): 1,816 rows; 4 rows null on
-# BOTH geometry and latitude/longitude; 140 of the 1,812 comparable rows disagree
-# by more than 1e-6 degrees between native geometry and attribute coordinates.
-# These are DRAFT drift-guard pins: any change raises fail-closed for maintainer
-# re-inspection. Baseline acceptance itself, and any published-geometry contract,
-# remain open maintainer decisions (all approval flags stay false).
-EXPECTED_COUNT = 1816
-EXPECTED_NULL_COORDINATE_COUNT = 4
-EXPECTED_GEOMETRY_ATTRIBUTE_DISAGREEMENT_COUNT = 140
 DISAGREEMENT_THRESHOLD_DEG = 1e-6
 EXPECTED_ORG_CODE_NULL_COUNT = 0
 EXPECTED_ORG_CODE_DUPLICATE_COUNT = 0
@@ -115,11 +115,6 @@ EXPECTED_FIELD_DECLARATIONS = [
 ATTRIBUTE_FIELDS = EXPECTED_FIELD_DECLARATIONS
 ATTRIBUTE_FIELD_NAMES = [field["name"] for field in ATTRIBUTE_FIELDS]
 EXPECTED_SERVICE_LAYERS = [{"id": 0, "name": LAYER_NAME, "geometryType": "esriGeometryPoint"}]
-PAGE_COUNT = (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE
-PAGE_NAMES = tuple(f"page_{index:03d}" for index in range(PAGE_COUNT))
-CAPTURE_NAMES = {"org", "item", "owner", "service_before", "layer_before", "count_before",
-                 "ids_before", *PAGE_NAMES, "layer_after", "count_after", "ids_after",
-                 "service_after"}
 UNACCEPTED_FLAGS = {"source_registry_accepted": False, "source_release_accepted": False,
                     "source_freshness_accepted": False, "schema_contract_accepted": False,
                     "id_contract_accepted": False, "coverage_accepted": False,
@@ -170,13 +165,13 @@ def _page_query(offset: int) -> str:
                    "resultRecordCount": str(PAGE_SIZE), "f": "json"})
 
 
-def _capture_roster() -> list[tuple[str, str]]:
+def _capture_roster(count: int = 0) -> list[tuple[str, str]]:
     urls = [("org", ORG_URL), ("item", ITEM_URL), ("owner", OWNER_URL),
             ("service_before", SERVICE_URL + "?f=pjson"),
             ("layer_before", LAYER_URL + "?f=pjson"),
             ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
             ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))]
-    for index in range(PAGE_COUNT):
+    for index in range((count + PAGE_SIZE - 1) // PAGE_SIZE):
         urls.append((f"page_{index:03d}", _page_query(index * PAGE_SIZE)))
     urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
                  ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
@@ -185,33 +180,24 @@ def _capture_roster() -> list[tuple[str, str]]:
     return urls
 
 
-def _validate_capture_request_identity(name: str, receipt: dict, expected_url: str) -> None:
-    if (receipt.get("method") != "GET" or receipt.get("url") != expected_url
-            or receipt.get("final_url") != expected_url):
-        raise ValueError("retained_capture_request_identity_mismatch:" + name)
-
-
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
     manifest = json.loads(manifest_path.read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
-        raise ValueError("retained_capture_manifest_invalid")
-    roster = manifest.get("artifact_roster")
-    if not isinstance(roster, dict) or set(manifest["receipts"]) != CAPTURE_NAMES:
-        raise ValueError("retained_capture_roster_or_names_invalid")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
-        raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_roster())
-    captures = {}
-    for name in sorted(CAPTURE_NAMES):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
+    count = manifest.get("source_feature_count")
+    receipts = manifest.get("receipts")
+    # Bound dynamic page planning by the retained receipt roster before building
+    # URLs; the manifest's summary count is checked against captured bytes below.
+    if (type(count) is not int or count <= 0 or not isinstance(receipts, dict)
+            or len(receipts) != len(_capture_roster()) + (count + PAGE_SIZE - 1) // PAGE_SIZE):
+        raise ValueError("retained_capture_count_invalid")
+    expected_urls = dict(_capture_roster(count))
+    captures = validate_retained_capture_replay(root, capture_names=set(expected_urls),
+        expected_urls=expected_urls, load_capture=load_capture,
+        validate_request_identity=validate_capture_request_identity)
+    if json.loads(captures["count_before"][0]).get("count") != count:
+        raise ValueError("retained_capture_count_invalid")
     return captures
 
 
@@ -257,8 +243,6 @@ def _field_projection(fields: object) -> list[dict]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict]:
-    if set(captures) != CAPTURE_NAMES:
-        raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     org = docs["org"]
     if (org.get("id") != ORG_ID or org.get("name") != "U.S. Fish & Wildlife Service"
@@ -297,25 +281,25 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         raise ValueError("source_service_or_layer_changed_during_capture")
     count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
     ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (count_before != EXPECTED_COUNT or count_after != count_before
-            or not isinstance(ids_before, list) or any(type(oid) is not int for oid in ids_before)
-            or len(ids_before) != EXPECTED_COUNT or len(set(ids_before)) != EXPECTED_COUNT
-            or ids_after != ids_before):
-        raise ValueError("source_count_or_id_roster_drift")
-    sorted_ids = sorted(ids_before)
+    sorted_ids = validate_capture_witness(count_before, ids_before, count_after, ids_after)
+    if not sorted_ids:
+        raise ValueError("source_empty_population_requires_review")
+    page_names = [name for name, _url in _capture_roster(count_before) if name.startswith("page_")]
+    if set(captures) != set(dict(_capture_roster(count_before))):
+        raise ValueError("source_capture_name_roster_drift")
     features = []
     org_codes = []
     null_coordinate_count = 0
     disagreement_count = 0
-    for name in PAGE_NAMES:
+    for index, name in enumerate(page_names):
         page = docs[name]
-        if "error" in page or page.get("exceededTransferLimit") is True and name == PAGE_NAMES[-1]:
+        if "error" in page or page.get("exceededTransferLimit") is True and name == page_names[-1]:
             raise ValueError("source_page_error_or_transfer_limit:" + name)
         _validate_web_mercator_reference(page.get("spatialReference"), "source_" + name)
         if page.get("geometryType") != "esriGeometryPoint" or page.get("objectIdFieldName") != "ObjectId":
             raise ValueError("source_page_identity_drift:" + name)
         rows = page.get("features")
-        expected_ids = sorted_ids[int(name[-3:]) * PAGE_SIZE:(int(name[-3:]) + 1) * PAGE_SIZE]
+        expected_ids = sorted_ids[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
         if not isinstance(rows, list) or len(rows) != len(expected_ids):
             raise ValueError("source_page_population_incomplete:" + name)
         for feature, expected_oid in zip(rows, expected_ids):
@@ -370,12 +354,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
             features.append({"attributes": {field_name: attrs[field_name]
                                            for field_name in ATTRIBUTE_FIELD_NAMES},
                             "geometry": geometry})
-    if len(features) != EXPECTED_COUNT:
-        raise ValueError("source_feature_count_drift")
-    if null_coordinate_count != EXPECTED_NULL_COORDINATE_COUNT:
-        raise ValueError("source_null_coordinate_count_drift")
-    if disagreement_count != EXPECTED_GEOMETRY_ATTRIBUTE_DISAGREEMENT_COUNT:
-        raise ValueError("source_geometry_attribute_disagreement_count_drift")
+    validate_capture_witness(count_before, ids_before, count_after, ids_after,
+                             [row["attributes"]["ObjectId"] for row in features])
     if len(org_codes) - len(set(org_codes)) != EXPECTED_ORG_CODE_DUPLICATE_COUNT:
         raise ValueError("source_org_code_duplicate_drift")
     features.sort(key=lambda row: row["attributes"]["ObjectId"])
@@ -391,7 +371,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
               max(row["geometry"]["y"] for row in populated)]
     latitudes = [row["attributes"]["latitude"] for row in populated]
     longitudes = [row["attributes"]["longitude"] for row in populated]
-    audit = {"source_feature_count": len(features),
+    audit = {"source_feature_count": len(features), "source_reported_count": count_before,
              "source_id_sha256": _sha(_canonical(ids)),
              "source_schema_sha256": _sha(_canonical(EXPECTED_FIELD_DECLARATIONS)),
              "source_record_sha256": _sha(_canonical([row["attributes"] for row in features])),
@@ -421,8 +401,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                              "layer/service identity, before/after count and ObjectId roster, "
                              "per-page native XY in EPSG:3857, orgCode string identifiers with "
                              "null/duplicate and leading-zero preservation, null-coordinate "
-                             "pairing, and draft drift-guard pins (features 1816, nulls 4, "
-                             "geometry-vs-attribute disagreements 140) that raise on change; "
+                             "pairing; null/disagreement counts are observed diagnostics. "
                              "baseline acceptance is pending, not a published-geometry contract.")}
     return features, audit
 
@@ -445,7 +424,6 @@ def _parquet_bytes(features: list[dict]) -> bytes:
     metadata = {b"geo": _canonical({"version": "1.1.0", "primary_column": "geometry",
         "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"],
                                  "crs": WEB_MERCATOR_PROJJSON}}})}
-    import io
     sink = io.BytesIO()
     pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd",
                    use_dictionary=False)
@@ -453,7 +431,7 @@ def _parquet_bytes(features: list[dict]) -> bytes:
 
 
 def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
-    return _sha(_canonical(_capture_identity(captures, root)))
+    return _sha(_canonical(capture_identity(captures, root)))
 
 
 def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
@@ -481,7 +459,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/365/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "365", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
@@ -489,8 +467,16 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/fws-cmt-draft"}) as client:
-                for name, url in _capture_roster():
-                    captures[name] = _capture(client, url, root, name)
+                # Capture the source witness before deciding how many pages exist.
+                for name, url in _capture_roster()[:7]:
+                    captures[name] = capture_page(client, url, root, name)
+                count = json.loads(captures["count_before"][0]).get("count")
+                ids = json.loads(captures["ids_before"][0]).get("objectIds")
+                validate_capture_witness(count, ids, count, ids)
+                if not ids:
+                    raise ValueError("source_empty_population_requires_review")
+                for name, url in _capture_roster(count)[7:]:
+                    captures[name] = capture_page(client, url, root, name)
             features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}
@@ -516,7 +502,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
     identity = processing_identity(Path(__file__).parents[3])
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
-        "source_capture_evidence": _capture_identity(captures, root),
+        "source_capture_evidence": capture_identity(captures, root),
         "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
         **UNACCEPTED_FLAGS})
     parquet = _parquet_bytes(features)
@@ -570,8 +556,8 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
                 "source_ids": "ObjectId and string orgCode retained unchanged, including leading zeros; orgCode null/duplicate baseline pinned at 0/0",
                 "source_crs": "EPSG:3857 (native Web Mercator; no reprojection, repair, or quantization)",
                 "geometry": "native XY point geometry preserved as WKB in EPSG:3857; null geometry preserved as null",
-                "attributes": "native latitude/longitude degree attributes preserved verbatim as separate columns, including 4 null rows; both coordinate representations kept without reconciliation and without choosing an authoritative published geometry",
-                "baselines": "pinned fail-closed drift gates: feature count 1816, null-coordinate rows 4, geometry-vs-attribute disagreements (>1e-6 deg via documented EPSG:3857 inverse) 140",
+                "attributes": "native latitude/longitude degree attributes preserved verbatim as separate columns, including observed null rows; both coordinate representations kept without reconciliation and without choosing an authoritative published geometry",
+                "completeness": "exact source-reported before/after count and unique ObjectId roster with complete page coverage; no approved baseline is available for drift comparison",
                 "raw_evidence": "complete decoded response and wire bodies retained with checksummed receipts",
                 "candidate_status": "unapproved; source registry, source, schema/ID, coverage, rights and release decisions pending"}},
         ],
@@ -590,7 +576,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
@@ -613,7 +599,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
         if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            body, wire, _receipt = _load_capture(root, name)
+            body, wire, _receipt = load_capture(root, name)
             if (storage.read_key(f"{prefix}/raw/{name}.body") != body
                     or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
                 raise ValueError("cached_source_evidence_changed:" + name)
@@ -642,7 +628,8 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
 def _result(audit: dict, version: str, prefix: str, root: Path, capture_hash: str,
             *, reused: bool) -> dict[str, object]:
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": audit["source_feature_count"], "source_population_complete": True,
+        "feature_count": audit["source_feature_count"],
+        "source_reported_count": audit["source_reported_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": reused,

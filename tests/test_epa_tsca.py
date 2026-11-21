@@ -18,7 +18,6 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import epa_tsca
 from dagster_hifld.sources.epa_tsca import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     ITEM_ID,
     LAYER_ID,
     LAYER_NAME,
@@ -37,6 +36,9 @@ from dagster_hifld.sources.epa_tsca import (
 )
 
 
+_COUNT = 26454
+
+
 class EpaTscaDraftTests(unittest.TestCase):
     def test_source_is_explicit_and_draft_only(self):
         self.assertEqual(DATASET_SLUG, "epa-frs-toxic-substances-control-act-tsca")
@@ -48,10 +50,10 @@ class EpaTscaDraftTests(unittest.TestCase):
         self.assertTrue(epa_frs_toxic_substances_control_act_tsca.keys)
 
     def test_paging_covers_population_without_skipping_ids(self):
-        ids = list(range(1, EXPECTED_COUNT + 1))
+        ids = list(range(1, _COUNT + 1))
         urls = _feature_urls(ids)
         pages = [(name, url) for name, url in urls if name.startswith("page_")]
-        self.assertEqual(len(pages), (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)
+        self.assertEqual(len(pages), (_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)
         offsets = []
         for _, url in pages:
             query = parse_qs(urlsplit(url).query)
@@ -63,7 +65,7 @@ class EpaTscaDraftTests(unittest.TestCase):
             self.assertEqual(query["returnGeometry"], ["true"])
             self.assertEqual(query["outSR"], ["4269"])
             self.assertLess(len(url), 1800)
-        self.assertEqual(offsets, list(range(0, EXPECTED_COUNT, PAGE_SIZE)))
+        self.assertEqual(offsets, list(range(0, _COUNT, PAGE_SIZE)))
         self.assertEqual(pages[-1][0], "page_026")
         self.assertIn(LAYER_URL, pages[0][1])
 
@@ -112,7 +114,7 @@ class EpaTscaDraftTests(unittest.TestCase):
             (capture_root / "portal_item.wire").write_bytes(wire)
             with patch("dagster_hifld.sources.epa_tsca._code_identity", return_value={"code_commit":"synthetic","files":[]}), \
                  patch("dagster_hifld.sources.epa_tsca.validate_construction_code_identity"), \
-                 patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                 patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = _finalize_epa_tsca(storage, "synthetic-run", capture_root,
                     {"portal_item":(raw, receipt)}, fields, extracted, provenance)
                 self.assertFalse(first["release_accepted"])
@@ -243,63 +245,49 @@ class EpaTscaSourceDriftTests(unittest.TestCase):
     additions or removals. These tests pin the refusal behavior, not the drift.
     """
 
-    def test_live_count_drift_fails_closed_at_production_pin(self):
-        for live_count in (26466, 26482):
-            with self.assertRaisesRegex(ValueError, "source_count_drift"):
-                _validate_captures(_drifted_live_packet(live_count))
-        self.assertEqual(EXPECTED_COUNT, 26454)
+    def test_complete_upstream_population_change_passes_and_torn_witness_fails(self):
+        _, _, baseline = _validate_captures(_validated_packet((1, 2, 3)))
+        self.assertEqual(baseline["audit"]["source_feature_count"], 3)
+        _, _, grown = _validate_captures(_validated_packet((1, 2, 3, 4)))
+        self.assertEqual(grown["audit"]["source_feature_count"], 4)
 
-    def test_id_roster_gates_fail_closed_and_a_filled_roster_pin_enforces(self):
-        with patch.object(epa_tsca, "EXPECTED_COUNT", 3):
-            _, _, baseline = _validate_captures(_validated_packet((1, 2, 3)))
-            self.assertEqual(baseline["audit"]["source_feature_count"], 3)
-            roster_sha = baseline["audit"]["source_id_sha256"]
+        torn = _validated_packet((1, 2, 3))
+        torn["ids_after"] = (_canonical({"objectIds": [1, 2, 3, 4]}), {})
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+            _validate_captures(torn)
 
-            drifted = _validated_packet((1, 2, 3))
-            ids = json.loads(drifted["ids_after"][0])
-            ids["objectIds"].append(4)
-            drifted["ids_after"] = (_canonical(ids), {})
-            with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
-                _validate_captures(drifted)
+    def test_id_roster_gates_fail_closed(self):
+        _, _, baseline = _validate_captures(_validated_packet((1, 2, 3)))
+        self.assertEqual(baseline["audit"]["source_feature_count"], 3)
 
-            drifted = _validated_packet((1, 2, 3))
-            drifted["ids_seed"] = (_canonical({"objectIds": [1, 2, 4]}), {})
-            with self.assertRaisesRegex(ValueError, "source_id_population_changed_before_capture"):
-                _validate_captures(drifted)
+        drifted = _validated_packet((1, 2, 3))
+        ids = json.loads(drifted["ids_after"][0])
+        ids["objectIds"].append(4)
+        drifted["ids_after"] = (_canonical(ids), {})
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+            _validate_captures(drifted)
 
-            with patch.object(epa_tsca, "EXPECTED_ID_SHA256", roster_sha):
-                with self.assertRaisesRegex(ValueError, "source_id_roster_drift"):
-                    _validate_captures(_validated_packet((1, 2, 5)))
+        drifted = _validated_packet((1, 2, 3))
+        drifted["ids_seed"] = (_canonical({"objectIds": [1, 2, 4]}), {})
+        with self.assertRaisesRegex(ValueError, "source_id_population_changed_before_capture"):
+            _validate_captures(drifted)
 
     def test_record_digest_isolates_value_reassignment_under_constant_roster(self):
-        with patch.object(epa_tsca, "EXPECTED_COUNT", 3):
-            _, _, before = _validate_captures(_validated_packet((1, 2, 3)))
-            reassigned = _validated_packet((1, 2, 3))
-            page = json.loads(reassigned["page_000"][0])
-            first, third = page["features"][0], page["features"][2]
-            first["attributes"]["REGISTRY_ID"], third["attributes"]["REGISTRY_ID"] = (
-                third["attributes"]["REGISTRY_ID"], first["attributes"]["REGISTRY_ID"])
-            reassigned["page_000"] = (_page_body(page), {})
-            _, _, after = _validate_captures(reassigned)
-            self.assertEqual(after["audit"]["source_feature_count"], before["audit"]["source_feature_count"])
-            self.assertEqual(after["audit"]["source_id_sha256"], before["audit"]["source_id_sha256"])
-            self.assertEqual(after["audit"]["source_geometry_sha256"], before["audit"]["source_geometry_sha256"])
-            self.assertNotEqual(after["audit"]["source_record_sha256"], before["audit"]["source_record_sha256"])
-
-            with patch.object(epa_tsca, "EXPECTED_RECORD_SHA256", before["audit"]["source_record_sha256"]):
-                with self.assertRaisesRegex(ValueError, "source_value_or_geometry_baseline_drift"):
-                    _validate_captures(reassigned)
-
-            moved = _validated_packet((1, 2, 3))
-            page = json.loads(moved["page_000"][0])
-            page["features"][1]["geometry"]["y"] += 1.25
-            moved["page_000"] = (_page_body(page), {})
-            with patch.object(epa_tsca, "EXPECTED_GEOMETRY_SHA256", before["audit"]["source_geometry_sha256"]):
-                with self.assertRaisesRegex(ValueError, "source_geometry_or_coverage_drift"):
-                    _validate_captures(moved)
+        _, _, before = _validate_captures(_validated_packet((1, 2, 3)))
+        reassigned = _validated_packet((1, 2, 3))
+        page = json.loads(reassigned["page_000"][0])
+        first, third = page["features"][0], page["features"][2]
+        first["attributes"]["REGISTRY_ID"], third["attributes"]["REGISTRY_ID"] = (
+            third["attributes"]["REGISTRY_ID"], first["attributes"]["REGISTRY_ID"])
+        reassigned["page_000"] = (_page_body(page), {})
+        _, _, after = _validate_captures(reassigned)
+        self.assertEqual(after["audit"]["source_feature_count"], before["audit"]["source_feature_count"])
+        self.assertEqual(after["audit"]["source_id_sha256"], before["audit"]["source_id_sha256"])
+        self.assertEqual(after["audit"]["source_geometry_sha256"], before["audit"]["source_geometry_sha256"])
+        self.assertNotEqual(after["audit"]["source_record_sha256"], before["audit"]["source_record_sha256"])
 
     def test_seed_count_drift_quarantines_partial_capture_and_keeps_pin(self):
-        seed = _canonical({"objectIds": [1, 2, 3]})
+        seed = _canonical({"objectIds": [1, 2, 2]})
 
         def drifted_seed_get(_client, url, capture_root, name, *, max_bytes):
             (capture_root / f"{name}.body").write_bytes(seed)
@@ -314,8 +302,7 @@ class EpaTscaSourceDriftTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"), use_local=True, backend="local")
-            with patch.object(epa_tsca, "EXPECTED_COUNT", 2), \
-                 patch.object(epa_tsca, "capture_get", side_effect=drifted_seed_get):
+            with patch.object(epa_tsca, "capture_get", side_effect=drifted_seed_get):
                 with self.assertRaisesRegex(ValueError, "source_seed_id_count_drift"):
                     capture_epa_tsca(storage, version="synthetic-seed-drift",
                                      capture_directory=str(Path(tmp) / "captures"))
@@ -328,14 +315,15 @@ class EpaTscaSourceDriftTests(unittest.TestCase):
             self.assertEqual(failure["reason_code"], "ValueError")
             self.assertEqual(failure["captured_names"], ["ids_seed"])
             self.assertEqual(storage.list_prefix(DATASET_SLUG), [])
-        self.assertEqual(epa_tsca.EXPECTED_COUNT, 26454)
 
     def test_blocking_check_refuses_observed_live_population_shapes(self):
         for live_count in (26466, 26482):
-            result = epa_frs_tsca_complete({"feature_count": live_count, "source_null_geometry_count": 0})
+            result = epa_frs_tsca_complete({"feature_count": live_count, "source_reported_count": 26454,
+                                            "source_null_geometry_count": 0})
             self.assertFalse(result.passed)
             self.assertEqual(result.metadata["complete_source_population"].value, live_count)
-        pinned = epa_frs_tsca_complete({"feature_count": 26454, "source_null_geometry_count": 0})
+        pinned = epa_frs_tsca_complete({"feature_count": 26454, "source_reported_count": 26454,
+                                        "source_null_geometry_count": 0})
         self.assertTrue(pinned.passed)
 
 

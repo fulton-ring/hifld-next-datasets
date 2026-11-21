@@ -10,10 +10,12 @@ import pyarrow.parquet as pq
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import usace_pylon_locations as source
 
+COUNT = 4079
+
 
 class ArcGISFixture(httpx.BaseTransport):
     def __init__(self, *, changed_after=False, schema_drift=False, changed_page_crs=False, changed_feature_crs=False, geometry_z=False):
-        self.ids = list(range(1, source.EXPECTED_COUNT + 1))
+        self.ids = list(range(1, COUNT + 1))
         self.changed_after = changed_after
         self.schema_drift = schema_drift
         self.changed_page_crs = changed_page_crs
@@ -32,10 +34,10 @@ class ArcGISFixture(httpx.BaseTransport):
                     "maxRecordCount": 2000, "spatialReference": {"wkid": 4326}, "fields": fields}
         elif query.get("returnIdsOnly") == "true":
             self.id_calls += 1
-            ids = self.ids[:-1] + [source.EXPECTED_COUNT + 1] if self.changed_after and self.id_calls == 2 else self.ids
+            ids = self.ids[:-1] + [COUNT + 1] if self.changed_after and self.id_calls == 2 else self.ids
             data = {"objectIdFieldName": "OBJECTID", "objectIds": ids}
         elif query.get("returnCountOnly") == "true":
-            data = {"count": source.EXPECTED_COUNT}
+            data = {"count": COUNT}
         else:
             requested = [int(value) for value in query["objectIds"].split(",")]
             features = []

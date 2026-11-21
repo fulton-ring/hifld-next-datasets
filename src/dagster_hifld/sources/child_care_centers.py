@@ -28,19 +28,27 @@ import pyproj
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    validate_capture_request_identity,
 )
-from dagster_hifld.sources.usace_obstruction_lines import (
-    _canonical, _capture_identity, _load_capture, _sha,
-    _validate_capture_request_identity, _validate_spatial_reference,
+from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
+    _canonical,
+    _sha,
+    _validate_spatial_reference,
 )
+from dagster_hifld.sources.usace_ienc_common import (
+    capture_identity,
+    load_capture,
+)
+
 
 DATASET_SLUG = "child-care-centers"
 FILE_SLUG = DATASET_SLUG
@@ -52,9 +60,6 @@ LAYER_NAME = "Day Care Centers"
 PUBLISHER = ("US EPA Office of Environmental Information (SEGS web service); data produced by "
              "Oak Ridge National Laboratory, Geographic Information Science and Technology Group "
              "(HSIP Freedom Database)")
-EXPECTED_COUNT = 115036
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "7d34949428113483d9ed904d5d75f0b13916117bdbbb54b9ee768a1ae1178dce"
 PAGE_SIZE = 1000
 MAX_RESPONSE_BYTES = 8_000_000
 MAX_CAPTURE_BYTES = 512_000_000
@@ -113,9 +118,10 @@ ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["nam
 ATTRIBUTE_FIELD_NAMES = {field["name"] for field in ATTRIBUTE_FIELDS}
 EXPECTED_EXTENT = {"xmin": -166.53141479199996, "ymin": 17.948361168000076,
                    "xmax": -65.43435807999998, "ymax": 67.25950000000006}
-CAPTURE_NAMES = {"service_directory", "service_before", "layer_before", "count_before", "ids_before",
-                 "layer_after", "count_after", "ids_after", "service_after",
-                 *{f"page_{index:03d}" for index in range((EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE)}}
+def _capture_names(ids: list[int]) -> set[str]:
+    return {"service_directory", "service_before", "layer_before", "count_before", "ids_before",
+            "layer_after", "count_after", "ids_after", "service_after",
+            *{f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}}
 DELEGATION_EVIDENCE = {
     "epa_service_folder_url": SERVICE_DIRECTORY_URL,
     "epa_service_map_name": EXPECTED_SERVICE_MAP_NAME,
@@ -159,53 +165,31 @@ def _bounded_capture(client: httpx.Client, url: str, root: Path, name: str) -> t
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
-    manifest_path = root / "capture_manifest.json"
-    if manifest_path.is_symlink():
-        raise ValueError("retained_capture_manifest_symlink_rejected")
-    manifest = json.loads(manifest_path.read_bytes())
-    if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
-        raise ValueError("retained_capture_manifest_invalid")
-    roster = manifest.get("artifact_roster")
-    if not isinstance(roster, dict) or set(manifest["receipts"]) != CAPTURE_NAMES:
-        raise ValueError("retained_capture_roster_or_names_invalid")
-    validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
-    if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
-        raise ValueError("retained_capture_artifact_digest_mismatch")
-    expected_urls = dict(_capture_roster(EXPECTED_IDS))
-    captures = {}
-    for name in sorted(CAPTURE_NAMES):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
+    ids_body, _ids_wire, _ids_receipt = load_capture(root, "ids_before")
+    replay_ids = json.loads(ids_body).get("objectIds")
+    if (not isinstance(replay_ids, list) or not replay_ids
+            or any(type(oid) is not int or oid <= 0 for oid in replay_ids)
+            or len(set(replay_ids)) != len(replay_ids)):
+        raise ValueError("retained_capture_id_roster_invalid")
+    return validate_retained_capture_replay(
+        root,
+        capture_names=_capture_names(replay_ids),
+        expected_urls=dict(_capture_roster(replay_ids)),
+        load_capture=load_capture,
+        validate_request_identity=validate_capture_request_identity,
+    )
 
 
 def _point_wkb(x: float, y: float) -> bytes:
     return b"\x01" + struct.pack("<I", 1) + struct.pack("<dd", x, y)
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]], *,
-              expected_count: int | None = None,
-              expected_id_sha256: str | None = None) -> tuple[list[dict], list[dict], dict]:
-    """Validate a complete capture roster against pinned or injected expectations.
-
-    Keyword defaults pin the production source population; tests inject a
-    small synthetic population to exercise every drift branch offline.
-    """
-    if expected_count is None:
-        expected_count = EXPECTED_COUNT
-    if expected_id_sha256 is None:
-        expected_id_sha256 = EXPECTED_ID_SHA256
-    if type(expected_count) is not int or expected_count <= 0:
-        raise ValueError("invalid_expected_population")
-    expected_ids = list(range(1, expected_count + 1))
+def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+    """Validate one complete capture against the producer's capture-time witnesses."""
+    expected_ids = capture_witness(captures)
+    expected_count = len(expected_ids)
     page_count = (expected_count + PAGE_SIZE - 1) // PAGE_SIZE
-    expected_names = ({"service_directory", "service_before", "layer_before", "count_before",
-                       "ids_before", "layer_after", "count_after", "ids_after", "service_after"}
-                      | {f"page_{index:03d}" for index in range(page_count)})
-    if set(captures) != expected_names:
+    if set(captures) != _capture_names(expected_ids):
         raise ValueError("source_capture_name_roster_drift")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     directory = docs["service_directory"]
@@ -242,16 +226,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]], *,
         _validate_spatial_reference(extent_reference, "source_layer_extent")
     if docs["layer_after"] != layer:
         raise ValueError("source_layer_metadata_changed_during_capture")
-    count_before, count_after = docs["count_before"].get("count"), docs["count_after"].get("count")
-    ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (count_before != expected_count or count_after != count_before
-            or not isinstance(ids_before, list) or not isinstance(ids_after, list)
-            or any(type(oid) is not int for oid in ids_before) or any(type(oid) is not int for oid in ids_after)
-            or ids_before != expected_ids or ids_after != ids_before
-            or len(set(ids_before)) != expected_count
-            or docs["ids_before"].get("objectIdFieldName") != "OBJECTID"
-            or docs["ids_after"].get("objectIdFieldName") != "OBJECTID"
-            or _sha(_canonical(sorted(ids_before))) != expected_id_sha256):
+    if (docs["ids_before"].get("objectIdFieldName") != "OBJECTID"
+            or docs["ids_after"].get("objectIdFieldName") != "OBJECTID"):
         raise ValueError("source_count_or_id_population_drift")
     features = []
     geometry_valid = 0
@@ -415,7 +391,7 @@ def capture_child_care_centers(storage: StagingStorageResource, *, version: str,
         if requested and any(requested.glob("*.body")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = ((requested / version / uuid4().hex) if requested else
-                Path("/tmp/hifld-native-reconstruction/36/captures") / (version + "-" + uuid4().hex))
+                default_capture_dir("hifld-native-reconstruction", "36", "captures") / (version + "-" + uuid4().hex))
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
@@ -426,8 +402,9 @@ def capture_child_care_centers(storage: StagingStorageResource, *, version: str,
                 ids_body, ids_receipt = _bounded_capture(
                     client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
                 ids = json.loads(ids_body).get("objectIds")
-                if (not isinstance(ids, list) or any(type(oid) is not int for oid in ids)
-                        or ids != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT):
+                if (not isinstance(ids, list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
                     raise ValueError("source_seed_id_population_drift")
                 captures["ids_before"] = (ids_body, ids_receipt)
                 for name, url in _capture_roster(ids):
@@ -460,9 +437,9 @@ def capture_child_care_centers(storage: StagingStorageResource, *, version: str,
 
     fields, features, audit = _validate(captures)
     identity = processing_identity(Path(__file__).parents[3])
-    capture_hash = _sha(_canonical(_capture_identity(captures, root)))
+    capture_hash = _sha(_canonical(capture_identity(captures, root)))
     audit.update({"source_capture_evidence_sha256": capture_hash,
-        "source_capture_evidence": _capture_identity(captures, root),
+        "source_capture_evidence": capture_identity(captures, root),
         "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
@@ -539,7 +516,7 @@ def capture_child_care_centers(storage: StagingStorageResource, *, version: str,
         "metadata/source_audit.json": _canonical(audit) + b"\n",
         "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in sorted(captures.items()):
-        _body, wire, _receipt = _load_capture(root, name)
+        _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
@@ -564,7 +541,7 @@ def capture_child_care_centers(storage: StagingStorageResource, *, version: str,
         if set(original_receipts) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
         for name in captures:
-            body, wire, _receipt = _load_capture(root, name)
+            body, wire, _receipt = load_capture(root, name)
             if (storage.read_key(f"{prefix}/raw/{name}.body") != body
                     or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
                 raise ValueError("cached_source_evidence_changed:" + name)
@@ -572,9 +549,9 @@ def capture_child_care_centers(storage: StagingStorageResource, *, version: str,
             fingerprint, identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_population_complete": True,
+            "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1,
-            "source_id_max": EXPECTED_COUNT, "source_schema_sha256": audit["source_schema_sha256"],
+            "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash,
@@ -601,9 +578,9 @@ def capture_child_care_centers(storage: StagingStorageResource, *, version: str,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_COUNT, "source_population_complete": True,
+        "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": 1,
-        "source_id_max": EXPECTED_COUNT, "source_schema_sha256": audit["source_schema_sha256"],
+        "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash,

@@ -8,7 +8,6 @@ from urllib.parse import urlencode
 import pyarrow.parquet as pq
 
 from dagster_hifld.sources.courthouses_usgs import (
-    EXPECTED_COUNT,
     EXPECTED_FIELD_NAMES,
     LAYER_URL,
     _fields,
@@ -18,6 +17,8 @@ from dagster_hifld.sources.courthouses_usgs import (
     _validate_dimensions_probe,
     _validate_request_scope,
 )
+
+FIXTURE_COUNT = 3713
 
 
 def _layer_metadata():
@@ -100,7 +101,7 @@ class CourthousesUSGSTests(unittest.TestCase):
     def test_full_population_parquet_round_trips_all_attributes_and_native_point_wkb(self):
         fields = _fields(_layer_metadata())
         features = []
-        for row_number in range(EXPECTED_COUNT):
+        for row_number in range(FIXTURE_COUNT):
             attrs = {}
             for field in fields:
                 name, kind = field["name"], field["type"]
@@ -117,8 +118,8 @@ class CourthousesUSGSTests(unittest.TestCase):
 
         body = _parquet(features, fields)
         table = pq.read_table(io.BytesIO(body))
-        self.assertEqual(table.num_rows, EXPECTED_COUNT)
-        for row_number in (0, 499, EXPECTED_COUNT - 1):
+        self.assertEqual(table.num_rows, FIXTURE_COUNT)
+        for row_number in (0, 499, FIXTURE_COUNT - 1):
             for field in fields:
                 name = field["name"]
                 expected = features[row_number]["attributes"][name]
@@ -130,3 +131,23 @@ class CourthousesUSGSTests(unittest.TestCase):
             self.assertEqual(table.column("geometry")[row_number].as_py(), struct.pack(
                 "<BIdd", 1, 1, row_number + 0.25, -row_number - 0.5,
             ))
+
+
+class CourthousesCaptureCompletenessTests(unittest.TestCase):
+    def test_module_no_longer_pins_the_population_count(self):
+        import dagster_hifld.sources.courthouses_usgs as source
+        self.assertFalse(hasattr(source, "EXPECTED_COUNT"))
+
+    def test_asset_checks_use_capture_time_count_and_warn_on_unapproved_drift(self):
+        from dagster_hifld.assets.courthouses_usgs import (
+            courthouses_approved_baseline_drift, courthouses_population_complete,
+        )
+        candidate = {"dataset_slug": "courthouses-3", "file_slug": "courthouses-3",
+                     "feature_count": 3714, "source_reported_count": 3714,
+                     "source_population_complete": True,
+                     "source_id_sha256": "capture-time"}
+        self.assertTrue(courthouses_population_complete(candidate).passed)
+        drift = courthouses_approved_baseline_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value,
+                         "skipped_no_approved_baseline")

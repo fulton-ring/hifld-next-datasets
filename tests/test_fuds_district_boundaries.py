@@ -8,10 +8,14 @@ from unittest.mock import patch
 
 from dagster import DagsterInstance, materialize
 
+from dagster import AssetCheckSeverity
+
 from dagster_hifld.assets.fuds_district_boundaries import (
     usace_fuds_program_district_boundaries,
+    usace_fuds_program_district_boundaries_approved_baseline_drift,
     usace_fuds_program_district_boundaries_complete,
 )
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
@@ -88,10 +92,9 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             storage = StagingStorageResource(local_dir=directory, use_local=True)
             with patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_SCHEMA_SHA256", schema_sha), \
-                 patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_COUNT", 1), \
-                 patch("dagster_hifld.sources.fuds_district_boundaries.capture_get", fake_capture), \
+                 patch("dagster_hifld.sources.fuds_district_boundaries.capture_page", fake_capture), \
                  patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
-                 patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+                 patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = capture_fuds_district_boundaries(storage, version="fixture-v1",
                                                          capture_directory=f"{directory}/captures")
                 self.assertFalse(first["candidate_approved"])
@@ -106,6 +109,71 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
                 second = capture_fuds_district_boundaries(storage, version="fixture-v2",
                                                           capture_directory=f"{directory}/captures")
                 self.assertTrue(second["reused"])
+
+    def test_upstream_feature_addition_passes_capture_and_warns_drift(self):
+        fields = [{"name": "OBJECTID", "type": "esriFieldTypeOID"},
+                  {"name": "SHAPE", "type": "esriFieldTypeGeometry"}]
+        plain = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f}
+                 for f in fields]
+        schema_sha = hashlib.sha256(json.dumps(plain, sort_keys=True, separators=(",", ":"),
+                                      ensure_ascii=False).encode()).hexdigest()
+        layer = {"id": 9, "name": "FUDS Program District Boundaries",
+                 "geometryType": "esriGeometryPolygon", "fields": fields,
+                 "extent": {"spatialReference": {"latestWkid": 4326}},
+                 "advancedQueryCapabilities": {"supportsPagination": True, "supportsOrderBy": True}}
+        service = {"currentVersion": 11.5}
+
+        def responder(oids):
+            features = [{
+                "attributes": {"OBJECTID": oid},
+                "geometry": {"rings": [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]},
+            } for oid in oids]
+            docs = {
+                "service_before": service, "service_after": service,
+                "layer_before": layer, "layer_after": layer,
+                "count_before": {"count": len(oids)}, "count_after": {"count": len(oids)},
+                "ids_before": {"objectIds": list(oids)}, "ids_after": {"objectIds": list(oids)},
+                "page_000": {"spatialReference": {"latestWkid": 4326}, "features": features},
+            }
+
+            def fake_capture(_client, url, root, name):
+                doc = docs[name]
+                body = _canonical(doc)
+                (root / f"{name}.wire").write_bytes(body)
+                receipt = {"url": url, "final_url": url, "observed_at": "2026-10-19T00:00:00Z",
+                           "status": 200, "complete_body": True, "bytes": len(body),
+                           "sha256": hashlib.sha256(body).hexdigest(), "wire_bytes": len(body),
+                           "wire_sha256": hashlib.sha256(body).hexdigest(),
+                           "content_encoding": "identity"}
+                return body, receipt
+            return fake_capture
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_SCHEMA_SHA256", schema_sha), \
+                 patch("dagster_hifld.sources.fuds_district_boundaries.capture_page", responder([1])), \
+                 patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
+                 patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
+                before = capture_fuds_district_boundaries(
+                    StagingStorageResource(local_dir=str(root / "before"), use_local=True),
+                    version="before-v1", capture_directory=f"{root}/before-captures")
+            with patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_SCHEMA_SHA256", schema_sha), \
+                 patch("dagster_hifld.sources.fuds_district_boundaries.capture_page", responder([1, 2])), \
+                 patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
+                 patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
+                after = capture_fuds_district_boundaries(
+                    StagingStorageResource(local_dir=str(root / "after"), use_local=True),
+                    version="after-v1", capture_directory=f"{root}/after-captures")
+        self.assertTrue(after["capture_complete"])
+        self.assertEqual(after["feature_count"], 2)
+        self.assertTrue(usace_fuds_program_district_boundaries_complete(after).passed)
+        skipped = usace_fuds_program_district_boundaries_approved_baseline_drift(after)
+        self.assertEqual(skipped.severity, AssetCheckSeverity.WARN)
+        drift = approved_baseline_drift(after, {**before, "release_accepted": True})
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(drift.metadata["feature_count_delta"].value, 1)
+        self.assertTrue(drift.metadata["native_id_roster_changed"].value)
 
     def _tiny_layer_fixture(self):
         fields = [{"name": "OBJECTID", "type": "esriFieldTypeOID"},
@@ -153,10 +221,9 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
             return body, receipt
 
         with patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_SCHEMA_SHA256", schema_sha), \
-             patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_COUNT", 1), \
-             patch("dagster_hifld.sources.fuds_district_boundaries.capture_get", fake_capture), \
+             patch("dagster_hifld.sources.fuds_district_boundaries.capture_page", fake_capture), \
              patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
-             patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+             patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
             captures_dir = Path(directory) / "captures"
             captures_dir.mkdir(parents=True, exist_ok=True)
             with self.assertRaisesRegex(ValueError, expected_regex):
@@ -233,10 +300,9 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
         instance_dir.mkdir()
         (instance_dir / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
         with patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_SCHEMA_SHA256", schema_sha), \
-             patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_COUNT", 1), \
-             patch("dagster_hifld.sources.fuds_district_boundaries.capture_get", fake_capture), \
+             patch("dagster_hifld.sources.fuds_district_boundaries.capture_page", fake_capture), \
              patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
-             patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"), \
+             patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"), \
              DagsterInstance.from_config(str(instance_dir)) as instance:
             result = materialize(
                 [usace_fuds_program_district_boundaries],
@@ -250,7 +316,7 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
             # materialize does not auto-run unselected checks, so verify the
             # blocking check's pure logic directly against the candidate result.
             check_result = usace_fuds_program_district_boundaries_complete(
-                {"feature_count": 13, "candidate_approved": False})
+                {"capture_complete": True, "feature_count": 1, "candidate_approved": False})
             self.assertTrue(check_result.passed)
             self.assertFalse(usace_fuds_program_district_boundaries_complete(
                 {"feature_count": 1, "candidate_approved": False}).passed)

@@ -128,13 +128,13 @@ class SourceManifestTests(unittest.TestCase):
             resolved = load_resolved_source_manifest(
                 StagingStorageResource(local_dir=tmpdir, use_local=True),
                 "2020-census-blocks-1",
-                "tl_2024_01_tabblock20",
+                "tl_2026_01_tabblock20",
                 "v1.0.0",
             )
 
             self.assertEqual(resolved.metadata["metadata_sources"], ["inventory"])
             self.assertEqual(
-                resolved.metadata["title"], "2020 Census Blocks - tl_2024_01_tabblock20"
+                resolved.metadata["title"], "2020 Census Blocks - tl_2026_01_tabblock20"
             )
             self.assertIn("description", resolved.metadata)
             self.assertEqual(

@@ -13,7 +13,11 @@ from dagster_hifld.assets.usace_navigation_lights import (
 )
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import usace_navigation_lights as source
-from dagster_hifld.sources.epa_frs_common import _canonical
+
+COUNT = 8892
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "7c65ad1632fe1735992b7bfb73ecb618137ec9e7be937fb8925bcc7f64e054ce"
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class _FlakyTransport(httpx.BaseTransport):
@@ -46,15 +50,15 @@ class UsaceNavigationLightsTests(unittest.TestCase):
                           "description": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes USACE_IENC_Master_Service_gdb.zip"},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/LIGHTS_POINT", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer,
-            "count_before": {"count": source.EXPECTED_COUNT},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "count_before": {"count": COUNT},
+            "ids_before": {"objectIds": IDS},
             "service_after": json.loads(json.dumps(service)), "layer_after": json.loads(json.dumps(layer)),
-            "count_after": {"count": source.EXPECTED_COUNT},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "count_after": {"count": COUNT},
+            "ids_after": {"objectIds": IDS},
         }
-        for page_index in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+        for page_index in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
             rows = []
-            for oid in source.EXPECTED_IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
+            for oid in IDS[page_index * source.PAGE_SIZE:(page_index + 1) * source.PAGE_SIZE]:
                 attrs = {field["name"]: oid if field["name"] == "OBJECTID" else
                          (22000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}")
                          for field in source.ATTRIBUTE_FIELDS}
@@ -69,14 +73,14 @@ class UsaceNavigationLightsTests(unittest.TestCase):
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(usace_navigation_lights_usace_ienc, hifld_ingest_assets)
         self.assertEqual(usace_navigation_lights_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check = usace_navigation_lights_complete({"feature_count": 8892, "source_population_complete": True})
+        check = usace_navigation_lights_complete({"feature_count": 8892, "source_reported_count": 8892, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
-        failed = usace_navigation_lights_complete({"feature_count": 8891, "source_population_complete": True})
+        failed = usace_navigation_lights_complete({"feature_count": 8891, "source_reported_count": 8892, "source_population_complete": True})
         self.assertFalse(failed.passed)
 
     def test_capture_roster_pages_cover_source_ids_without_overlapping(self):
-        urls = dict(source._capture_roster(source.EXPECTED_IDS))
+        urls = dict(source._capture_roster(IDS))
         self.assertEqual([name for name in sorted(urls) if name.startswith("page_")],
                          [f"page_{index:03d}" for index in range(36)])
         self.assertIn("objectIds=1%2C2%2C3", urls["page_000"])
@@ -91,7 +95,7 @@ class UsaceNavigationLightsTests(unittest.TestCase):
         fields, features, audit = source._validate(self._captures(self._documents()))
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 8892)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
         self.assertEqual(audit["source_id_min"], 1)
         self.assertEqual(audit["source_id_max"], 8892)
         self.assertEqual(audit["source_wkid"], 4326)
@@ -105,8 +109,8 @@ class UsaceNavigationLightsTests(unittest.TestCase):
 
     def test_population_schema_transfer_limit_and_crs_drift_fail_closed(self):
         cases = [
-            ("population", lambda d: d["ids_after"].update(objectIds=source.EXPECTED_IDS[:-1]),
-             "source_count_or_id_population_drift"),
+            ("population", lambda d: d["ids_after"].update(objectIds=IDS[:-1]),
+             "source_count_or_id_roster_drift"),
             ("schema", lambda d: d["layer_before"]["fields"][2].update(name="renamed"),
              "source_field_schema_drift"),
             ("extent", lambda d: d["layer_before"]["extent"].update(xmin=-100.0),
@@ -133,7 +137,7 @@ class UsaceNavigationLightsTests(unittest.TestCase):
              "official_ienc_service_directory_drift"),
             ("service changed", lambda d: d["service_after"].update(mapName="SOME_OTHER_MAP"),
              "source_service_or_layer_changed_during_capture"),
-            ("roster", lambda d: d.pop("count_after"), "source_capture_name_roster_drift"),
+            ("roster", lambda d: d.pop("count_after"), "source_capture_witness_missing:count_after"),
         ]
         for label, mutate, expected in cases:
             with self.subTest(label=label):

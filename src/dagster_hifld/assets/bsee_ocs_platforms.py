@@ -23,9 +23,15 @@ def bsee_ocs_platforms(context, config: BseeOcsPlatformsConfig, staging_storage:
 
 @asset_check(asset=bsee_ocs_platforms, blocking=True)
 def bsee_ocs_platforms_complete(candidate: dict) -> AssetCheckResult:
-    passed = candidate.get("feature_count") == 7317 and candidate.get("candidate_ready") and not candidate.get("release_accepted", False)
+    count = candidate.get("source_count_witness")
+    passed = (type(count) is int and count > 0
+              and candidate.get("feature_count") == count
+              and candidate.get("source_population_complete") is True
+              and candidate.get("candidate_ready")
+              and not candidate.get("release_accepted", False))
     return AssetCheckResult(passed=bool(passed), metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_count_witness": count if count is not None else "missing",
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
@@ -38,3 +44,7 @@ bsee_ocs_platforms_draft_schedule = ScheduleDefinition(
     cron_schedule="0 8 1 * *", execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+ASSET_CHECKS = [bsee_ocs_platforms_complete]
+INGEST_ASSETS = [bsee_ocs_platforms]
+JOBS = [bsee_ocs_platforms_draft_job]
+SCHEDULES = [bsee_ocs_platforms_draft_schedule]

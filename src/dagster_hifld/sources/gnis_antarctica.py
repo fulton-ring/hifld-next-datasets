@@ -1,35 +1,9 @@
-"""Lossless, approval-gated capture of the USGS GNIS Antarctica named-features layer.
+"""USGS GNIS Antarctica named features from The National Map staged products.
 
-The HIFLD Open inventory row ``nmg/antarctica-1`` ("Antarctica", agency US Geological
-Survey, generic National Map Gazetteer description, historical archive DataLumos
-240193) is the GNIS "Antarctica Features" point layer. The original producer publishes
-it directly: the official USGS "Download Names Data" page
-(https://www.usgs.gov/us-board-on-geographic-names/download-gnis-data) lists The
-National Map staged-products directory
-``https://prd-tnm.s3.amazonaws.com/StagedProducts/GeographicNames/Antarctica/`` as
-"Names data for the continent of Antarctica approved by the Advisory Committee on
-Antarctic Names of the U.S. Board on Geographic Names", and the USGS "Antarctic
-Names" page links the same directory. Dated 2026-11-09 probes captured the producer's
-own ``Gazetteer_Antarctica_GPKG.zip`` (primary input: native vector payload) and
-``Gazetteer_Antarctica_Text.zip`` (the documented pipe-delimited product family
-member, captured for independent cross-format verification), both published
-2026-11-02 (FGDC ``pubdate 20261102``, S3 LastModified 2026-11-02T20:37:44Z; the
-inventory's 2025-03-20 archive date is not a producer release date). The LIMA
-``USGS_EROS_Antarctica_Reference`` coastline service is a different product and is
-not this dataset. The DataLumos archive copy and every HIFLD rescue mirror are
-identification/comparison context only, never pipeline inputs.
-
-The producer's GeoPackage stores the complete Full Model: ``AntarcticaNames`` (the
-named-features point layer this candidate publishes) and ``AntarcticaAllNames``
-(variant names, retained as raw evidence with audit digests). The declared geometry
-column is MULTIPOINT in EPSG:4326, while every stored geometry is a single ISO WKB
-Point Z (type 1001) with Z == 0.0; the producer's 7-decimal ``prim_*_dec``
-attributes agree with the native geometry within 5.000005387501005e-08 degrees and
-both representations are preserved without coercion. A dangling ``CLIPPOLY``
-``gpkg_contents`` row (table absent) is a producer artifact covered by the schema
-pin. The pipe-delimited product carries the same population (including one row
-whose history field contains an embedded quoted newline), and this adapter
-cross-verifies both captured formats before sealing anything.
+The native GeoPackage point layer and variant-name table are cross-verified
+against the producer's pipe-delimited products. Stable listing witnesses bind
+both downloads to one publication. Native fields and Point Z WKB are retained;
+no source, freshness, compatibility or release approval is granted.
 """
 from __future__ import annotations
 
@@ -56,14 +30,20 @@ import pyproj
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.http_capture import (
+    capture_roster_digests, validate_capture_roster, validate_retained_capture_replay,
+)
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    validate_capture_request_identity,
 )
+from dagster_hifld.sources.arcgis_layer import load_replay
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "antarctica"
 FILE_SLUG = DATASET_SLUG
@@ -114,11 +94,6 @@ TEXT_ZIP_MEMBERS = ("Gazetteer_Antarctica_Text.jpg", "Gazetteer_Antarctica_Text.
                     "Text/AntarcticaAllNames_Antarctica.txt", "Text/AntarcticaNames_Antarctica.txt")
 # Pins below are the observed 2026-11-09 complete-population contract of the producer's
 # 2026-11-02 edition; any producer change fails closed for explicit re-review.
-# EXPECTED_SCHEMA_SHA256 is the module's own canonical schema representation (see
-# _extract_gpkg_population); EXPECTED_ALLNAMES_ID_SHA256 is the sorted feature_id
-# multiset of the variant-name table (one entry per variant row), pinning the exact
-# feature->variant multiplicity alongside the distinct-roster identity check.
-EXPECTED_PUBDATE = "20261102"
 EXPECTED_S3_KEYS = (
     "StagedProducts/GeographicNames/Antarctica/",
     "StagedProducts/GeographicNames/Antarctica/Gazetteer_Antarctica_GDB.jpg",
@@ -131,42 +106,10 @@ EXPECTED_S3_KEYS = (
     "StagedProducts/GeographicNames/Antarctica/Gazetteer_Antarctica_Text.xml",
     "StagedProducts/GeographicNames/Antarctica/Gazetteer_Antarctica_Text.zip",
 )
-EXPECTED_COUNT = 14380
-EXPECTED_ALLNAMES_COUNT = 18250
-EXPECTED_ID_SHA256 = "999bde273e09be9b400279fd2bfeadf1cb5158c1b7457f87cdd91c128824a389"
-EXPECTED_ALLNAMES_ID_SHA256 = "1b645d4033297d6530f36fb7f7950e04e5af65aabe5ab864fd49726b1d4a2803"
-EXPECTED_RECORD_SHA256 = "42f4468e64f361eee8fb0a0e03f90ee86daf70de706c460b9c9592b539a92945"
-EXPECTED_ALLNAMES_RECORD_SHA256 = "21caf453ff22ef96d885d386518ccda5d4c60ee6e2c21022903b2ec7a0945a42"
-EXPECTED_GEOMETRY_SHA256 = "b5eff3013161eb562a2609cabea85a24f507de4e71cdf66f7279d2ec8398aa8f"
 EXPECTED_SCHEMA_SHA256 = "1db6e1b56156ece02f139fad08762d9eae8a4efa1dbe1dc672f9321abac646b7"
-EXPECTED_OBSERVED_BOUNDS = [-179.99999999999997, -89.99999999999994, 179.98333330000003,
-                            -52.89999999999998]
 EXPECTED_GEOMETRY_ATTRIBUTE_MAX_DELTA = 5.000005387501005e-08
-EXPECTED_NULL_COUNTS = {
-    "feature_id": 0, "antarctica_id": 150, "scar_placeid": 1354, "feature_name": 0,
-    "feature_class": 0, "date_created": 12636, "date_edited": 2620, "bgn_type": 1323,
-    "bgn_authority": 1323, "bgn_date": 1323, "prim_lat_dms": 0, "prim_long_dms": 0,
-    "prim_lat_dec": 0, "prim_long_dec": 0, "description": 6, "history": 14185,
-    "bgn_type_desc": 0, "bgn_authority_desc": 0,
-}
-EXPECTED_ALLNAMES_NULL_COUNTS = {
-    "feature_id": 0, "feature_name": 0, "feature_name_official": 0,
-    "sourcecitationabbreviation": 18250, "sourceoriginator": 0, "sourcereftype": 0, "title": 0,
-    "edition": 18250, "sourceurl": 18250, "publicationdate": 18226, "seriesname": 18250,
-    "seriesissue": 18250, "ending_date": 18250, "date_created": 18249, "citation": 0,
-    "feature_name_official_desc": 0, "sourcereftype_desc": 0,
-}
 GPKG_WKB_POINT_Z_TYPE = 1001  # ISO SQL/MM WKB Point Z
 GPKG_HEADER_FLAGS_EXPECTED = 1  # little-endian WKB, no envelope, non-empty, standard binary
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _list_sha(items: list) -> str:
@@ -362,8 +305,6 @@ def _extract_gpkg_population(gpkg_body: bytes) -> dict[str, object]:
         names_geometry = cursor.execute(
             f"SELECT {','.join(DATA_COLUMNS)}, Shape FROM {NAMES_TABLE} ORDER BY feature_id"
         ).fetchall()
-        if len(names_geometry) != EXPECTED_COUNT:
-            raise ValueError("source_count_drift")
         records: list[list] = []
         geometry_records: list[list] = []
         null_counts = dict.fromkeys(DATA_COLUMNS, 0)
@@ -389,31 +330,13 @@ def _extract_gpkg_population(gpkg_body: bytes) -> dict[str, object]:
             wkb = bytes(blob[8:]).hex()
             records.append([values, wkb])
             geometry_records.append([feature_id, wkb])
-        if bounds is None or list(bounds) != EXPECTED_OBSERVED_BOUNDS:
-            raise ValueError("source_observed_coverage_drift")
-        if null_counts != EXPECTED_NULL_COUNTS:
-            raise ValueError("source_null_contract_drift")
-        if len(seen) != EXPECTED_COUNT:
-            raise ValueError("source_id_roster_drift")
-        if _sha(_canonical(sorted(seen))) != EXPECTED_ID_SHA256:
-            raise ValueError("source_id_roster_drift")
-        if _list_sha(records) != EXPECTED_RECORD_SHA256:
-            raise ValueError("source_record_value_drift")
-        if _list_sha(geometry_records) != EXPECTED_GEOMETRY_SHA256:
-            raise ValueError("source_geometry_or_coverage_drift")
 
         allnames_rows = cursor.execute(
             f"SELECT {','.join(ALLNAMES_COLUMNS)} FROM {ALLNAMES_TABLE} ORDER BY feature_id"
         ).fetchall()
-        if len(allnames_rows) != EXPECTED_ALLNAMES_COUNT:
-            raise ValueError("source_allnames_count_drift")
         allnames_records = sorted([list(row) for row in allnames_rows],
                                   key=lambda row: (row[0], _canonical(row[1:]).decode()))
         allnames_nulls = dict.fromkeys(ALLNAMES_COLUMNS, 0)
-        # The variant-name table repeats feature_id by design (one row per variant
-        # name); identity is the distinct full row and the distinct-roster equality
-        # with the point layer, while the pinned multiset sha fixes the exact
-        # feature -> variant multiplicity of the captured edition.
         allnames_ids: list[int] = []
         distinct_rows: set[tuple] = set()
         for row in allnames_rows:
@@ -426,17 +349,15 @@ def _extract_gpkg_population(gpkg_body: bytes) -> dict[str, object]:
             for index, column in enumerate(ALLNAMES_COLUMNS):
                 if row[index] is None:
                     allnames_nulls[column] += 1
-        if allnames_nulls != EXPECTED_ALLNAMES_NULL_COUNTS:
-            raise ValueError("source_allnames_null_contract_drift")
         if set(allnames_ids) != seen:
             raise ValueError("source_allnames_roster_drift")
-        if _sha(_canonical(sorted(allnames_ids))) != EXPECTED_ALLNAMES_ID_SHA256:
-            raise ValueError("source_allnames_id_roster_drift")
-        if _list_sha(allnames_records) != EXPECTED_ALLNAMES_RECORD_SHA256:
-            raise ValueError("source_allnames_record_value_drift")
     finally:
         connection.close()
-    return {"records": records, "allnames_records": allnames_records, "bounds": list(bounds),
+    return {"records": records, "allnames_records": allnames_records, "bounds": bounds,
+            "id_sha256": _sha(_canonical(sorted(seen))),
+            "allnames_id_sha256": _sha(_canonical(sorted(allnames_ids))),
+            "record_sha256": _list_sha(records), "allnames_record_sha256": _list_sha(allnames_records),
+            "geometry_sha256": _list_sha(geometry_records),
             "z_values": sorted(z_values), "null_counts": null_counts,
             "allnames_nulls": allnames_nulls, "schema_sha256": _sha(_canonical(schema))}
 
@@ -483,7 +404,7 @@ def _cross_verify_text(text_zip_body: bytes, gpkg_population: dict[str, object])
     if names_header != list(DATA_COLUMNS[:16]):
         raise ValueError("text_schema_contract_drift")
     records: list[list[object]] = gpkg_population["records"]
-    if len(names_rows) != EXPECTED_COUNT:
+    if len(names_rows) != len(records):
         raise ValueError("text_count_drift")
     text_by_id: dict[int, list[str]] = {}
     for row in names_rows:
@@ -525,7 +446,7 @@ def _cross_verify_text(text_zip_body: bytes, gpkg_population: dict[str, object])
         _zip_member(text_zip_body, "Text/AntarcticaAllNames_Antarctica.txt"))
     if allnames_header != list(ALLNAMES_COLUMNS[:15]):
         raise ValueError("text_schema_contract_drift")
-    if len(allnames_rows) != EXPECTED_ALLNAMES_COUNT:
+    if len(allnames_rows) != len(gpkg_population["allnames_records"]):
         raise ValueError("text_allnames_count_drift")
     gpkg_allnames: dict[int, list] = {}
     for row in gpkg_population["allnames_records"]:
@@ -560,7 +481,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> 
                           ("text_zip", TEXT_URL.rsplit("/", 1)[-1])):
         receipt = captures[name][1]
         listed = listing["StagedProducts/GeographicNames/Antarctica/" + url_key]
-        if receipt.get("bytes") != receipt.get("content_length") or receipt.get("bytes") != listed["size"]:
+        if receipt.get("bytes") != len(captures[name][0]) or receipt.get("bytes") != listed["size"]:
             raise ValueError("source_capture_listing_size_drift:" + name)
 
     page = captures["download_page"][0]
@@ -580,13 +501,20 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> 
         raise ValueError("text_member_roster_drift")
     gpkg_xml = _zip_member(captures["gpkg_zip"][0], "Gazetteer_Antarctica_GPKG.xml")
     text_xml = _zip_member(captures["text_zip"][0], "Gazetteer_Antarctica_Text.xml")
+    pubdate = _fgdc_field(gpkg_xml, "pubdate")
+    if not isinstance(pubdate, str) or not re.fullmatch(r"\d{8}", pubdate):
+        raise ValueError("gpkg_publication_date_drift")
+    try:
+        release_date = datetime.strptime(pubdate, "%Y%m%d").date().isoformat()
+    except ValueError as exc:
+        raise ValueError("gpkg_publication_date_drift") from exc
     for xml_body, suffix in ((gpkg_xml, "GeoPackage"), (text_xml, "pipes")):
-        if _fgdc_field(xml_body, "pubdate") != EXPECTED_PUBDATE:
+        if _fgdc_field(xml_body, "pubdate") != pubdate:
             raise ValueError("gpkg_publication_date_drift")
         if (_fgdc_field(xml_body, "origin") != "U.S. Geological Survey, National Geospatial Program"
                 or _fgdc_field(xml_body, "title") !=
                 f"Geographic Names Information System (GNIS) Full Model Antarctica "
-                f"(published {EXPECTED_PUBDATE}) {suffix}"):
+                f"(published {pubdate}) {suffix}"):
             raise ValueError("gpkg_metadata_drift")
 
     population = _extract_gpkg_population(_zip_member(captures["gpkg_zip"][0],
@@ -597,13 +525,13 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> 
                            "StagedProducts/GeographicNames/Antarctica/Gazetteer_Antarctica_Text.zip",
                            "StagedProducts/GeographicNames/Antarctica/Gazetteer_Antarctica_GDB.zip")}
     audit = {
-        "source_feature_count": EXPECTED_COUNT,
-        "source_allnames_count": EXPECTED_ALLNAMES_COUNT,
-        "source_id_sha256": EXPECTED_ID_SHA256,
-        "source_allnames_id_sha256": EXPECTED_ALLNAMES_ID_SHA256,
-        "source_record_sha256": EXPECTED_RECORD_SHA256,
-        "source_allnames_record_sha256": EXPECTED_ALLNAMES_RECORD_SHA256,
-        "source_geometry_sha256": EXPECTED_GEOMETRY_SHA256,
+        "source_feature_count": len(population["records"]),
+        "source_allnames_count": len(population["allnames_records"]),
+        "source_id_sha256": population["id_sha256"],
+        "source_allnames_id_sha256": population["allnames_id_sha256"],
+        "source_record_sha256": population["record_sha256"],
+        "source_allnames_record_sha256": population["allnames_record_sha256"],
+        "source_geometry_sha256": population["geometry_sha256"],
         "source_schema_sha256": population["schema_sha256"],
         "source_crs_epsg": SOURCE_CRS_WKID,
         "geometry_type": "Point Z",
@@ -614,13 +542,13 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> 
         "null_counts": population["null_counts"],
         "allnames_null_counts": population["allnames_nulls"],
         "cross_format_verified": True,
-        "source_release_date": "2026-11-02",
+        "source_release_date": release_date,
         "source_release_date_basis":
-            f"FGDC pubdate {EXPECTED_PUBDATE} in the producer's in-zip metadata for both captured "
-            "staged products; S3 LastModified agrees (2026-11-02T20:37:44Z).",
+            f"FGDC pubdate {pubdate} in the producer's in-zip metadata for both captured "
+            "staged products; S3 LastModified values are retained separately.",
         "source_publication_timestamps": publication_stamps,
-        "source_freshness": "The producer republishes this staged product irregularly "
-                            "(FGDC update: 'Irregular'); the inventory archive modification date "
+        "source_freshness": "The official download page documents refreshes every other month; "
+                            "the product FGDC update states 'Irregular'. The inventory archive modification date "
                             "(2025-03-20) is not a producer release date.",
         "release_date_unknown": False, "freshness_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False,
@@ -645,8 +573,6 @@ _DATETIME_COLUMNS = frozenset({"date_created", "date_edited", "bgn_date"})
 def _parquet_bytes(population: dict[str, object]) -> bytes:
     """Serialize the complete native point layer without coercion; bytes are pinned."""
     records: list[list] = population["records"]
-    if len(records) != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
     columns: dict[str, list[object]] = {name: [] for name in DATA_COLUMNS}
     columns["Shape"] = []
     for values, wkb in records:
@@ -677,6 +603,23 @@ def _code_identity() -> dict[str, object]:
     return identity
 
 
+def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+    if any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError("unsafe_capture_directory")
+    files = {f"{name}.{suffix}" for name in CAPTURE_NAMES for suffix in ("body", "wire", "receipt.json")}
+    validate_capture_roster(root, files | {"capture_manifest.json"})
+    if any((root / name).stat().st_size > MAX_CAPTURE_BYTES for name in files | {"capture_manifest.json"}):
+        raise ValueError("retained_capture_budget_invalid")
+
+    def load(root: Path, name: str):
+        body, receipt = load_replay(root, name)
+        return body, None, receipt
+
+    return validate_retained_capture_replay(root, capture_names=set(CAPTURE_NAMES),
+        expected_urls=CAPTURE_URLS, load_capture=load,
+        validate_request_identity=validate_capture_request_identity)
+
+
 def capture_gnis_antarctica(storage: StagingStorageResource, *, version: str,
                             capture_directory: str | None = None) -> dict[str, object]:
     """Capture, verify, and stage a complete unapproved GNIS Antarctica candidate."""
@@ -691,44 +634,50 @@ def capture_gnis_antarctica(storage: StagingStorageResource, *, version: str,
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MIN_FREE_BYTES:
         raise ValueError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/233/captures")
-    capture_root = (attempt_root / f"{version}-{uuid4().hex}").absolute()
-    if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
-        raise ValueError("unsafe_capture_directory")
-    capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
-    try:
-        with httpx.Client(follow_redirects=False, timeout=180,
-                          headers={"User-Agent": "hifld-next-datasets/gnis-antarctica-draft"}) as client:
-            for name in CAPTURE_NAMES:
-                body, receipt = capture_get(client, CAPTURE_URLS[name], capture_root, name,
-                                            max_bytes=MAX_CAPTURE_BYTES)
-                captures[name] = (body, receipt)
+    attempt_root = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "233", "captures")
+    replay = (attempt_root / "capture_manifest.json").exists() or (attempt_root / "capture_manifest.json").is_symlink()
+    if replay:
+        capture_root = attempt_root.absolute()
+        captures = _read_replay(capture_root)
         extracted = _validate_captures(captures)
-    except Exception as exc:
-        receipts = {}
-        for path in sorted(capture_root.glob("*.receipt.json")):
-            try:
-                receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
-            except (ValueError, OSError):
-                receipts[path.name.removesuffix(".receipt.json")] = {"receipt_readback_failed": True}
-        (capture_root / "capture_manifest.json").write_bytes(
-            _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
-                        "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        retained = dict(captures)
-        for receipt_path in capture_root.glob("*.receipt.json"):
-            name = receipt_path.name.removesuffix(".receipt.json")
-            if name in retained:
-                continue
-            try:
-                retained[name] = ((capture_root / f"{name}.body").read_bytes(),
-                                  json.loads(receipt_path.read_bytes()))
-            except (OSError, ValueError):
-                continue
-        if retained:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, retained,
-                                          type(exc).__name__)
-        raise
+    else:
+        capture_root = (attempt_root / f"{version}-{uuid4().hex}").absolute()
+        if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
+            raise ValueError("unsafe_capture_directory")
+        capture_root.mkdir(parents=True, exist_ok=True)
+        captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+        try:
+            with httpx.Client(follow_redirects=False, timeout=180,
+                              headers={"User-Agent": "hifld-next-datasets/gnis-antarctica-draft"}) as client:
+                for name in CAPTURE_NAMES:
+                    body, receipt = capture_get(client, CAPTURE_URLS[name], capture_root, name,
+                                                max_bytes=MAX_CAPTURE_BYTES)
+                    captures[name] = (body, receipt)
+            extracted = _validate_captures(captures)
+        except Exception as exc:
+            receipts = {}
+            for path in sorted(capture_root.glob("*.receipt.json")):
+                try:
+                    receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
+                except (ValueError, OSError):
+                    receipts[path.name.removesuffix(".receipt.json")] = {"receipt_readback_failed": True}
+            (capture_root / "capture_manifest.json").write_bytes(
+                _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
+                            "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
+            retained = dict(captures)
+            for receipt_path in capture_root.glob("*.receipt.json"):
+                name = receipt_path.name.removesuffix(".receipt.json")
+                if name in retained:
+                    continue
+                try:
+                    retained[name] = ((capture_root / f"{name}.body").read_bytes(),
+                                      json.loads(receipt_path.read_bytes()))
+                except (OSError, ValueError):
+                    continue
+            if retained:
+                quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, retained,
+                                              type(exc).__name__)
+            raise
     identity = _code_identity()
     audit = extracted["audit"]
     parquet_body = _parquet_bytes(extracted)
@@ -761,7 +710,7 @@ def capture_gnis_antarctica(storage: StagingStorageResource, *, version: str,
                 "release_date_unknown_reason":
                     "Live index/documentation page without its own per-snapshot release date; the "
                     f"captured staged products it lists are published {audit['source_release_date']} "
-                    "(FGDC pubdate 20261102)."}),
+                    "(publication date from the captured FGDC metadata)."}),
             "license": "Public domain (U.S. Geological Survey).",
             "attribution": "U.S. Geological Survey, National Geospatial Program; U.S. Board on "
                            "Geographic Names (Advisory Committee on Antarctic Names).",
@@ -783,7 +732,7 @@ def capture_gnis_antarctica(storage: StagingStorageResource, *, version: str,
                             "higher-precision geometry (max delta "
                             f"{EXPECTED_GEOMETRY_ATTRIBUTE_MAX_DELTA} degrees)",
                 "variant_names": "The producer's AntarcticaAllNames variant-name table ("
-                                 f"{EXPECTED_ALLNAMES_COUNT} rows) is part of the captured Full Model; "
+                                 f"{audit['source_allnames_count']} rows) is part of the captured Full Model; "
                                  "it is retained as raw evidence with audit digests and is not part of "
                                  "this point-layer candidate pending a scope decision",
                 "candidate_status": "unapproved; publication blocked pending freshness, schema/ID "
@@ -818,13 +767,16 @@ def capture_gnis_antarctica(storage: StagingStorageResource, *, version: str,
     version = content_derived_version(combined_record_sha256, audit["source_geometry_sha256"],
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    (capture_root / "capture_manifest.json").write_bytes(
-        _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
-                    "source_feature_count": EXPECTED_COUNT,
-                    "source_record_sha256": audit["source_record_sha256"],
-                    "source_geometry_sha256": audit["source_geometry_sha256"],
-                    "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}
-                   ) + b"\n")
+    if not replay:
+        (capture_root / "capture_manifest.json").write_bytes(
+            _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
+                        "source_feature_count": audit["source_feature_count"],
+                        "source_record_sha256": audit["source_record_sha256"],
+                        "source_geometry_sha256": audit["source_geometry_sha256"],
+                        "artifact_roster": capture_roster_digests(capture_root),
+                        "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}
+                       ) + b"\n")
+        _read_replay(capture_root)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
@@ -838,7 +790,9 @@ def capture_gnis_antarctica(storage: StagingStorageResource, *, version: str,
                                 audit["source_schema_sha256"], objects,
                                 payload.get("capture_receipts", {}))
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-                "feature_count": EXPECTED_COUNT, "variant_name_count": EXPECTED_ALLNAMES_COUNT,
+                "feature_count": audit["source_feature_count"], "variant_name_count": audit["source_allnames_count"],
+                "source_population_complete": True, "cross_format_verified": True,
+                "source_id_sha256": audit["source_id_sha256"], "capture_directory": str(capture_root),
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_release_accepted": False, "source_freshness_accepted": False,
                 "schema_contract_accepted": False, "id_contract_accepted": False,
@@ -852,7 +806,8 @@ def capture_gnis_antarctica(storage: StagingStorageResource, *, version: str,
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     outputs["metadata/candidate_ready.json"] = _canonical(
         {"approved": False, "version": version, "objects": source_objects,
-         "source_record_sha256": audit["source_record_sha256"], "freshness_accepted": False,
+         "source_record_sha256": audit["source_record_sha256"], "source_population_complete": True,
+         "cross_format_verified": True, "freshness_accepted": False,
          "schema_contract_accepted": False, "id_contract_accepted": False, "rights_accepted": False,
          "mapping_approved": False, "release_accepted": False}) + b"\n"
     for relative, body in outputs.items():
@@ -872,7 +827,9 @@ def capture_gnis_antarctica(storage: StagingStorageResource, *, version: str,
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "variant_name_count": EXPECTED_ALLNAMES_COUNT,
+            "feature_count": audit["source_feature_count"], "variant_name_count": audit["source_allnames_count"],
+            "source_population_complete": True, "cross_format_verified": True, "reused": False,
+            "source_id_sha256": audit["source_id_sha256"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False,
             "schema_contract_accepted": False, "id_contract_accepted": False,

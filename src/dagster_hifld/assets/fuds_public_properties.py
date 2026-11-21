@@ -3,7 +3,8 @@ from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultS
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.fuds_public_properties import DATASET_SLUG, FILE_SLUG, EXPECTED_COUNT, capture_fuds_public_properties
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
+from dagster_hifld.sources.fuds_public_properties import DATASET_SLUG, FILE_SLUG, capture_fuds_public_properties
 
 
 class FudsPublicPropertiesConfig(Config):
@@ -35,7 +36,11 @@ def usace_fuds_public_properties(context, config: FudsPublicPropertiesConfig, st
 
 @asset_check(asset=usace_fuds_public_properties, blocking=True)
 def usace_fuds_public_properties_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT and candidate.get("candidate_ready") is not None and candidate.get("source_null_geometry_count") == 0)
+    passed = (candidate.get("capture_complete") is True
+              and type(candidate.get("feature_count")) is int
+              and candidate["feature_count"] > 0
+              and candidate.get("candidate_ready") is not None
+              and candidate.get("source_null_geometry_count") == 0)
     return AssetCheckResult(
         passed=passed,
         metadata={
@@ -53,6 +58,10 @@ def usace_fuds_public_properties_complete(candidate: dict) -> AssetCheckResult:
     )
 
 
+usace_fuds_public_properties_approved_baseline_drift = register_approved_baseline_drift(
+    usace_fuds_public_properties, "usace_fuds_public_properties_approved_baseline_drift")
+
+
 fuds_public_properties_draft_job = define_asset_job(
     "fuds_public_properties_draft_refresh",
     selection=AssetSelection.assets(usace_fuds_public_properties),
@@ -64,3 +73,12 @@ fuds_public_properties_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+
+ASSET_CHECKS = [
+    usace_fuds_public_properties_complete,
+    usace_fuds_public_properties_approved_baseline_drift,
+]
+INGEST_ASSETS = [usace_fuds_public_properties]
+JOBS = [fuds_public_properties_draft_job]
+SCHEDULES = [fuds_public_properties_draft_schedule]

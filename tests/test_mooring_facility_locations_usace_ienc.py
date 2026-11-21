@@ -16,8 +16,11 @@ from dagster_hifld.assets.mooring_facility_locations_usace_ienc import (
 )
 from dagster_hifld.definitions import defs
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
+
+FEATURE_COUNT = 9772
+FEATURE_IDS = list(range(1, FEATURE_COUNT + 1))
 
 class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
     def test_registered_asset_and_stopped_refresh_gate(self):
@@ -26,7 +29,7 @@ class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
         self.assertEqual(resolved.asset_layer.executable_asset_keys,
                          {mooring_facility_locations_usace_ienc.key})
         self.assertEqual(mooring_facility_locations_usace_ienc_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        passed = mooring_facility_locations_usace_ienc_complete({"feature_count": 9772, "source_population_complete": True})
+        passed = mooring_facility_locations_usace_ienc_complete({"feature_count": 9772, "source_reported_count": 9772, "source_population_complete": True})
         self.assertTrue(passed.passed)
         self.assertFalse(passed.metadata["release_accepted"].value)
 
@@ -100,7 +103,7 @@ class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
         docs["layer_before"]["hasM"] = True
         docs["layer_after"]["hasZ"] = True
         docs["layer_after"]["hasM"] = True
-        for page_name in source._page_names():
+        for page_name in [f"page_{index:03d}" for index in range((FEATURE_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE)]:
             for feature in docs[page_name]["features"]:
                 feature["geometry"].update(z=12.5, m=7.25)
         captures = {name: (_canonical(doc), {"status": 200}) for name, doc in docs.items()}
@@ -121,20 +124,20 @@ class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
                  "spatialReference": {"latestWkid": 4326}, "extent": {**source.EXPECTED_EXTENT, "spatialReference": {"latestWkid": 4326}},
                  "fields": source.EXPECTED_FIELD_DECLARATIONS}
         attributes = []
-        for oid in source.EXPECTED_IDS:
+        for oid in FEATURE_IDS:
             values = {field["name"]: (oid if field["name"] == "OBJECTID" else
                                       60000 if field["name"] == "Scale_Minimum" else f"{field['name']}-{oid}")
                       for field in source.ATTRIBUTE_FIELDS}
             attributes.append({"attributes": values,
                                "geometry": {"x": source.EXPECTED_EXTENT["xmin"] + oid / 10000,
                                             "y": source.EXPECTED_EXTENT["ymin"] + oid / 10000}})
-        page_names = source._page_names()
+        page_names = [f"page_{index:03d}" for index in range((FEATURE_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE)]
         pages = {}
         for index, name in enumerate(page_names):
             start = index * source.PAGE_SIZE
             rows = attributes[start:start + source.PAGE_SIZE]
             page = {"spatialReference": {"latestWkid": 4326}, "features": rows}
-            if start + len(rows) < source.EXPECTED_COUNT:
+            if start + len(rows) < FEATURE_COUNT:
                 page["exceededTransferLimit"] = True
             pages[name] = page
         return {
@@ -142,16 +145,16 @@ class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
                          "description": "USACE updates. Feature classes are https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes and USACE_IENC_Master_Service_gdb.zip."},
             "service_directory": {"services": [{"name": "IENC_Feature_Classes/MOORING_FACILITY_POINT", "type": "MapServer"}]},
             "service_before": service, "layer_before": layer, "count_before": {"count": 9772},
-            "ids_before": {"objectIds": source.EXPECTED_IDS},
+            "ids_before": {"objectIds": FEATURE_IDS},
             **pages,
             "layer_after": json.loads(json.dumps(layer)), "count_after": {"count": 9772},
-            "ids_after": {"objectIds": source.EXPECTED_IDS},
+            "ids_after": {"objectIds": FEATURE_IDS},
         }
 
     def _capture_directory(self, root: Path):
         docs = self._documents()
         receipts = {}
-        expected_urls = dict(source._capture_urls(source.EXPECTED_IDS))
+        expected_urls = dict(source._capture_urls(FEATURE_IDS))
         for name, doc in docs.items():
             body = _canonical(doc)
             (root / f"{name}.body").write_bytes(body)
@@ -198,7 +201,7 @@ class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
         fields, features, audit = source._validate(captures)
         self.assertEqual(fields, source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features), 9772)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"], source._sha(source._canonical(list(FEATURE_IDS))))
         self.assertEqual(audit["source_vertex_count"], 9772)
         self.assertEqual(features[0]["attributes"]["Feature_ID"], "Feature_ID-1")
         self.assertEqual(features[0]["geometry"]["x"], source.EXPECTED_EXTENT["xmin"] + 0.0001)
@@ -207,8 +210,8 @@ class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
         docs = self._documents(); docs = json.loads(json.dumps(docs)); docs["layer_before"]["fields"][2]["name"] = "Changed"
         with self.assertRaisesRegex(ValueError, "source_field_schema_drift"):
             source._validate({n: (_canonical(v), {}) for n, v in docs.items()})
-        docs = self._documents(); docs = json.loads(json.dumps(docs)); docs["ids_after"]["objectIds"] = [*source.EXPECTED_IDS[:-1]]
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        docs = self._documents(); docs = json.loads(json.dumps(docs)); docs["ids_after"]["objectIds"] = [*FEATURE_IDS[:-1]]
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate({n: (_canonical(v), {}) for n, v in docs.items()})
         docs = self._documents(); docs = json.loads(json.dumps(docs))
         docs["page_000"]["features"][0]["geometry"]["unexpected_ordinate"] = 20
@@ -248,7 +251,7 @@ class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "capture"; root.mkdir(); self._capture_directory(root)
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "staging"))
-            with patch.object(source, "validate_construction_code_identity") as code_identity_check, patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+            with patch.object(source, "validate_construction_code_identity") as code_identity_check, patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = source.capture_mooring_facility_locations_usace_ienc(storage, version="draft", capture_directory=str(root))
             code_identity_check.assert_called_once()
             code_identity_args, code_identity_kwargs = code_identity_check.call_args
@@ -267,7 +270,7 @@ class MooringFacilityLocationsUsaceIencTests(unittest.TestCase):
                                             for n in capture_manifest["receipts"]}
             capture_manifest["artifact_roster"] = capture_roster_digests(root, exclude={"capture_manifest.json"})
             (root / "capture_manifest.json").write_bytes(_canonical(capture_manifest) + b"\n")
-            with patch.object(source, "validate_construction_code_identity"), patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+            with patch.object(source, "validate_construction_code_identity"), patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 second = source.capture_mooring_facility_locations_usace_ienc(storage, version="draft", capture_directory=str(root))
             self.assertTrue(second["reused"])
             self.assertEqual(first["version"], second["version"])

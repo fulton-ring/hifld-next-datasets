@@ -15,7 +15,7 @@ import pyarrow.parquet as pq
 import pyproj
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.provenance import validate_provenance
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 
 DATASET_SLUG = "river-mile-markers-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -25,9 +25,6 @@ ORG_SERVICES_DIRECTORY_URL = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcg
 SERVICE_URL = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/usace_river_mile_markers/FeatureServer"
 LAYER_ID = 0
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
-EXPECTED_COUNT = 11389
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "251c79ad1bed2abb5cdb3a59a2bf95e4b5f468bc160d40764bbc3cf3922ae456"
 EXPECTED_EXTENT = {"xmin": -124.441335461, "ymin": 25.95040000000006,
                   "xmax": 92.12370000000004, "ymax": 46.70310000000006}
 PAGE_SIZE = 250
@@ -206,24 +203,22 @@ def _validate_service(service: dict) -> None:
         raise ValueError("official_usace_river_mile_markers_service_drift")
 
 
-def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int], pin_roster: bool = False) -> list[int]:
+def _id_snapshot(client, staging, version_key: str, name: str, budget: list[int]) -> list[int]:
     result = _request(client, {"f": "json", "where": "1=1", "returnIdsOnly": "true"}, staging, version_key, name, budget)
     if result.get("objectIdFieldName") != "OBJECTID":
         raise ValueError("source_object_id_field_drift")
     ids = result.get("objectIds")
-    if not isinstance(ids, list) or len(ids) != EXPECTED_COUNT or any(type(x) is not int for x in ids):
+    if not isinstance(ids, list) or not ids or any(type(x) is not int for x in ids):
         raise ValueError("source_id_population_drift")
     if len(set(ids)) != len(ids):
         raise ValueError("source_duplicate_object_id")
-    if pin_roster and sorted(ids) != EXPECTED_IDS:
-        raise ValueError("source_id_population_drift")
     return sorted(ids)
 
 
 def _count_snapshot(client, staging, version_key: str, name: str, budget: list[int]) -> int:
     result = _request(client, {"f": "json", "where": "1=1", "returnCountOnly": "true"}, staging, version_key, name, budget)
     count = result.get("count")
-    if type(count) is not int or count != EXPECTED_COUNT:
+    if type(count) is not int or count < 0:
         raise ValueError("source_count_drift")
     return count
 
@@ -403,9 +398,9 @@ def _write_source_manifest(staging, version_key: str, metadata: dict, identity: 
                     "item_id": ITEM_ID, "item_owner": "usace_iwr_cac",
                     "service_url": SERVICE_URL,
                     **({"distribution_chain": "Captured ArcGIS item 604cdc08fe7d43cb90a0584a0b198875 (owner usace_iwr_cac, public Feature Service) identifies the River Mile Markers product; the USACE org services directory lists usace_river_mile_markers as a FeatureServer; the captured service reports that item id as serviceItemId.",
-                        "ienc_relationship": "The service description states the Navigation Mile Marker dataset is primarily sourced from the IENC with additional NOAA, USACE district, and other sources. The IENC_Feature_Classes directory (100 services verified 2026-11-12) contains no river-mile-marker feature class, so the USDOT BTS IENC delegation (item 7ec34864c8804468a9cf52d437fe4b6c) does not cover this product; IENC distance marks are separately inventoried as distance-marks-usace-ienc-2.",
+                        "ienc_relationship": "The service description states the Navigation Mile Marker dataset is primarily sourced from the IENC with additional NOAA, USACE district, and other sources. The IENC_Feature_Classes directory observed 2026-11-15 contains no river-mile-marker feature class by that name. The USDOT BTS IENC item 7ec34864c8804468a9cf52d437fe4b6c links chart products, not this WCSC endpoint; it does not establish delegation or historical equivalence for WCSC. DISTANCE_MARK_POINT is a separate chart class inventoried as distance-marks-usace-ienc-2. No row-level containment of a historical HIFLD or IENC population has been established.",
                         "hifld_continuity": {"original_hifld_item_id": "496c6859c35143c69b7458af6049658b",
-                                             "original_hifld_item_status": "dead; anonymous 2026-11-12 request returned ArcGIS CONT_0001 'Item does not exist or is inaccessible'",
+                                             "original_hifld_item_status": "anonymous 2026-11-12 request returned ArcGIS CONT_0001 'Item does not exist or is inaccessible'; deletion versus access restriction unresolved",
                                              "hifld_continuity_accepted": False},
                         "producer_succession_claimed": False}
                        if distribution_chain else {}),
@@ -442,8 +437,8 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             _validate_service(service_before)
         metadata = _metadata(client, staging, version_key, budget, pin_extent=distribution_chain)
         count_before = _count_snapshot(client, staging, version_key, "count_before", budget)
-        before = _id_snapshot(client, staging, version_key, "ids_before", budget, pin_roster=distribution_chain)
-        if len(before) != EXPECTED_COUNT:
+        before = _id_snapshot(client, staging, version_key, "ids_before", budget)
+        if len(before) != count_before:
             raise ValueError("source_count_drift")
         features = []
         pages = []
@@ -481,20 +476,18 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
                     _validate_crs(geometry["spatialReference"])
             features.extend(page)
             pages.append({"offset": offset, "requested_ids": requested, "returned_ids": page_ids, "count": len(page)})
-        after = _id_snapshot(client, staging, version_key, "ids_after", budget, pin_roster=distribution_chain)
+        after = _id_snapshot(client, staging, version_key, "ids_after", budget)
         count_after = _count_snapshot(client, staging, version_key, "count_after", budget)
         if distribution_chain:
             service_after = _request(client, {"f": "json"}, staging, version_key, "service_after", budget)
             if service_after != service_before:
                 raise ValueError("official_usace_river_mile_markers_service_changed_during_capture")
         fetched_ids = [feature["attributes"]["OBJECTID"] for feature in features]
-        if count_before != count_after or before != after or fetched_ids != before or len(features) != EXPECTED_COUNT:
+        if count_before != count_after or before != after or fetched_ids != before or len(features) != len(before):
             raise ValueError("source_population_changed_during_capture")
         rows = [{"attributes": f["attributes"], "geometry": f["geometry"]} for f in features]
         row_digest = _digest(_json_bytes(rows))
         ids_digest = _digest(_json_bytes(before))
-        if distribution_chain and ids_digest != EXPECTED_ID_SHA256:
-            raise ValueError("source_id_roster_digest_drift")
         parquet = _make_parquet(metadata, features)
         geojson = _json_bytes({"type": "FeatureCollection", "crs": NATIVE_GEOJSON_CRS, "features": [
             {"type": "Feature", "id": f["attributes"]["OBJECTID"], "properties": f["attributes"],
@@ -510,7 +503,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             "org_service_directory": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services?f=pjson",
             "official_service": SERVICE_URL, "service_item_id": ITEM_ID,
             "service_layer_id": LAYER_ID, "layer_name": "River Mile Markers",
-            "pinned_id_roster_sha256": EXPECTED_ID_SHA256, "pinned_layer_extent": EXPECTED_EXTENT,
+            "pinned_layer_extent": EXPECTED_EXTENT,
             "declared_layer_extent": metadata.get("extent"),
             "service_description": metadata.get("description"),
             "source_copyright_text": metadata.get("copyrightText"),
@@ -521,7 +514,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             "before_id_sha256": ids_digest, "after_id_sha256": _digest(_json_bytes(after)),
             "source_record_sha256": row_digest, "parquet_sha256": _digest(parquet), "geojson_sha256": _digest(geojson),
             "native_crs": "EPSG:4269", "field_schema": SOURCE_SCHEMA, "attribute_fields": FIELDS, "pages": pages,
-            "code_identity": processor_identity, "coverage_statement": "Complete observed USACE IWR WCSC usace_river_mile_markers FeatureServer layer 0; IENC-sourced points are a subset of this mixed-source producer product.",
+            "code_identity": processor_identity, "coverage_statement": "Complete observed USACE IWR WCSC usace_river_mile_markers FeatureServer layer 0; producer-described mixed IENC/NOAA/district/other inputs; historical population containment and equivalence are unverified.",
             "capture_mode": "retained_response_replay" if raw_source_version else "live_http_capture",
             "retained_source_capture_version": raw_source_version,
             "refresh_semantics": "Default runs capture a fresh source snapshot. An explicit retained_response_replay is an evidence-only reprocessing operation, not a cache or currentness claim.",
@@ -535,10 +528,10 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
         }))
         _write_source_manifest(staging, version_key, metadata, processor_identity, row_digest, raw_source_version,
                                distribution_chain=distribution_chain)
-        return {"feature_count": len(features), "ids_sha256": ids_digest, "records_sha256": row_digest,
+        return {"feature_count": len(features), "source_reported_count": len(before), "ids_sha256": ids_digest, "records_sha256": row_digest,
                 "parquet_sha256": _digest(parquet), "release_accepted": False,
                 "source_population_complete": True,
-                "source_coverage_scope": "Complete observed USACE IWR WCSC usace_river_mile_markers FeatureServer layer 0; IENC-sourced points are a subset of this mixed-source producer product."}
+                "source_coverage_scope": "Complete observed USACE IWR WCSC usace_river_mile_markers FeatureServer layer 0; producer-described mixed IENC/NOAA/district/other inputs; historical population containment and equivalence are unverified."}
     finally:
         if owned:
             client.close()

@@ -40,7 +40,8 @@ from dagster_hifld.partitions import SEMVER_VERSION_RE
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.epa_frs_common import processing_identity as construction_processing_identity
+from dagster_hifld.sources.capture_common import processing_identity as construction_processing_identity
+from dagster_hifld.validation import sha256_file
 
 SLUG = 'amtrak-stations'
 ITEM_ID = '1ed62a9f46304679aaa396bed4c8565a'
@@ -97,7 +98,7 @@ def _validated_retrieval_receipts(capture: Path, audit: dict) -> list[dict]:
     result = []
     for name in audit['canonical_receipt_names']:
         path = capture / name
-        if name not in pins or _digest(path) != pins[name]['sha256']:
+        if name not in pins or sha256_file(path) != pins[name]['sha256']:
             raise ValueError('Canonical retrieval receipt changed after validation')
         receipt = _json(path)
         _validate_observed_timestamp(receipt.get('observed_at'))
@@ -127,7 +128,7 @@ def _require_review_staging(staging):
 
 
 def _project_identities(root: Path) -> dict:
-    return {name: {'sha256': _digest(root / name)} if (root / name).is_file()
+    return {name: {'sha256': sha256_file(root / name)} if (root / name).is_file()
             else {'unavailable_reason': 'File is not present beside installed source'}
             for name in ('pyproject.toml', 'uv.lock')}
 
@@ -237,7 +238,7 @@ def _capture_json(destination, name, url, attempts=3):
             if not body_path.exists(): body_path.write_bytes(b'')
         finally:
             if response is not None: response.close()
-            receipt.update(bytes=body_path.stat().st_size, sha256=_digest(body_path))
+            receipt.update(bytes=body_path.stat().st_size, sha256=sha256_file(body_path))
             (folder / f'{number:03d}.receipt.json').write_text(json.dumps(receipt, sort_keys=True))
         if 'error' not in receipt:
             shutil.copyfile(body_path, destination / f'{name}.body')
@@ -246,14 +247,6 @@ def _capture_json(destination, name, url, attempts=3):
         if number + 1 < attempts: time.sleep(0.05 * 2**number)
     raise ValueError(f'Capture failed after {attempts} bounded attempts for {name}: {last_error}')
 
-
-
-def _digest(path: Path):
-    digest = hashlib.sha256()
-    with path.open('rb') as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b''):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def capture_live(destination: Path, staging: StagingStorageResource) -> None:
@@ -384,12 +377,12 @@ def inspect_capture(root: Path) -> dict:
                 raise ValueError('Duplicate or missing raw ID')
             seen.add(oid); station_ids.add(station_id)
             bounds = [min(bounds[0], geom['x']), min(bounds[1], geom['y']), max(bounds[2], geom['x']), max(bounds[3], geom['y'])]
-        files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
+        files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': sha256_file(path)})
     if seen != set(expected):
         raise ValueError('Full extraction does not equal source census')
     for name in ['bts_item','bts_item_after','bts_layer','bts_layer_after','bts_ids','bts_ids_after','bts_count','bts_count_after']:
         path = root / f'{name}.body'
-        files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
+        files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': sha256_file(path)})
     receipts = []
     for record in files:
         receipt_path = root / record['name'].replace('.body', '.receipt.json')
@@ -423,20 +416,20 @@ def inspect_capture(root: Path) -> dict:
                 sorted(urllib.parse.parse_qsl(requested.query, keep_blank_values=True))):
             raise ValueError('Observed final response URL is missing or left the exact official request')
         _validate_observed_timestamp(receipt.get('observed_at'))
-        receipts.append({'name': receipt_path.name, 'bytes': receipt_path.stat().st_size, 'sha256': _digest(receipt_path)})
+        receipts.append({'name': receipt_path.name, 'bytes': receipt_path.stat().st_size, 'sha256': sha256_file(receipt_path)})
     files.extend(receipts)
     canonical_receipt_names = sorted(record['name'] for record in receipts)
     untrusted_diagnostics = []
     for path in sorted(root.glob('*.receipt.json')):
         if path.name not in canonical_receipt_names:
-            record = {'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)}
+            record = {'name': path.name, 'bytes': path.stat().st_size, 'sha256': sha256_file(path)}
             files.append(record)
             untrusted_diagnostics.append({**record, 'classification': 'untrusted_diagnostic',
                 'used_for_source_or_retrieval_claims': False,
                 'meaning': 'Unrelated receipt bytes preserved only as diagnostics; contents are not trusted or interpreted'})
     attempts_dir = root / 'attempts'
     if attempts_dir.exists():
-        files.extend({'name': str(path.relative_to(root)), 'bytes': path.stat().st_size, 'sha256': _digest(path)}
+        files.extend({'name': str(path.relative_to(root)), 'bytes': path.stat().st_size, 'sha256': sha256_file(path)}
             for path in sorted(attempts_dir.rglob('*')) if path.is_file())
     return {'rows': len(seen), 'station_ids': len(station_ids), 'pages': len(paths), 'bounds': bounds,
             'source': SERVICE, 'official_item': item, 'editing_info': layer['editingInfo'], 'fields': layer['fields'],
@@ -472,7 +465,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
             raise FileExistsError('Immutable candidate version collision')
         processing = {**processing, 'code_commit': original_processing.get('code_commit'),
                       'working_tree_modified': original_processing.get('working_tree_modified')}
-        if not obj.is_file() or _digest(obj) != _digest(target):
+        if not obj.is_file() or sha256_file(obj) != sha256_file(target):
             raise FileExistsError('Immutable candidate object missing or modified')
     else:
         obj.parent.mkdir(parents=True, exist_ok=False)
@@ -488,7 +481,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
     audit.update(processing=processing, candidate_namespace='objects/' + identity,
                  original_retrieval_receipts=original_receipts,
                  producer='Amtrak', distributor='USDOT_BTS official NTAD distribution',
-                 candidate_sha256=_digest(target), candidate_bytes=target.stat().st_size,
+                 candidate_sha256=sha256_file(target), candidate_bytes=target.stat().st_size,
                  proposed_mapping='identity for every raw field; string Code and date text remain unchanged; native EPSG:4326 geometry',
                  schema=[{'name': f.name, 'type': str(f.type), 'nullable': f.nullable} for f in schema])
     if previous is not None:
@@ -527,7 +520,7 @@ def verify_typed_geopackage(candidate: Path, bridge: Path) -> dict:
     return {'rows': rows, 'all_source_fields_types_nullability_values_equal': True,
         'all_native_geometry_wkb_equal': True, 'source_ids_substituted': False,
         'internal_driver_fid': 'GeoPackage format machinery only; original integer OBJECTID and string Code retained as separate named columns',
-        'sha256': _digest(bridge)}
+        'sha256': sha256_file(bridge)}
 
 
 def write_typed_geopackage(candidate: Path, destination: Path, source_edit_ms: int) -> None:
@@ -609,12 +602,12 @@ def _provenance_inputs(capture: Path, audit: dict) -> tuple[list[dict], list[dic
             'canonical_url': receipt['url'], 'retrieval_url': receipt['final_url'],
             'retrieved_at': receipt['observed_at'], 'sha256': record['sha256'], 'bytes': record['bytes'],
             'license': license_text, 'attribution': attribution,
-            'delegation_evidence': {'official_item': ITEM_URL, 'captured_item_sha256': _digest(capture / 'bts_item.body'),
+            'delegation_evidence': {'official_item': ITEM_URL, 'captured_item_sha256': sha256_file(capture / 'bts_item.body'),
                                     'published_producer_distributor_attribution': attribution,
                                     'meaning': 'Observed NTAD attribution; no dataset or release acceptance implied'},
             'release_date_unknown_reason': 'This individual HTTP response is an extraction/metadata witness, not an independently versioned producer release. The parent official source population statement is preserved separately.',
             'raw_path': 'raw_arcgis/' + record['name'], 'receipt_path': 'raw_arcgis/' + receipt_name,
-            'receipt_sha256': _digest(capture / receipt_name), 'http_status': receipt['status'],
+            'receipt_sha256': sha256_file(capture / receipt_name), 'http_status': receipt['status'],
             'complete_body': receipt.get('complete_body') is True,
             'use': 'terminal_candidate_input' if path.parts[0] != 'attempts' else 'retained_response_attempt_evidence',
             'acceptance': 'unapproved_draft',
@@ -667,7 +660,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     for record in audit['raw_files']:
         output = root / 'raw_arcgis' / record['name']
         output.parent.mkdir(parents=True, exist_ok=True)
-        if output.exists() and _digest(output) != record['sha256']:
+        if output.exists() and sha256_file(output) != record['sha256']:
             raise ValueError('Immutable source staging collision')
         if not output.exists(): shutil.copyfile(capture / record['name'], output)
     candidate = build_candidate(capture, root / 'draft_candidate')
@@ -685,7 +678,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
                 first = False
                 output.write(json.dumps({'type':'Feature', 'properties': feature['attributes'], 'geometry':{'type':'Point','coordinates':[feature['geometry']['x'],feature['geometry']['y']]}}, separators=(',', ':'), sort_keys=True, allow_nan=False))
         output.write(']}')
-    if path.exists() and _digest(path) != _digest(partial):
+    if path.exists() and sha256_file(path) != sha256_file(partial):
         raise ValueError('Immutable GeoJSON candidate collision')
     if path.exists(): partial.unlink()
     else: partial.replace(path)

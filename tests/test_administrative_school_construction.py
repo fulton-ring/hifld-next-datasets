@@ -1,0 +1,484 @@
+"""Native school FileGDB discovery and immutable construction regressions."""
+from __future__ import annotations
+
+import io
+import copy
+import json
+import tempfile
+import unittest
+import zipfile
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+import httpx
+import pyogrio
+
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import census_latest
+from dagster_hifld.sources import school_district_administrative_areas as source
+from test_census_substate_construction import snapshot
+from test_school_district_administrative_areas_source import _fixture_table
+
+
+ROOT = census_latest.ROOT
+DIRECTORY = ROOT + "TGRGDB26/"
+URL = DIRECTORY + "tlgdb_2026_us_school.gdb.zip"
+ANNUAL = b'<a href="TGRGDB26/">2026 geodatabases</a>'
+LISTING = b'<a href="tlgdb_2026_us_school.gdb.zip">school</a>'
+
+
+def native_archive(root):
+    gdb = root / "school.gdb"
+    pyogrio.write_arrow(_fixture_table(), gdb, layer=source.LAYER_NAME,
+                        driver="OpenFileGDB", geometry_name="SHAPE",
+                        geometry_type="MultiPolygon", crs="EPSG:4269")
+    sink = io.BytesIO()
+    with zipfile.ZipFile(sink, "w") as archive:
+        for path in sorted(gdb.iterdir()):
+            archive.writestr(gdb.name + "/" + path.name, path.read_bytes())
+    return sink.getvalue()
+
+
+class AdministrativeSchoolConstructionTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.archive = native_archive(self.root)
+        self.storage = StagingStorageResource(local_dir=str(self.root / "stage"))
+        self.responses = {ROOT: ANNUAL, DIRECTORY: LISTING, URL: self.archive}
+        self.requests = []
+
+        def respond(request):
+            self.requests.append(str(request.url))
+            return httpx.Response(200, stream=httpx.ByteStream(self.responses[str(request.url)]),
+                                  headers={"Content-Type": "application/zip"})
+
+        self.client = httpx.Client(transport=httpx.MockTransport(respond))
+        self.addCleanup(self.client.close)
+
+    def first_capture(self):
+        result = source.capture(self.storage, client=self.client)
+        target = self.root / "stage" / self.storage.prefix / source.DATASET_SLUG / source.FILE_SLUG / result["version"]
+        before = snapshot(target)
+        return result, target, before, before["raw/source_archive.receipt.json"]
+
+    def test_discovery_capture_and_original_preservation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = native_archive(root)
+            storage = StagingStorageResource(local_dir=str(root / "stage"))
+            listings = {ROOT: ANNUAL, DIRECTORY: LISTING}
+            requests = []
+
+            def respond(request):
+                requests.append(str(request.url))
+                return httpx.Response(200, stream=httpx.ByteStream({**listings, URL: archive}[str(request.url)]),
+                                      headers={"Content-Type": "application/zip"})
+
+            with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+                first = source.capture(storage, "ignored-run-id", client)
+                self.assertEqual(requests, [ROOT, DIRECTORY, URL])
+                target = root / "stage" / source.DATASET_SLUG / source.FILE_SLUG / first["version"]
+                before = snapshot(target)
+                witnesses = snapshot(root / "stage" / "_construction-state")
+                receipt_bytes = before["raw/source_archive.receipt.json"]
+                receipt = json.loads(receipt_bytes)
+                release = census_latest.geodatabase_release_from_receipt(
+                    {**receipt, "url": receipt["requested_url"]}, "school")
+                self.assertEqual(receipt["source_release"], release.as_receipt_evidence())
+                self.assertEqual(release.listing_sha256, source._sha256(LISTING))
+                self.assertEqual(release.annual_listing_sha256, source._sha256(ANNUAL))
+                self.assertEqual(release.listing_bytes, len(LISTING))
+                self.assertTrue(witnesses)
+                listings[ROOT] += b"<!-- unrelated annual update -->"
+                listings[DIRECTORY] += b"<!-- unrelated directory update -->"
+                refreshed = source.capture(storage, "another-run-id", client)
+                self.assertEqual(refreshed["version"], first["version"])
+                self.assertTrue(refreshed["reused"])
+                self.assertEqual(snapshot(target), before)
+                self.assertEqual(snapshot(root / "stage" / "_construction-state"), witnesses)
+                with patch.object(source._shared.httpx, "Client", side_effect=AssertionError("replay used HTTP")):
+                    replay = source.replay_retained_capture(storage, first["version"], archive, receipt_bytes)
+                self.assertTrue(replay["reused"])
+                self.assertEqual(snapshot(target), before)
+                self.assertEqual(snapshot(root / "stage" / "_construction-state"), witnesses)
+                self.assertFalse((root / "stage" / "_quarantine").exists())
+
+    def test_cold_replay_is_network_free_and_preserves_real_transfer_evidence(self):
+        first, _, before, receipt = self.first_capture()
+        cold = StagingStorageResource(local_dir=str(self.root / "cold"), prefix="isolated")
+        with patch.object(source._shared.httpx, "Client", side_effect=AssertionError("replay used HTTP")):
+            result = source.replay_retained_capture(cold, first["version"], self.archive, receipt)
+        self.assertEqual(result["version"], first["version"])
+        self.assertFalse(result["reused"])
+        target = self.root / "cold" / "isolated" / source.DATASET_SLUG / source.FILE_SLUG / result["version"]
+        after = snapshot(target)
+        for name in before:
+            if name != "metadata/native_capture.json":
+                self.assertEqual(after[name], before[name], name)
+        report = json.loads(after["metadata/native_capture.json"])
+        self.assertEqual(report["capture_replay"], {
+            "mode": "retained_transfer_replay", "new_network_retrieval_performed": False,
+            "original_retrieved_at": json.loads(receipt)["observed_at"]})
+        with patch.object(source._shared.httpx, "Client", side_effect=AssertionError("replay used HTTP")):
+            reused = source.replay_retained_capture(cold, first["version"], self.archive, receipt)
+        self.assertTrue(reused["reused"])
+        self.assertEqual(snapshot(target), after)
+
+    def test_each_native_runtime_identity_change_gets_a_distinct_candidate(self):
+        first, target, before, receipt = self.first_capture()
+        witnesses = snapshot(self.root / "stage" / "_construction-state")
+        shared = source._shared
+        versions = {first["version"]}
+        changes = [(shared.pyogrio, "__gdal_version_string__"), (shared.pyogrio, "__version__"),
+                   (shared.np, "__version__"), (shared.pa, "__version__"),
+                   (shared.pyproj, "__version__"), (shared.pyproj, "proj_version_str"),
+                   (shared.shapely, "__version__"), (shared.shapely, "geos_version_string"),
+                   (shared.httpx, "__version__")]
+        for module, name in changes:
+            with self.subTest(module=module.__name__, name=name), patch.object(module, name, "99.0.0"):
+                result = source.replay_retained_capture(self.storage, first["version"], self.archive, receipt)
+                self.assertNotIn(result["version"], versions)
+                versions.add(result["version"])
+                self.assertFalse(result["reused"])
+                self.assertEqual(snapshot(target), before)
+                all_witnesses = snapshot(self.root / "stage" / "_construction-state")
+                self.assertEqual({name: all_witnesses[name] for name in witnesses}, witnesses)
+        self.assertFalse((self.root / "stage" / "_quarantine").exists())
+
+    def test_new_release_identity_does_not_reuse_the_prior_vintage(self):
+        first, target, before, _ = self.first_capture()
+        next_directory = ROOT + "TGRGDB27/"
+        next_url = next_directory + "tlgdb_2027_us_school.gdb.zip"
+        self.responses.update({ROOT: b'<a href="TGRGDB27/">2027</a>',
+                               next_directory: b'<a href="tlgdb_2027_us_school.gdb.zip">school</a>',
+                               next_url: self.archive})
+        result = source.capture(self.storage, client=self.client)
+        self.assertNotEqual(result["version"], first["version"])
+        self.assertEqual(snapshot(target), before)
+        report = json.loads(self.storage.read_key(
+            f'{source.DATASET_SLUG}/{source.FILE_SLUG}/{result["version"]}/metadata/native_capture.json'))
+        self.assertEqual(report["source_url"], next_url)
+        self.assertEqual(report["source_release"]["vintage"], 2027)
+
+    def test_invalid_receipts_are_quarantined_without_touching_original_candidates(self):
+        first, target, before, receipt_bytes = self.first_capture()
+        original = json.loads(receipt_bytes)
+        witnesses = snapshot(self.root / "stage" / "_construction-state")
+        mutations = {
+            "alias": lambda receipt: receipt.update(url=ROOT + "TGRGDB25/tlgdb_2025_us_school.gdb.zip"),
+            "source": lambda receipt: receipt.update(requested_url="https://mirror.invalid/school.zip"),
+            "host": lambda receipt: receipt.update(final_host="mirror.invalid"),
+            "redirect": lambda receipt: receipt.update(final_url="https://mirror.invalid/school.zip"),
+            "method": lambda receipt: receipt.update(method="POST"),
+            "status": lambda receipt: receipt.update(status=503),
+            "encoding": lambda receipt: receipt.update(content_encoding="gzip"),
+            "type": lambda receipt: receipt.update(content_type="text/html"),
+            "partial": lambda receipt: receipt.update(transfer_complete=False),
+            "error": lambda receipt: receipt.update(transfer_error_code="incomplete"),
+            "hash": lambda receipt: receipt.update(wire_sha256="f" * 64),
+            "length": lambda receipt: receipt.update(content_length_header=len(self.archive) + 1),
+            "timestamp": lambda receipt: receipt.update(observed_at="2026-11-19"),
+            "path": lambda receipt: receipt.update(raw_archive_key="../escape.zip"),
+            "release": lambda receipt: receipt["source_release"].update(vintage=2025),
+            "evidence": lambda receipt: receipt["source_release"].update(listing_sha256="0" * 64),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(mutation=name):
+                receipt = copy.deepcopy(original)
+                mutate(receipt)
+                with self.assertRaises(ValueError):
+                    source.replay_retained_capture(self.storage, first["version"], self.archive,
+                                                   source._json_bytes(receipt))
+                self.assertEqual(snapshot(target), before)
+                self.assertEqual(snapshot(self.root / "stage" / "_construction-state"), witnesses)
+        self.assertEqual(len(list((self.root / "stage" / "_quarantine").rglob("failure.json"))), len(mutations))
+
+    def test_cache_and_first_construction_corruption_fail_closed(self):
+        first, target, before, receipt = self.first_capture()
+        witnesses_root = self.root / "stage" / "_construction-state"
+        witnesses = snapshot(witnesses_root)
+        parquet_name = "geoparquet/" + source.FILE_SLUG + ".parquet"
+        (target / parquet_name).write_bytes(b"tampered")
+        with self.assertRaisesRegex(ValueError, "cached_candidate_object_integrity_failed"):
+            source.replay_retained_capture(self.storage, first["version"], self.archive, receipt)
+        self.assertEqual((target / parquet_name).read_bytes(), b"tampered")
+        self.assertEqual(snapshot(witnesses_root), witnesses)
+        self.assertFalse((target / "metadata/quarantine.json").exists())
+        (target / parquet_name).write_bytes(before[parquet_name])
+        next(witnesses_root.rglob("bundle.json.first-construction.json")).unlink()
+        damaged = snapshot(witnesses_root)
+        with self.assertRaisesRegex(ValueError, "construction_missing_original_state"):
+            source.replay_retained_capture(self.storage, first["version"], self.archive, receipt)
+        self.assertEqual(snapshot(target), before)
+        self.assertEqual(snapshot(witnesses_root), damaged)
+
+    def test_failed_live_capture_retains_transfer_and_discovery_evidence(self):
+        self.responses[URL] = b"not-a-file-geodatabase"
+        with self.assertRaisesRegex(ValueError, "source_archive_invalid_zip"):
+            source.capture(self.storage, client=self.client)
+        evidence = snapshot(self.root / "stage" / "_quarantine")
+        self.assertTrue(any(name.endswith("annual-listing.body") for name in evidence))
+        self.assertIn(b"not-a-file-geodatabase", evidence.values())
+        self.assertFalse((self.root / "stage" / source.DATASET_SLUG).exists())
+
+    def test_partial_live_transfer_preserves_actual_wire_and_failed_receipt(self):
+        class Interrupted(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b"partial-school-archive"
+                raise httpx.ReadError("fixture stream interrupted")
+
+        def respond(request):
+            stream = Interrupted() if str(request.url) == URL else httpx.ByteStream(
+                self.responses[str(request.url)])
+            return httpx.Response(200, stream=stream, headers={"Content-Type": "application/zip"})
+
+        with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            with self.assertRaisesRegex(ValueError, "source_archive_transfer_drift"):
+                source.capture(self.storage, client=client)
+        evidence = snapshot(self.root / "stage" / "_quarantine")
+        self.assertIn(b"partial-school-archive", evidence.values())
+        receipts = [json.loads(body) for name, body in evidence.items()
+                    if name.endswith("source_archive.receipt.json")]
+        self.assertEqual(len(receipts), 1)
+        self.assertFalse(receipts[0]["transfer_complete"])
+        self.assertEqual(receipts[0]["wire_sha256"], source._sha256(b"partial-school-archive"))
+        self.assertFalse((self.root / "stage" / source.DATASET_SLUG).exists())
+
+    def test_published_directory_without_school_archive_has_no_fallback(self):
+        self.responses[DIRECTORY] = b'<a href="another-product.gdb.zip">other</a>'
+        with self.assertRaisesRegex(ValueError, "published_geodatabase_missing_or_ambiguous"):
+            source.capture(self.storage, client=self.client)
+        self.assertEqual(self.requests, [ROOT, DIRECTORY])
+        evidence = snapshot(self.root / "stage" / "_quarantine")
+        self.assertTrue(any(name.endswith("annual-listing.body") for name in evidence))
+        self.assertFalse((self.root / "stage" / source.DATASET_SLUG).exists())
+
+    def test_native_population_outside_the_guard_is_quarantined(self):
+        with patch.object(source, "CONFIG", replace(source.CONFIG, feature_count_range=(3, 1_000))):
+            with self.assertRaisesRegex(ValueError, "source_layer_population_or_geometry_drift"):
+                source.capture(self.storage, client=self.client)
+        evidence = snapshot(self.root / "stage" / "_quarantine")
+        self.assertIn(self.archive, evidence.values())
+        self.assertFalse((self.root / "stage" / source.DATASET_SLUG).exists())
+
+    def test_asset_registers_the_resolved_candidate_version(self):
+        from dagster_hifld.assets import school_district_administrative_areas as asset_module
+        from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+
+        first, _, _, _ = self.first_capture()
+        context = SimpleNamespace(add_output_metadata=Mock(), instance=Mock())
+        function = asset_module.census_school_district_administrative_areas.op.compute_fn.decorated_fn
+        with patch.object(asset_module, "capture", return_value=first) as capture:
+            result = function(context, self.storage)
+        capture.assert_called_once_with(self.storage)
+        key = build_publish_partition_key(source.DATASET_SLUG, source.FILE_SLUG, first["version"])
+        context.instance.add_dynamic_partitions.assert_called_once_with(PUBLISH_PARTITION_NAME, [key])
+        self.assertEqual(result["partition_key"], key)
+
+    def test_unsealed_output_and_seal_failures_can_retry_without_changing_history(self):
+        self.storage = self.storage.model_copy(update={"prefix": "isolated"})
+        _, original_target, original, receipt = self.first_capture()
+        scoped = self.root / "stage" / "isolated"
+        shared = source._shared
+        write = shared.write_immutable
+        seal = shared.seal_ready_candidate
+        candidate_root = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/"
+        for failure in ("first_write", "mid_write", "seal"):
+            with self.subTest(failure=failure), patch.object(
+                    shared.pyogrio, "__gdal_version_string__", "retry-" + failure):
+                history = snapshot(scoped / "_construction-state")
+                observed = []
+
+                def fail_write(storage, key, body):
+                    if key.startswith(candidate_root):
+                        observed.append(key)
+                        if len(observed) == (1 if failure == "first_write" else 3):
+                            raise OSError("injected candidate write failure")
+                    return write(storage, key, body)
+
+                def fail_seal(storage, key, version, fingerprint, payload):
+                    observed.append(candidate_root + version + "/seal")
+                    raise OSError("injected seal failure")
+
+                with patch.object(shared, "write_immutable", side_effect=fail_write if failure != "seal" else write), \
+                        patch.object(shared, "seal_ready_candidate", side_effect=fail_seal if failure == "seal" else seal):
+                    with self.assertRaisesRegex(OSError, "injected"):
+                        source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                version = observed[-1].split("/")[2]
+                target = scoped / candidate_root / version
+                self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                partial = snapshot(target)
+                if failure == "mid_write":
+                    extra = target / "untrusted-extra.json"
+                    extra.write_bytes(b"untrusted extra object")
+                    with self.assertRaisesRegex(ValueError, "school_unsealed_candidate_roster_drift"):
+                        source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                    self.assertEqual(extra.read_bytes(), b"untrusted extra object")
+                    self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                    extra.unlink()
+                    name = next(iter(partial))
+                    (target / name).write_bytes(b"untrusted partial object")
+                    with self.assertRaisesRegex(ValueError, "immutable_staged_object_changed"):
+                        source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                    self.assertEqual((target / name).read_bytes(), b"untrusted partial object")
+                    self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                    (target / name).write_bytes(partial[name])
+                result = source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                self.assertFalse(result["reused"])
+                self.assertEqual(result["version"], version)
+                completed = snapshot(target)
+                for name, body in partial.items():
+                    self.assertEqual(completed[name], body)
+                complete_history = snapshot(scoped / "_construction-state")
+                self.assertEqual({name: complete_history[name] for name in history}, history)
+                reused = source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                self.assertTrue(reused["reused"])
+                self.assertEqual(snapshot(target), completed)
+                self.assertEqual(snapshot(scoped / "_construction-state"), complete_history)
+                self.assertEqual(snapshot(original_target), original)
+
+    def test_interrupted_or_completed_seal_never_rewrites_completed_outputs(self):
+        from dagster_hifld import construction_state
+
+        self.storage = self.storage.model_copy(update={"prefix": "isolated"})
+        _, original_target, original, receipt = self.first_capture()
+        scoped = self.root / "stage" / "isolated"
+        shared = source._shared
+        install = construction_state._install_once
+        seal = shared.seal_ready_candidate
+        for failure in ("partial_seal", "completed_seal"):
+            with self.subTest(failure=failure), patch.object(
+                    shared.pyogrio, "__gdal_version_string__", "retry-" + failure):
+                versions = []
+
+                def fail_install(root, key, body):
+                    if key.endswith(".first-construction.json"):
+                        raise OSError("injected interrupted seal")
+                    return install(root, key, body)
+
+                def fail_seal(storage, key, version, fingerprint, payload):
+                    versions.append(version)
+                    seal(storage, key, version, fingerprint, payload)
+                    raise OSError("injected completed seal")
+
+                def observe_seal(storage, key, version, fingerprint, payload):
+                    versions.append(version)
+                    return seal(storage, key, version, fingerprint, payload)
+
+                with patch.object(construction_state, "_install_once", side_effect=(
+                        fail_install if failure == "partial_seal" else install)), patch.object(
+                        shared, "seal_ready_candidate", side_effect=(
+                            observe_seal if failure == "partial_seal" else fail_seal)):
+                    with self.assertRaises((OSError, construction_state.ConstructionStateError)):
+                        source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                target = scoped / source.DATASET_SLUG / source.FILE_SLUG / versions[0]
+                completed = snapshot(target)
+                self.assertEqual(len(completed), 5)
+                history = snapshot(scoped / "_construction-state")
+                if failure == "partial_seal":
+                    with self.assertRaisesRegex(ValueError, "construction_missing_original_state"):
+                        source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                else:
+                    result = source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+                    self.assertTrue(result["reused"])
+                self.assertEqual(snapshot(target), completed)
+                self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                self.assertEqual(snapshot(original_target), original)
+
+    def test_required_objects_are_read_back_before_the_first_seal(self):
+        self.storage = self.storage.model_copy(update={"prefix": "isolated"})
+        _, original_target, original, receipt = self.first_capture()
+        scoped = self.root / "stage" / "isolated"
+        history = snapshot(scoped / "_construction-state")
+        shared = source._shared
+        write = shared.write_immutable
+        candidate_root = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/"
+        corrupted = []
+
+        def corrupt_write(storage, key, body):
+            result = write(storage, key, body)
+            if key.startswith(candidate_root) and key.endswith(".parquet"):
+                storage.write_key(key, b"injected damaged output")
+                corrupted.append(key)
+            return result
+
+        with patch.object(shared.pyogrio, "__gdal_version_string__", "damaged-output"), \
+                patch.object(shared, "write_immutable", side_effect=corrupt_write):
+            with self.assertRaisesRegex(ValueError, "school_unsealed_candidate_integrity_failed"):
+                source.replay_retained_capture(self.storage, "ignored", self.archive, receipt)
+        self.assertEqual(len(corrupted), 1)
+        self.assertEqual(self.storage.read_key(corrupted[0]), b"injected damaged output")
+        self.assertEqual(snapshot(scoped / "_construction-state"), history)
+        self.assertEqual(snapshot(original_target), original)
+
+    def test_live_origin_mid_write_recovers_the_original_observation_and_mode(self):
+        self.storage = self.storage.model_copy(update={"prefix": "isolated"})
+        _, original_target, original, _ = self.first_capture()
+        scoped = self.root / "stage" / "isolated"
+        shared = source._shared
+        write = shared.write_immutable
+        candidate_root = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/"
+        for recovery in ("live", "retained"):
+            with self.subTest(recovery=recovery), patch.object(
+                    shared.pyogrio, "__gdal_version_string__", "live-origin-" + recovery):
+                history = snapshot(scoped / "_construction-state")
+                quarantine_root = scoped / "_quarantine" / source.DATASET_SLUG
+                previous_failures = set(quarantine_root.iterdir()) if quarantine_root.exists() else set()
+                observed = []
+
+                def fail_write(storage, key, body):
+                    if key.startswith(candidate_root):
+                        observed.append(key)
+                        if len(observed) == 3:
+                            raise OSError("injected live mid-write failure")
+                    return write(storage, key, body)
+
+                with patch.object(shared, "write_immutable", side_effect=fail_write):
+                    with self.assertRaisesRegex(OSError, "injected live"):
+                        source.capture(self.storage, client=self.client)
+                failure, = set(quarantine_root.iterdir()) - previous_failures
+                expected = snapshot(failure / "candidate" / candidate_root / "private")
+                receipt = expected["raw/source_archive.receipt.json"]
+                original_receipt = json.loads(receipt)
+                report = json.loads(expected["metadata/native_capture.json"])
+                self.assertEqual(report["capture_replay"]["mode"], "live_http_capture")
+                self.assertTrue(report["capture_replay"]["new_network_retrieval_performed"])
+                self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                version = observed[0].split("/")[2]
+                target = scoped / candidate_root / version
+                partial = snapshot(target)
+                attempt_path = scoped / "_capture-observations" / source.DATASET_SLUG / "construction" / (version + ".json")
+                attempt_bytes = attempt_path.read_bytes()
+                self.assertEqual(json.loads(attempt_bytes), {
+                    "receipt_sha256": source._sha256(receipt), "replayed": False})
+                self.responses[ROOT] += b"<!-- new live annual observation -->"
+                self.responses[DIRECTORY] += b"<!-- new live directory observation -->"
+                if recovery == "live":
+                    result = source.capture(self.storage, client=self.client)
+                    receipts = [json.loads(path.read_bytes()) for path in (
+                        scoped / "_capture-observations" / source.DATASET_SLUG).rglob("source_archive.receipt.json")]
+                    self.assertTrue(any(item["observed_at"] != original_receipt["observed_at"]
+                                        and item["source_release"]["listing_sha256"] == source._sha256(self.responses[DIRECTORY])
+                                        for item in receipts))
+                else:
+                    for invalid in ({"receipt_sha256": "0" * 64, "replayed": False},
+                                    {"receipt_sha256": source._sha256(receipt), "replayed": "live"}):
+                        attempt_path.write_bytes(source._json_bytes(invalid))
+                        with self.assertRaisesRegex(ValueError, "school_original_observation_invalid"):
+                            source.replay_retained_capture(self.storage, version, self.archive, receipt)
+                        self.assertEqual(snapshot(target), partial)
+                        self.assertEqual(snapshot(scoped / "_construction-state"), history)
+                    attempt_path.write_bytes(attempt_bytes)
+                    with patch.object(shared.httpx, "Client", side_effect=AssertionError("replay used HTTP")):
+                        result = source.replay_retained_capture(self.storage, version, self.archive, receipt)
+                self.assertEqual(result["version"], version)
+                self.assertFalse(result["reused"])
+                self.assertEqual(snapshot(target), expected)
+                self.assertEqual({name: expected[name] for name in partial}, partial)
+                completed_history = snapshot(scoped / "_construction-state")
+                self.assertEqual({name: completed_history[name] for name in history}, history)
+                self.assertEqual(snapshot(original_target), original)

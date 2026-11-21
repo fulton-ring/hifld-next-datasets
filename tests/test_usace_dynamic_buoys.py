@@ -8,6 +8,10 @@ from shapely import from_wkb
 from dagster import DefaultScheduleStatus
 
 from dagster_hifld.sources import usace_dynamic_buoys as source
+
+COUNT = 11770
+IDS = list(range(1, COUNT + 1))
+ID_SHA256 = "98134da814a8d97f58419dda784224200e809ad3b12aadb959ed4421ecfcf55d"
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.definitions import defs
 from dagster_hifld.assets.usace_dynamic_buoys import (
@@ -16,7 +20,7 @@ from dagster_hifld.assets.usace_dynamic_buoys import (
 )
 
 
-def _capture_docs(count=source.EXPECTED_COUNT):
+def _capture_docs(count=COUNT):
     layer = {
         "id": source.LAYER_ID, "name": "3UABUOYS", "geometryType": "esriGeometryPoint",
         "maxRecordCount": 2000, "fields": source.EXPECTED_FIELD_DECLARATIONS,
@@ -36,7 +40,7 @@ def _capture_docs(count=source.EXPECTED_COUNT):
         "count_before": {"count": count}, "count_after": {"count": count},
         "ids_before": {"objectIds": ids}, "ids_after": {"objectIds": ids},
     }
-    for page_idx in range((source.EXPECTED_COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
+    for page_idx in range((COUNT + source.PAGE_SIZE - 1) // source.PAGE_SIZE):
         page_ids = ids[page_idx * source.PAGE_SIZE:(page_idx + 1) * source.PAGE_SIZE]
         rows = []
         for oid in page_ids:
@@ -64,24 +68,24 @@ class DynamicBuoysTests(unittest.TestCase):
         self.assertIn(usace_dynamic_buoys_draft_schedule.name,
                       {schedule.name for schedule in registered.schedule_defs})
         self.assertEqual(usace_dynamic_buoys_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
-        check=usace_dynamic_buoys_complete({"feature_count":source.EXPECTED_COUNT,"source_population_complete":True})
+        check=usace_dynamic_buoys_complete({"feature_count":COUNT,"source_reported_count":COUNT,"source_population_complete":True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         self.assertFalse(check.metadata["bts_item_succession_accepted"].value)
 
     def test_retained_capture_is_bound_to_exact_named_get_request(self):
-        name,url=source._capture_roster(source.EXPECTED_IDS)[0]
+        name,url=source._capture_roster(IDS)[0]
         receipt={"method":"GET","url":url,"final_url":url}
-        source._validate_capture_request_identity(name,receipt,url)
+        source.validate_capture_request_identity(name,receipt,url)
         receipt["final_url"]="https://example.invalid/wrong"
         with self.assertRaisesRegex(ValueError,"retained_capture_request_identity_mismatch"):
-            source._validate_capture_request_identity(name,receipt,url)
+            source.validate_capture_request_identity(name,receipt,url)
 
     def test_complete_population_native_geometry_and_declared_parquet_types(self):
         fields, features, audit = source._validate(_capture_docs())
-        self.assertEqual(len(features), source.EXPECTED_COUNT)
-        self.assertEqual(audit["source_id_sha256"], source.EXPECTED_ID_SHA256)
-        self.assertEqual(audit["source_population_complete"] if "source_population_complete" in audit else len(features), source.EXPECTED_COUNT)
+        self.assertEqual(len(features), COUNT)
+        self.assertEqual(audit["source_id_sha256"], ID_SHA256)
+        self.assertEqual(audit["source_population_complete"] if "source_population_complete" in audit else len(features), COUNT)
         self.assertEqual(features[0]["attributes"]["Buoy_Shape"], "Can")
         parquet = source._parquet_bytes(fields, features)
         table = pq.read_table(__import__("io").BytesIO(parquet))
@@ -116,7 +120,7 @@ class DynamicBuoysTests(unittest.TestCase):
             source._validate(captures)
 
     def test_point_queries_request_z_and_m_and_reject_returned_dimensions(self):
-        pages = [(name, url) for name, url in source._capture_roster(source.EXPECTED_IDS)
+        pages = [(name, url) for name, url in source._capture_roster(IDS)
                  if name.startswith("page_")]
         self.assertEqual(len(pages), 48)
         for _name, url in pages:

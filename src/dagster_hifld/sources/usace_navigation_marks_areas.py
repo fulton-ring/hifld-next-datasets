@@ -8,7 +8,6 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -19,16 +18,25 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 from pyproj import CRS
-from shapely.geometry import LinearRing, MultiPolygon, Polygon
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb as _esri_polygon
+from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
+    ienc_layer_capture_roster,
+    fetch_capture_retry,
+    layer_parquet_bytes as _parquet_bytes,
+    load_replay as _load_replay, write_outputs as _write_outputs,
+)
+
 from dagster_hifld.validation import sha256_file
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -44,7 +52,6 @@ SERVICE_URL = "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes/NA
 LAYER_ID = 68
 LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 109
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 48_000_000
 MAX_CAPTURE_BYTES = 450_000_000
@@ -60,15 +67,6 @@ EXPECTED_FIELD_DECLARATIONS = [
      **({"length":254} if kind == "esriFieldTypeString" else {})}
     for name,kind in EXPECTED_FIELDS
 ]
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
@@ -97,162 +95,10 @@ def _validate_spatial_reference(value: object, label: str, *, required: bool = T
     return found
 
 
-def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    root.mkdir(parents=True, exist_ok=True)
-    body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
-    for path in (body_path, wire_path):
-        path.unlink(missing_ok=True)
-    hashes = {"body": hashlib.sha256(), "wire": hashlib.sha256()}
-    sizes = {"body": 0, "wire": 0}
-    budget_start=budget[0]
-    observed = datetime.now(timezone.utc).isoformat()
-    def retain(path, kind):
-        def write(chunk):
-            with path.open("ab") as stream:
-                stream.write(chunk)
-            hashes[kind].update(chunk); sizes[kind] += len(chunk)
-            budget[0]=budget_start+sizes["wire"]+sizes["body"]
-        return write
-    def reserve(progress):
-        if budget_start+progress.wire_bytes_retained+progress.decoded_bytes_retained+progress.reserve_bytes>MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-    response = None
-    result = None
-    final_url = url
-    transport_error = None
-    try:
-        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-            final_url = str(response.url)
-            result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
-                max_decoded_bytes=MAX_BODY_BYTES, reserve=reserve,
-                retain_wire=retain(wire_path, "wire"), retain_decoded=retain(body_path, "body"))
-    except Exception as exc:
-        transport_error = type(exc).__name__
-    receipt = {"method":"GET", "url":url, "final_url":final_url, "observed_at":observed,
-        "status":result.status_code if result is not None else (response.status_code if response is not None else None),
-        "complete_body":bool(result is not None and result.complete and transport_error is None),
-        "wire_bytes":sizes["wire"], "wire_sha256":hashes["wire"].hexdigest(),
-        "bytes":sizes["body"], "sha256":hashes["body"].hexdigest(),
-        "content_encoding":result.content_encoding if result is not None else None,
-        "content_length":result.content_length if result is not None else None,
-        "error_code":result.error_code if result is not None else ("transport_error" if transport_error else "capture_result_missing"),
-        "error_type":result.error_type if result is not None else transport_error}
-    (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-    if transport_error:
-        raise httpx.TransportError("capture_transport_error:" + transport_error)
-    if result is None:
-        raise ValueError("capture_result_missing")
-    body, wire = body_path.read_bytes(), wire_path.read_bytes()
-    if (not result.complete or result.status_code != 200 or final_url != url
-        or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]
-        or len(wire) != receipt["wire_bytes"] or _sha(wire) != receipt["wire_sha256"]):
-        raise ValueError("incomplete_source_capture:" + name)
-    return body, receipt
-
-
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
     """Retry one transient transport/incomplete read, retaining every attempt."""
-    last = None
-    for attempt in range(2):
-        attempt_name=f"{name}.attempt{attempt+1}"
-        try:
-            body,receipt=_fetch(client,url,root,attempt_name,budget)
-            for suffix in ("body","wire","receipt.json"):
-                (root/f"{attempt_name}.{suffix}").replace(root/f"{name}.{suffix}")
-            return body,receipt
-        except (httpx.TransportError,ValueError) as exc:
-            last=exc
-            if isinstance(exc,ValueError) and not str(exc).startswith("incomplete_source_capture:"):
-                raise
-    raise last
-
-
-def _esri_polygon(geometry: dict):
-    rings = geometry.get("rings")
-    if not isinstance(rings, list) or not rings:
-        raise ValueError("source_polygon_rings_missing")
-    has_z, has_m = geometry.get("hasZ", False), geometry.get("hasM", False)
-    if type(has_z) is not bool or type(has_m) is not bool:
-        raise ValueError("source_ordinate_flags_invalid")
-    shells, holes = [], []
-    dimension = None
-    for coords in rings:
-        if not isinstance(coords, list) or len(coords) < 4:
-            raise ValueError("source_polygon_ring_invalid")
-        if coords[0] != coords[-1]:
-            raise ValueError("source_polygon_ring_not_closed")
-        if any(not isinstance(point,list) for point in coords):
-            raise ValueError("source_polygon_coordinate_invalid")
-        dims={len(point) for point in coords}
-        if len(dims)!=1:
-            raise ValueError("source_polygon_ordinate_count_drift")
-        point_dims=next(iter(dims))
-        if dimension is None: dimension=point_dims
-        if dimension!=point_dims: raise ValueError("source_polygon_ordinate_count_drift")
-        expected_dims=2+int(has_z)+int(has_m)
-        if point_dims!=expected_dims:
-            raise ValueError("source_polygon_zm_flags_do_not_match_coordinates")
-        xy=[point[:2] for point in coords]
-        ring = LinearRing(xy)
-        (holes if ring.is_ccw else shells).append([list(point) for point in coords])
-    # ArcGIS encodes exterior rings clockwise and interior rings counter-clockwise.
-    # Reject non-standard winding rather than repairing or guessing.
-    shell_polys = [Polygon([point[:2] for point in ring]) for ring in shells]
-    assignments = [[] for _ in shell_polys]
-    for ring in holes:
-        hole = Polygon([point[:2] for point in ring])
-        owners = [i for i, shell in enumerate(shell_polys) if shell.contains(hole.representative_point())]
-        if len(owners) != 1:
-            raise ValueError("source_hole_ownership_ambiguous")
-        assignments[owners[0]].append(ring)
-    if not shells:
-        raise ValueError("source_polygon_shell_missing")
-    dim_code={2:0,3:(1000 if has_z else 2000),4:3000}[dimension]
-    def polygon_wkb(shell, hole_rings):
-        out=bytearray(struct.pack("<BI",1,dim_code+3))
-        out.extend(struct.pack("<I",1+len(hole_rings)))
-        for ring in [shell,*hole_rings]:
-            out.extend(struct.pack("<I",len(ring)))
-            for point in ring: out.extend(struct.pack("<"+"d"*dimension,*point))
-        return bytes(out)
-    polygons=[polygon_wkb(shell,assignments[i]) for i,shell in enumerate(shells)]
-    if len(polygons)==1: return polygons[0]
-    multi=bytearray(struct.pack("<BI",1,dim_code+6));multi.extend(struct.pack("<I",len(polygons)))
-    for polygon in polygons: multi.extend(polygon)
-    return bytes(multi)
-
-
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID":pa.int64(), "esriFieldTypeInteger":pa.int32(),
-            "esriFieldTypeSmallInteger":pa.int16(), "esriFieldTypeSingle":pa.float32(),
-            "esriFieldTypeDouble":pa.float64(), "esriFieldTypeString":pa.string(),
-            "esriFieldTypeDate":pa.int64()}.get(field.get("type"), pa.string())
-
-
-def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
-    properties = [f for f in fields if f["name"] != "SHAPE"]
-    arrays = []
-    for field in properties:
-        name, dtype = field["name"], _arrow_type(field)
-        values = []
-        for feature in features:
-            values.append(feature["attributes"][name])
-        arrays.append(pa.array(values, type=dtype))
-    geometries = [_esri_polygon(x["geometry"]) for x in features]
-    arrays.append(pa.array(geometries, type=pa.binary()))
-    names = [x["name"] for x in properties] + ["geometry"]
-    table = pa.Table.from_arrays(arrays, names=names)
-    crs = {"$schema":"https://proj.org/schemas/v0.7/projjson.schema.json", "type":"GeographicCRS",
-           "name":"WGS 84", "datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984",
-           "ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563},
-           "id":{"authority":"EPSG","code":6326}},
-           "coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},{"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},
-           "id":{"authority":"EPSG","code":wkid}}
-    metadata = {b"geo":_canonical({"version":"1.1.0","primary_column":"geometry",
-        "columns":{"geometry":{"encoding":"WKB","geometry_types":["MultiPolygon","Polygon"],"crs":crs}}})}
-    sink = __import__("io").BytesIO()
-    pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd", use_dictionary=False)
-    return sink.getvalue()
+    return fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES)
 
 
 def _query(params: dict[str, object]) -> str:
@@ -260,32 +106,14 @@ def _query(params: dict[str, object]) -> str:
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("bts_item", BTS_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
-            ("service_before", SERVICE_URL + "?f=pjson"),
-            ("layer_before", LAYER_URL + "?f=pjson"),
-            ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-            ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds":",".join(map(str,page_ids)),
-            "outFields":"*", "returnGeometry":"true", "returnZ":"true", "returnM":"true",
-            "outSR":"4326", "orderByFields":"OBJECTID ASC", "f":"json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
-                 ("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                 ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
-                 ("service_after", SERVICE_URL + "?f=pjson")])
-    return urls
-
-
-def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
-    paths=[root/f"{name}.body",root/f"{name}.wire",root/f"{name}.receipt.json"]
-    if any(path.is_symlink() for path in paths): raise ValueError("retained_capture_symlink_rejected")
-    body=paths[0].read_bytes(); wire=paths[1].read_bytes(); receipt=json.loads(paths[2].read_bytes())
-    if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-            or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise ValueError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
+    return ienc_layer_capture_roster(
+        ids,
+        bts_item_url=BTS_ITEM_URL,
+        service_directory_url=SERVICE_DIRECTORY_URL,
+        service_url=SERVICE_URL,
+        layer_url=LAYER_URL,
+        page_size=PAGE_SIZE,
+    )
 
 
 def _load_prefilled(root: Path, name: str, expected_url: str) -> tuple[bytes, dict]:
@@ -297,6 +125,7 @@ def _load_prefilled(root: Path, name: str, expected_url: str) -> tuple[bytes, di
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
+    before = capture_witness(captures)
     docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
     item = docs["bts_item"]
     description = item.get("description")
@@ -339,16 +168,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         _validate_spatial_reference(extent_reference, "source_layer_extent")
     if docs["layer_after"] != layer:
         raise ValueError("source_schema_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if not isinstance(before,list) or before != after or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT:
-        raise ValueError("source_id_population_drift")
     if docs["ids_seed"].get("objectIds") != before:
         raise ValueError("source_seed_id_population_changed")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1)//PAGE_SIZE:
+    if len(pages) != (len(before) + PAGE_SIZE - 1)//PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page=docs[name]
@@ -383,8 +207,8 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
             raise ValueError("source_polygon_rings_missing")
         vertex_count += sum(len(ring) for ring in rings)
         got.append(attrs.get("OBJECTID"))
-    if (len(features)!=EXPECTED_COUNT or any(type(oid) is not int for oid in got)
-            or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT):
+    if (len(features)!=len(before) or any(type(oid) is not int for oid in got)
+            or sorted(got)!=sorted(before) or len(set(got))!=len(before)):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     rows=[{"attributes":f["attributes"],"geometry":f["geometry"]} for f in features]
@@ -404,18 +228,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "bts_item_succession_accepted":False}
 
 
-def _write_outputs(storage, prefix: str, outputs: dict[str,bytes]) -> dict[str,dict[str,object]]:
-    descriptors={}
-    for name,body in outputs.items():
-        write_immutable(storage,f"{prefix}/{name}",body)
-        snapshot=storage.object_snapshot(f"{prefix}/{name}")
-        descriptor={"bytes":len(body),"sha256":_sha(body)}
-        if snapshot is None or snapshot.size!=descriptor["bytes"] or storage.sha256_key(f"{prefix}/{name}")!=descriptor["sha256"] or storage.object_snapshot(f"{prefix}/{name}")!=snapshot:
-            raise ValueError("candidate_object_readback_failed:"+name)
-        descriptors[name]=descriptor
-    return descriptors
-
-
 def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, version: str,
                                        capture_directory: str | None = None) -> dict[str, object]:
     """Acquire a complete bounded source snapshot, or replay an explicit capture directory."""
@@ -433,7 +245,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
     elif requested:
         root=requested
     else:
-        root=Path("/tmp/hifld-native-reconstruction/6/captures")/(version+"-"+uuid4().hex)
+        root=default_capture_dir("hifld-native-reconstruction", "6", "captures")/(version+"-"+uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     if replay:
@@ -500,7 +312,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
                         raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
                     root = requested / (version + "-" + uuid4().hex)
             else:
-                root = Path("/tmp/hifld-native-reconstruction/6/captures") / (version + "-" + uuid4().hex)
+                root = default_capture_dir("hifld-native-reconstruction", "6", "captures") / (version + "-" + uuid4().hex)
             if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
                 raise ValueError("unsafe_capture_directory")
             root.mkdir(parents=True, exist_ok=True)
@@ -512,7 +324,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
                 seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
                 ids=json.loads(seed_body).get("objectIds")
-                if not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT: raise ValueError("source_seed_id_count_drift")
+                if not isinstance(ids,list) or len(ids)!=len(features): raise ValueError("source_seed_id_count_drift")
                 captures["ids_seed"]=(seed_body,seed_receipt)
                 for name,url in _capture_roster(ids):
                     if name not in captures:
@@ -618,7 +430,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
             fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],
             payload.get("objects",{}),original_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":audit["source_feature_count"],"source_population_complete":True,
+            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
             "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,
@@ -627,7 +439,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
             "rights_accepted":False,"mapping_approved":False,"release_accepted":False,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
-    from dagster_hifld.sources.epa_frs_common import seal_ready_candidate
+    from dagster_hifld.sources.capture_common import seal_ready_candidate
     seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

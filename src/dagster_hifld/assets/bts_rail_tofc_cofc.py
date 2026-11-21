@@ -81,3 +81,8 @@ bts_rail_tofc_cofc_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [bts_intermodal_freight_rail_tofc_cofc]
+ASSET_CHECKS = [bts_intermodal_freight_rail_tofc_cofc_complete]
+JOBS = [bts_rail_tofc_cofc_draft_job]
+SCHEDULES = [bts_rail_tofc_cofc_draft_schedule]

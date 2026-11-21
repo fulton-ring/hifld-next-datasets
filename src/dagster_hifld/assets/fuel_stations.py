@@ -38,6 +38,7 @@ from shapely import Point, to_wkb
 from dagster_hifld.partitions import SEMVER_VERSION_RE
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.release_approval import verifier_implementation_sha256, validate_release_provenance
+from dagster_hifld.validation import sha256_file
 
 SLUG = 'alternative-fueling-stations'
 SERVICE = 'https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/Alternative_Fueling_Stations/FeatureServer/0'
@@ -99,7 +100,7 @@ def _distribution_evidence(root):
                 or urllib.parse.parse_qsl(parsed.query, strict_parsing=True) != [('f', 'json')]):
             raise ValueError('Unverified official distributor item origin/scope')
     if (receipt.get('status') != 200 or receipt.get('bytes') != path.stat().st_size
-            or receipt.get('sha256') != _digest(path) or receipt.get('complete_body', True) is not True):
+            or receipt.get('sha256') != sha256_file(path) or receipt.get('complete_body', True) is not True):
         raise ValueError('Distributor item receipt/checksum mismatch')
     if (item.get('id') != '9010c04bcdf84c36abb74e98778af579' or item.get('owner') != 'USDOT_BTS'
             or item.get('orgId') != 'xOi1kZaI0eWDREZv' or item.get('access') != 'public'
@@ -111,7 +112,7 @@ def _distribution_evidence(root):
     if ('National Laboratory of the Rockies' not in item['description']
             or 'Department of Energy' not in item['description']):
         raise ValueError('Captured producer/delegation attribution changed; retain for review')
-    return {'url': ITEM_URL, 'raw_body': 'bts_item.body', 'sha256': _digest(path),
+    return {'url': ITEM_URL, 'raw_body': 'bts_item.body', 'sha256': sha256_file(path),
         'owner': item['owner'], 'org_id': item['orgId'], 'producer_description_quote': item['description'],
         'license_quote': item['licenseInfo'], 'attribution_quote': item['accessInformation'],
         'status': 'Observed official BTS metadata; source/contract/baseline/release acceptance remains independent.'}
@@ -336,7 +337,7 @@ def _capture_json(destination, name, url, attempts=3):
             if not body_path.exists(): body_path.write_bytes(b'')
         finally:
             if response is not None: response.close()
-            receipt.update(bytes=body_path.stat().st_size, sha256=_digest(body_path))
+            receipt.update(bytes=body_path.stat().st_size, sha256=sha256_file(body_path))
             (folder / f'{number:03d}.receipt.json').write_text(json.dumps(receipt, sort_keys=True))
         if 'error' not in receipt:
             shutil.copyfile(body_path, destination / f'{name}.body')
@@ -345,14 +346,6 @@ def _capture_json(destination, name, url, attempts=3):
         if number + 1 < attempts: time.sleep(0.05 * 2**number)
     raise ValueError(f'Capture failed after {attempts} bounded attempts for {name}: {last_error}')
 
-
-
-def _digest(path: Path):
-    digest = hashlib.sha256()
-    with path.open('rb') as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b''):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _exact_point(geometry):
@@ -529,15 +522,15 @@ def inspect_capture(root: Path) -> dict:
                 raise ValueError('Duplicate or missing raw ID')
             seen.add(oid); station_ids.add(station_id)
             bounds = [min(bounds[0], geom['x']), min(bounds[1], geom['y']), max(bounds[2], geom['x']), max(bounds[3], geom['y'])]
-        files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
+        files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': sha256_file(path)})
     if seen != set(expected):
         raise ValueError('Full extraction does not equal source census')
     for name in ['bts_layer','bts_layer_after','bts_ids','bts_ids_after','bts_count','bts_count_after']:
         path = root / f'{name}.body'
-        files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
+        files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': sha256_file(path)})
     distribution = _distribution_evidence(root)
     path = root / 'bts_item.body'
-    files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': _digest(path)})
+    files.append({'name': path.name, 'bytes': path.stat().st_size, 'sha256': sha256_file(path)})
     canonical_bodies = list(files)
     receipts = []
     summaries = []
@@ -551,7 +544,7 @@ def inspect_capture(root: Path) -> dict:
                 or receipt.get('bytes') != record['bytes']
                 or receipt.get('complete_body', True) is not True):
             raise ValueError('HTTP receipt/checksum mismatch')
-        receipts.append({'name': receipt_path.name, 'bytes': receipt_path.stat().st_size, 'sha256': _digest(receipt_path)})
+        receipts.append({'name': receipt_path.name, 'bytes': receipt_path.stat().st_size, 'sha256': sha256_file(receipt_path)})
         headers = receipt.get('headers')
         http_date = receipt.get('date')
         if not isinstance(http_date, str):
@@ -561,7 +554,7 @@ def inspect_capture(root: Path) -> dict:
             'observed_at': receipt['observed_at'], 'http_date': http_date})
     files.extend(receipts)
     canonical_names = {record['name'] for record in files}
-    diagnostics = [{'name': str(path.relative_to(root)), 'bytes': path.stat().st_size, 'sha256': _digest(path)}
+    diagnostics = [{'name': str(path.relative_to(root)), 'bytes': path.stat().st_size, 'sha256': sha256_file(path)}
         for path in _raw_files(root) if str(path.relative_to(root)) not in canonical_names]
     files.extend(diagnostics)
     return {'rows': len(seen), 'station_ids': len(station_ids), 'pages': len(paths), 'bounds': bounds,
@@ -599,7 +592,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
     if target.exists():
         previous = _json(provenance)
         if (previous.get('processing', {}).get('builder_fingerprint') == processing['builder_fingerprint']
-                and previous['raw_files'] == audit['raw_files'] and previous['candidate_sha256'] == _digest(target)):
+                and previous['raw_files'] == audit['raw_files'] and previous['candidate_sha256'] == sha256_file(target)):
             return previous
         raise FileExistsError('Immutable candidate version collision')
     temporary = destination / 'candidate.parquet.partial'
@@ -612,7 +605,7 @@ def build_candidate(capture: Path, destination: Path) -> dict:
     temporary.replace(target)
     audit.update(processing=processing, original_retrieval_receipts=audit['canonical_retrieval_receipts'],
                  producer='DOE/NLR AFDC', distributor='USDOT_BTS official NTAD distribution',
-                 candidate_sha256=_digest(target), candidate_bytes=target.stat().st_size,
+                 candidate_sha256=sha256_file(target), candidate_bytes=target.stat().st_size,
                  proposed_mapping='identity for every raw field; epoch-ms dates remain int64; native EPSG:3857 geometry',
                  schema=[{'name': f.name, 'type': str(f.type), 'nullable': f.nullable} for f in schema])
     (destination / 'provenance.json').write_text(json.dumps(audit, sort_keys=True, indent=2) + '\n')
@@ -635,7 +628,7 @@ def fuel_stations_raw(context, fuel_draft_storage: FuelDraftStorage) -> str:
     target.mkdir(parents=True, exist_ok=True)
     for record in audit['raw_files']:
         source, output = root / record['name'], target / record['name']
-        if output.exists() and _digest(output) != record['sha256']:
+        if output.exists() and sha256_file(output) != record['sha256']:
             raise ValueError('Immutable raw version collision')
         if not output.exists():
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -691,7 +684,7 @@ def verify_typed_geopackage(candidate: Path, bridge: Path) -> dict:
     return {'rows': rows, 'all_source_fields_types_nullability_values_equal': True,
         'all_native_geometry_wkb_equal': True, 'source_ids_substituted': False,
         'internal_driver_fid': 'GeoPackage format machinery only; original OBJECTID/id retained as independent named integer columns',
-        'sha256': _digest(bridge)}
+        'sha256': sha256_file(bridge)}
 
 
 def write_typed_geopackage(candidate: Path, destination: Path, source_edit_ms: int) -> None:
@@ -741,7 +734,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
     for record in audit['raw_files']:
         output = root / 'raw_arcgis' / record['name']
         output.parent.mkdir(parents=True, exist_ok=True)
-        if output.exists() and _digest(output) != record['sha256']:
+        if output.exists() and sha256_file(output) != record['sha256']:
             raise ValueError('Immutable source staging collision')
         if not output.exists(): shutil.copyfile(capture / record['name'], output)
     candidate = build_candidate(capture, root / 'draft_candidate')
@@ -759,7 +752,7 @@ def _stage_capture_payload(capture: Path, staging: StagingStorageResource, versi
                 first = False
                 output.write(json.dumps({'type':'Feature', 'properties': feature['attributes'], 'geometry':{'type':'Point','coordinates':[feature['geometry']['x'],feature['geometry']['y']]}}, separators=(',', ':'), sort_keys=True, allow_nan=False))
         output.write(']}')
-    if path.exists() and _digest(path) != _digest(partial):
+    if path.exists() and sha256_file(path) != sha256_file(partial):
         raise ValueError('Immutable GeoJSON candidate collision')
     if path.exists(): partial.unlink()
     else: partial.replace(path)
@@ -847,3 +840,8 @@ fuel_stations_draft_refresh_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
     description='Proposed daily local integrity poll at 09:00 America/New_York; not an official release cadence. Disabled until separately reviewed.',
 )
+
+ASSET_CHECKS = []
+INGEST_ASSETS = [bts_alternative_fueling_stations]
+JOBS = [fuel_stations_draft_refresh_job]
+SCHEDULES = [fuel_stations_draft_refresh_schedule]

@@ -16,7 +16,7 @@ from pandas.api.types import is_bool_dtype, is_datetime64_any_dtype, is_float_dt
 
 from dagster_hifld.gdal import with_large_geojson_support as _with_large_geojson_support
 from dagster_hifld.file_geodatabase import iter_file_geodatabases
-from dagster_hifld.provenance import provenance_projection
+from dagster_hifld.provenance import REFRESH_METADATA_FIELDS, enrich_dictionary_columns, provenance_projection, validate_dictionary_semantics
 from dagster_hifld.evidence_io import validate_evidence_directory
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.native_geoparquet_catalog import has_other_source, pinned_native_path, summarize_native_path, resolve_native_metadata
@@ -54,6 +54,35 @@ def load_staged_geodata(
         return gdf
 
 
+def _pinned_producer_geometry_defects(
+    staging: StagingStorageResource,
+    dataset_slug: str,
+    file_slug: str,
+    version: str,
+) -> dict | None:
+    """Pinned producer geometry-defect contract from the staged source audit.
+
+    The catalog population-quality gate must not reject a faithful staged
+    population for producer-served geometry defects that the dataset's own
+    capture pinned and gated upstream. The contract is honored only when the
+    audit pins both counts explicitly; datasets without such a pin keep the
+    strict zero-defect gate.
+    """
+    key = f"{dataset_slug}/{file_slug}/{version}/metadata/source_audit.json"
+    snapshot = staging.object_snapshot(key)
+    if snapshot is None:
+        return None
+    if snapshot.size > 32 * 1024 * 1024:
+        return None
+    body = staging.read_key_range(key, 0, snapshot.size, expected_snapshot=snapshot)
+    audit = json.loads(body.decode("utf-8"))
+    if not isinstance(audit, dict) or "producer_invalid_geometry_count" not in audit \
+            or "null_geometry_count" not in audit:
+        return None
+    return {"null_geometry_count": audit["null_geometry_count"],
+            "producer_invalid_geometry_count": audit["producer_invalid_geometry_count"]}
+
+
 def summarize_staged_catalog(
     staging: StagingStorageResource,
     dataset_slug: str,
@@ -77,8 +106,10 @@ def summarize_staged_catalog(
     if not has_other_source(staging, prefix):
         proposed = source_metadata if source_metadata is not None else resolve_native_metadata(staging, prefix)
         if prebuilt_output_spec(proposed, "geoparquet") is not None:
+            defects = _pinned_producer_geometry_defects(staging, dataset_slug, file_slug, version)
             with pinned_native_path(staging, prefix, proposed) as native_path:
-                quality, native_dictionary = summarize_native_path(native_path, dictionary_name, proposed)
+                quality, native_dictionary = summarize_native_path(
+                    native_path, dictionary_name, proposed, producer_geometry_defects=defects)
             dictionary = generate_data_dictionary(gpd.GeoDataFrame(), dictionary_name, source_metadata=proposed)
             dictionary.update(native_dictionary)
             return CatalogSummary(quality, dictionary)
@@ -251,10 +282,12 @@ def generate_data_dictionary(
 
     dictionary = {
         "name": name,
-        "columns": columns,
+        "columns": enrich_dictionary_columns(columns, source_metadata),
     }
     if source_metadata:
         for key in (
+            *REFRESH_METADATA_FIELDS,
+            "documentation_url",
             "title",
             "description",
             "publisher",
@@ -300,6 +333,7 @@ def write_catalog_metadata(
     dictionary_dict: dict,
 ) -> dict[str, str]:
     provenance = provenance_projection(dictionary_dict)
+    validate_dictionary_semantics(dictionary_dict)
     if staging.use_local or not staging.bucket:
         validate_evidence_directory(Path(staging.local_dir).resolve() / staging.build_target_location(dataset_slug, file_slug, version, "metadata"))
     documents = {"quality_manifest": ("quality_manifest.json", quality_dict), "data_dictionary": ("data_dictionary.json", dictionary_dict)}

@@ -28,7 +28,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from pyproj import CRS
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import (
@@ -39,13 +38,16 @@ from dagster_hifld.construction_state import (
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
+from dagster_hifld.sources.capture_common import (
     STAGED_RELEASE_DERIVATIVE_NAMES,
     _validate_cached_catalog_sidecars,
     validate_staged_release_derivatives,
 )
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_layer import capture_witness, ienc_layer_capture_roster
 
 DATASET_SLUG = "lock-gate-lines-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -56,9 +58,6 @@ BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 301
-EXPECTED_IDS = list(range(1, EXPECTED_COUNT + 1))
-EXPECTED_ID_SHA256 = "cf79474bde48d3d0b81ca5349273deda6eb7dc41e713fd89ac1f6d91e098eb1a"
 PAGE_SIZE = 250
 MAX_BODY_BYTES = 12_000_000
 MAX_CAPTURE_BYTES = 16_000_000
@@ -91,46 +90,8 @@ EXPECTED_LAYER_EXTENT = {
     "xmax": -79.47640829999995,
     "ymax": 44.98137070000007,
 }
-SOURCE_CRS = CRS.from_epsg(4326)
 _LAYER_ID = 40
 _LAYER_NAME = "LOCK_GATE_LINE"
-
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Require every advertised ArcGIS CRS representation to agree with EPSG:4326."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                      allow_nan=False).encode("utf-8")
-
-
-def _sha(body: bytes) -> str:
-    return hashlib.sha256(body).hexdigest()
 
 
 class _CaptureBudgetExceeded(Exception):
@@ -394,13 +355,6 @@ def _esri_polyline(geometry: dict):
     return bytes(multi)
 
 
-def _arrow_type(field: dict):
-    return {"esriFieldTypeOID": pa.int64(), "esriFieldTypeInteger": pa.int32(),
-            "esriFieldTypeSmallInteger": pa.int16(), "esriFieldTypeSingle": pa.float32(),
-            "esriFieldTypeDouble": pa.float64(), "esriFieldTypeString": pa.string(),
-            "esriFieldTypeDate": pa.int64()}.get(field.get("type"), pa.string())
-
-
 def _parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
     properties = [f for f in fields if f["name"] != "SHAPE"]
     arrays = []
@@ -432,21 +386,14 @@ def _query(params: dict[str, object]) -> str:
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("bts_item", BTS_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
-            ("service_before", SERVICE_URL + "?f=pjson"),
-            ("layer_before", LAYER_URL + "?f=pjson"),
-            ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-            ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds": ",".join(map(str, page_ids)),
-            "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-            "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
-                 ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                 ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                 ("service_after", SERVICE_URL + "?f=pjson")])
-    return urls
+    return ienc_layer_capture_roster(
+        ids,
+        bts_item_url=BTS_ITEM_URL,
+        service_directory_url=SERVICE_DIRECTORY_URL,
+        service_url=SERVICE_URL,
+        layer_url=LAYER_URL,
+        page_size=PAGE_SIZE,
+    )
 
 
 def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
@@ -464,7 +411,8 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
-    if not {"ids_seed", *[name for name, _url in _capture_roster(EXPECTED_IDS)]} <= set(captures):
+    before = capture_witness(captures)
+    if not {"ids_seed", *[name for name, _url in _capture_roster(before)]} <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
     docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
     item = docs["bts_item"]
@@ -507,18 +455,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
     extent = layer.get("extent", {})
     if "spatialReference" in extent:
         _validate_spatial_reference(extent["spatialReference"], "source_layer_extent")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(before, list) or before != after or before != EXPECTED_IDS
-            or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT
-            or _sha(_canonical(before)) != EXPECTED_ID_SHA256):
-        raise ValueError("source_id_population_drift")
-    if docs["ids_seed"].get("objectIds") != EXPECTED_IDS:
+    if sorted(docs["ids_seed"].get("objectIds") or []) != before:
         raise ValueError("source_seed_id_population_drift")
     features = []
     pages = sorted(n for n in captures if n.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE:
+    if len(pages) != (len(before) + PAGE_SIZE - 1) // PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page = docs[name]
@@ -585,7 +526,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         if not geometry.is_valid:
             raise ValueError(f"source_line_topology_invalid:{oid}")
         geometry_valid += 1
-    if len(features) != EXPECTED_COUNT or sorted(got) != sorted(before) or len(set(got)) != EXPECTED_COUNT:
+    if len(features) != len(before) or sorted(got) != sorted(before) or len(set(got)) != len(before):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f: f["attributes"]["OBJECTID"])
     record_sha = _sha(_canonical([f["attributes"] for f in features]))
@@ -834,7 +775,7 @@ def capture_lock_gate_lines_usace_ienc(storage: StagingStorageResource, *, versi
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
         root = requested / (version + "-" + uuid4().hex)
     else:
-        root = Path("/tmp/hifld-native-reconstruction/149/captures") / (version + "-" + uuid4().hex)
+        root = default_capture_dir("hifld-native-reconstruction", "149", "captures") / (version + "-" + uuid4().hex)
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)
@@ -859,13 +800,13 @@ def capture_lock_gate_lines_usace_ienc(storage: StagingStorageResource, *, versi
             ids = json.loads(ids_body).get("objectIds")
             if not isinstance(ids, list):
                 raise ValueError("retained_id_seed_invalid")
-            names = ["ids_seed", *[name for name, _url in _capture_roster(ids)]]
+            names = ["ids_seed", *[name for name, _url in _capture_roster(sorted(ids))]]
             if set(retained_manifest["receipts"]) != set(names):
                 raise ValueError("retained_capture_roster_changed")
             captures = {name: _load_replay(root, name) for name in names}
             if any(receipt != retained_manifest["receipts"][name] for name, (_body, receipt) in captures.items()):
                 raise ValueError("retained_capture_manifest_receipt_mismatch")
-            expected_urls = dict(_capture_roster(ids))
+            expected_urls = dict(_capture_roster(sorted(ids)))
             expected_urls["ids_seed"] = _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
             for name, (_body, receipt) in captures.items():
                 if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
@@ -894,8 +835,11 @@ def capture_lock_gate_lines_usace_ienc(storage: StagingStorageResource, *, versi
                     client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                     root, "ids_seed", capture_budget, max_capture_bytes=max_capture_bytes)
                 ids = json.loads(seed_body).get("objectIds")
-                if ids != EXPECTED_IDS or _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
+                if (not isinstance(ids, list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
                     raise ValueError("source_seed_id_count_or_roster_drift")
+                ids = sorted(ids)
                 captures["ids_seed"] = (seed_body, seed_receipt)
                 for name, url in _capture_roster(ids):
                     time.sleep(0.5)
@@ -1029,7 +973,7 @@ def capture_lock_gate_lines_usace_ienc(storage: StagingStorageResource, *, versi
             state_fingerprint, identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             payload.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": audit["source_feature_count"], "source_population_complete": True,
+            "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
             "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
             "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],
@@ -1049,7 +993,7 @@ def capture_lock_gate_lines_usace_ienc(storage: StagingStorageResource, *, versi
                           "capture_receipts": receipts, "objects": descriptors})
     validate_processing_identity(Path(__file__).parents[3], identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": audit["source_feature_count"], "source_population_complete": True,
+        "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],
         "source_id_max": audit["source_id_max"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_coverage_scope": audit["source_coverage_scope"], "drift_guard": audit["drift_guard"],

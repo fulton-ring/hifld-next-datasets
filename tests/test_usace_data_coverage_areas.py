@@ -55,7 +55,7 @@ class UsaceDataCoverageAreasTests(unittest.TestCase):
         changed = dict(self.captures)
         count_body, receipt = changed["count_after"]
         changed["count_after"] = (b'{"count":316}', {**receipt, "bytes": 12})
-        with self.assertRaisesRegex(ValueError, "source_count_or_full_id_roster_drift"):
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             source._validate(changed)
         self.assertIn(usace_data_coverage_areas_usace_ienc, hifld_ingest_assets)
         self.assertEqual(usace_data_coverage_areas_draft_schedule.default_status,

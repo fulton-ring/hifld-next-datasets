@@ -11,9 +11,7 @@ class EthanolPlantsConfig(Config):
 
 
 @asset(key=AssetKey(["ingest", DATASET_SLUG, FILE_SLUG]), group_name="energy", compute_kind="http",
-       description="Pinned historical EIA 'Ethanol Plants in the United States' shapefile (197 operating plants as of "
-                   "January 1, 2021) from the producer's own eia.gov distribution. Historical unapproved candidate; "
-                   "inventory equivalence, currentness and rights remain unresolved.")
+       description='Parked historical-source adapter: normal acquisition and cache replay refuse before network or storage effects. Existing published versions remain addressable; a maintained source-native successor is required.')
 def eia_ethanol_plants(context, config: EthanolPlantsConfig, staging_storage: StagingStorageResource) -> dict:
     result = capture_eia_ethanol_plants(staging_storage, version=f"v{SOURCE_RELEASE.replace('-', '')}",
                                         capture_directory=config.capture_directory or None)
@@ -43,3 +41,8 @@ eia_ethanol_plants_draft_schedule = ScheduleDefinition(name="eia_ethanol_plants_
                                                        job=eia_ethanol_plants_draft_job,
                                                        cron_schedule="0 8 1 * *",
                                                        default_status=DefaultScheduleStatus.STOPPED)
+
+INGEST_ASSETS = [eia_ethanol_plants]
+ASSET_CHECKS = [eia_ethanol_plants_complete]
+JOBS = [eia_ethanol_plants_draft_job]
+SCHEDULES = [eia_ethanol_plants_draft_schedule]

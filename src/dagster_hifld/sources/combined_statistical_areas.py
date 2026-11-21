@@ -1,7 +1,8 @@
-"""Faithful local draft of the exact inventory's Census 2024 national-GDB CSA layer.
+"""Faithful local draft of the current Census TIGER national-GDB CSA layer.
 
-An edition label is not proof of a release date or approved compatibility. No
-projection, ID substitution, geometry repair or area-type migration occurs here.
+The producer listing selects the current vintage; an edition label is not proof
+of a release date or approved compatibility. No projection, ID substitution,
+geometry repair or area-type migration occurs here.
 """
 from __future__ import annotations
 
@@ -30,20 +31,22 @@ from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+from dagster_hifld.sources import census_latest
+from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
 
 SLUG = 'combined-statistical-areas-3'
 LAYER = 'Combined_Statistical_Area'
-GDB = 'tlgdb_2024_a_us_nationgeo.gdb'
-URL = 'https://www2.census.gov/geo/tiger/TGRGDB24/tlgdb_2024_a_us_nationgeo.gdb.zip'
-SHA256 = '68f517f0ef6ab6bcbc2e89102fa960fd1c7c7a130039a1aee2f475319917aeb4'
-BYTES = 271963133
-FIELDS = ('OBJECTID','GEOID','GEOIDFQ','NAMELSAD','LSAD','ALAND','AWATER','INTPTLAT','INTPTLON','SHAPE')
+GEODATABASE_PRODUCT = 'nationgeo'
+FEATURE_COUNT_RANGE = (100, 1000)
+MAX_SOURCE_BYTES = 400_000_000
+MAX_UNCOMPRESSED_BYTES = 1_500_000_000
+MAX_ARCHIVE_MEMBERS = 500
+FIELDS = ('OBJECTID','CSAFP','GEOID','GEOIDFQ','NAME','NAMELSAD','LSAD','MTFCC','ALAND','AWATER','INTPTLAT','INTPTLON','SHAPE')
 # Producer OID is esriFieldTypeOID Length4. This int64 is the GDAL Arrow
 # return_fids/output representation, not a native-width declaration/approval.
-TYPES = (pa.int64(),pa.string(),pa.string(),pa.string(),pa.string(),pa.float64(),pa.float64(),pa.string(),pa.string(),pa.binary())
+TYPES = (pa.int64(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.string(),pa.float64(),pa.float64(),pa.string(),pa.string(),pa.binary())
 
 class CSAQuarantineError(ValueError):
     """A changed or incomplete input requires review, never implicit replacement."""
@@ -100,9 +103,9 @@ def quarantine(storage,body,receipt,reason):
     return key
 
 
-def manifest_for(body,receipt,identity):
+def manifest_for(body,receipt,identity,release):
     # This validator runs before canonical output is created, even on cache reuse.
-    if (receipt.get('url') != URL or receipt.get('final_url') != URL
+    if (receipt.get('url') != release.source_url or receipt.get('final_url') != release.source_url
         or type(receipt.get('status')) is not int or receipt['status'] != 200
         or type(receipt.get('bytes')) is not int or receipt['bytes'] != len(body)
         or receipt.get('sha256') != digest(body) or receipt.get('complete_body') is not True):
@@ -111,17 +114,18 @@ def manifest_for(body,receipt,identity):
         'code_commit':identity['code_commit'],
         'code_identity_scheme':identity['code_identity_scheme'],
         'working_tree_status':identity['working_tree_status'],
-        'title':'Combined Statistical Areas — exact Census 2024 GDB working draft',
-        'publisher':'U.S. Census Bureau','agency':'U.S. Census Bureau','source_url':URL,
+        'title':f'Combined Statistical Areas — {release.vintage} Census TIGER/Line national GDB working draft',
+        'publisher':'U.S. Census Bureau','agency':'U.S. Census Bureau','source_url':release.source_url,
+        'source_release':release.as_metadata(),
         'license':'https://www.census.gov/about/policies/quality/guidelines/copyright.html',
         'processing_fingerprint':digest(encode(identity)),
-        'inputs':[{'input_id':'census2024-national-geodatabase:'+SHA256,
+        'inputs':[{'input_id':f'census{release.vintage}-national-geodatabase:'+digest(body),
             'producer':'U.S. Census Bureau','host':'www2.census.gov','role':'producer_publication',
-            'canonical_url':URL,'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],
+            'canonical_url':release.source_url,'retrieval_url':receipt['url'],'observed_final_url':receipt['final_url'],
             'retrieved_at':receipt.get('observed_at'),'http_status':receipt['status'],
             'sha256':digest(body),'bytes':len(body),'license':'https://www.census.gov/about/policies/quality/guidelines/copyright.html',
-            'attribution':'U.S. Census Bureau, 2024 TIGER/Line national geographic geodatabase, Combined_Statistical_Area layer.',
-            'release_date_unknown_reason':'2024 edition label is explicit; actual producer release date is not established. HTTP Last-Modified is packaging evidence only. Inventory links a 2023 metadata document, an unresolved lineage discrepancy.'}],
+            'attribution':f'U.S. Census Bureau, {release.vintage} TIGER/Line national geographic geodatabase, Combined_Statistical_Area layer.',
+            'release_date_unknown_reason':f'The producer identifies this as the {release.vintage} TIGER/Line vintage; the directory listing and HTTP Last-Modified values are retained as discovery evidence and are not treated as the producer release date. Inventory links a 2023 metadata document, an unresolved lineage discrepancy.'}],
         'transformations':[{'operation':'decode_exact_original_openfilegdb_layer',
             'parameters':{'layer':LAYER,'preserve_intrinsic_fid_as':'OBJECTID','producer_oid_declaration':{'type':'esriFieldTypeOID','length_bytes':4,'nullable':False,'required':True,'editable':False},'driver_and_draft_output_oid':'int64; width representation change remains unapproved','native_crs':'EPSG:4269','repair':False,'reproject':False}},
             {'operation':'typed_native_geopackage_and_geoparquet','parameters':{'area_types':'float64','gpkg_fid':'independent storage index, not a source or published identifier'}}],
@@ -140,70 +144,83 @@ def processing_identity():
     return identity
 
 
-def acquire(storage,archive_path=None,receipt_path=None):
+def acquire(storage,archive_path=None,receipt_path=None,release=None):
     local_only(storage)
     if archive_path is not None:
         body=b''; receipt={}
         try:
             with Path(archive_path).open('rb') as stream:
-                body=stream.read(BYTES+1)
+                body=stream.read(MAX_SOURCE_BYTES+1)
+            if len(body)>MAX_SOURCE_BYTES:
+                raise CSAQuarantineError('oversized_or_changed_source')
             if receipt_path is None:
                 raise CSAQuarantineError('preserved_input_requires_original_receipt')
             receipt = strict_json(Path(receipt_path).read_bytes())
-            return body,receipt
+            release = release or census_latest.geodatabase_release_from_receipt(receipt, GEODATABASE_PRODUCT)
+            if receipt.get('url') != release.source_url:
+                raise CSAQuarantineError('receipt_url_does_not_match_release')
+            return body,receipt,release
         except (ValueError,OSError,TypeError) as exc:
             location=quarantine(storage,body,receipt,str(exc))
             raise CSAQuarantineError(f'{exc}; retained:{location}') from exc
     # This draft performs one bounded live observation per run. A failed or
     # changed response is quarantined for review rather than silently retried.
     for attempt in range(1):
-        body=bytearray();receipt={'url':URL,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
+        body=bytearray();receipt={'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
         try:
-            with httpx.Client(follow_redirects=False,timeout=180,headers={'Accept-Encoding':'identity'}) as client, client.stream('GET',URL) as response:
-                receipt.update(status=response.status_code,final_url=str(response.url),
-                    content_length=response.headers.get('content-length'),
-                    content_encoding=response.headers.get('content-encoding'),
-                    requested_accept_encoding='identity')
-                for block in response.iter_bytes(1024*1024):
-                    body += block
-                    if len(body)>BYTES:
-                        raise CSAQuarantineError('oversized_or_changed_source')
-                receipt.update(bytes=len(body),sha256=digest(body),complete_body=True,
-                    wire_bytes_downloaded=response.num_bytes_downloaded)
-                if response.headers.get('content-length') is not None and int(response.headers['content-length']) != len(body):
-                    raise CSAQuarantineError('incomplete_http_response')
-                if response.status_code != 200:
-                    raise CSAQuarantineError('non200_http_response')
-                return bytes(body),receipt
+            with tempfile.TemporaryDirectory(prefix='csa-discovery-') as discovery_root, \
+                    httpx.Client(follow_redirects=False,timeout=180,headers={'Accept-Encoding':'identity'}) as client:
+                release = release or census_latest.discover_geodatabase(client, Path(discovery_root), GEODATABASE_PRODUCT)
+                receipt.update(url=release.source_url)
+                receipt['source_release']=release.as_receipt_evidence()
+                with client.stream('GET',release.source_url) as response:
+                    receipt.update(status=response.status_code,final_url=str(response.url),
+                        content_length=response.headers.get('content-length'),
+                        content_encoding=response.headers.get('content-encoding'),
+                        requested_accept_encoding='identity')
+                    for block in response.iter_bytes(1024*1024):
+                        body += block
+                        if len(body)>MAX_SOURCE_BYTES:
+                            raise CSAQuarantineError('oversized_or_changed_source')
+                    receipt.update(bytes=len(body),sha256=digest(body),complete_body=True,
+                        wire_bytes_downloaded=response.num_bytes_downloaded)
+                    if response.headers.get('content-length') is not None and int(response.headers['content-length']) != len(body):
+                        raise CSAQuarantineError('incomplete_http_response')
+                    if response.status_code != 200:
+                        raise CSAQuarantineError('non200_http_response')
+                    return bytes(body),receipt,release
         except (httpx.HTTPError,OSError,ValueError) as exc:
-            receipt.update(bytes=len(body),sha256=digest(body),complete_body=False)
+            receipt.update(url=release.source_url if release is not None else None,
+                bytes=len(body),sha256=digest(body),complete_body=False)
             location=quarantine(storage,bytes(body),receipt,str(exc))
             raise CSAQuarantineError(f'bounded_fetch_failed:{exc}; retained:{location}') from exc
 
 
-def inspect_archive(archive_path):
+def inspect_archive(archive_path,release):
+    gdb_root=release.source_file[:-4]
     with zipfile.ZipFile(archive_path) as archive:
         entries=archive.infolist();names=[i.filename for i in entries]
-        if len(entries)!=71 or len(set(names))!=71:
+        if not entries or len(entries)>MAX_ARCHIVE_MEMBERS or len(set(names))!=len(entries):
             raise CSAQuarantineError('missing_duplicate_or_changed_archive_inventory')
         for entry in entries:
             path=PurePosixPath(entry.filename)
-            if (path.is_absolute() or '..' in path.parts or len(path.parts)!=2 or path.parts[0]!=GDB
+            if (path.is_absolute() or '..' in path.parts or len(path.parts)!=2 or path.parts[0]!=gdb_root
                 or entry.flag_bits & 1 or stat.S_ISLNK(entry.external_attr>>16)):
                 raise CSAQuarantineError('unsafe_encrypted_or_changed_archive_member')
-        if sum(i.file_size for i in entries)>600_000_000 or archive.testzip() is not None:
+        expanded=sum(i.file_size for i in entries)
+        if expanded<=0 or expanded>MAX_UNCOMPRESSED_BYTES or archive.testzip() is not None:
             raise CSAQuarantineError('zip_expansion_or_crc_failure')
         inventory={i.filename:{'bytes':i.file_size,'crc32':f'{i.CRC:08x}'} for i in entries}
-    metadata,table=pyogrio.read_arrow(f'/vsizip/{archive_path}/{GDB}',layer=LAYER,return_fids=True)
+    metadata,table=pyogrio.read_arrow(f'/vsizip/{archive_path}/{gdb_root}',layer=LAYER,return_fids=True)
     validate_table(table,metadata)
-    metadata['native_layer_definition']=read_native_definition(archive_path)
+    metadata['native_layer_definition']=read_native_definition(archive_path,release)
     return metadata,table,inventory
 
 
 
-def read_native_definition(archive_path):
+def read_native_definition(archive_path,release):
     """Retain producer declarations separately from GDAL's Arrow exposure."""
-    _,definition=pyogrio.read_arrow(f'/vsizip/{archive_path}/{GDB}',sql=f'GetLayerDefinition {LAYER}')
+    _,definition=pyogrio.read_arrow(f'/vsizip/{archive_path}/{release.source_file[:-4]}',sql=f'GetLayerDefinition {LAYER}')
     if definition.num_rows!=1 or 'FIELD_1' not in definition.column_names:
         raise CSAQuarantineError('missing_original_layer_definition')
     xml=definition['FIELD_1'][0].as_py()
@@ -217,6 +234,10 @@ def read_native_definition(archive_path):
     for name in ('ALAND','AWATER'):
         if fields[name].get('FieldType')!='esriFieldTypeDouble' or fields[name].get('Length')!='8':
             raise CSAQuarantineError('native_double_area_declaration_drift')
+    widths={'CSAFP':'3','GEOID':'3','GEOIDFQ':'12','NAME':'100','NAMELSAD':'100','LSAD':'2','MTFCC':'5','INTPTLAT':'11','INTPTLON':'12'}
+    for name,width in widths.items():
+        if fields[name].get('FieldType')!='esriFieldTypeString' or fields[name].get('Length')!=width:
+            raise CSAQuarantineError('native_string_field_declaration_drift:'+name)
     return {'definition_xml':xml,'fields':fields,'driver_oid_representation':'Arrow return_fids int64, not producer OID width',
         'draft_output_oid_representation':'int64 attribute preserving every source value; widening/ID mapping not approved'}
 
@@ -224,10 +245,11 @@ def read_native_definition(archive_path):
 def validate_table(table,metadata):
     if (tuple(table.column_names)!=FIELDS or tuple(f.type for f in table.schema)!=TYPES
         or metadata['geometry_type']!='MultiPolygon' or metadata['crs']!='EPSG:4269'
-        or metadata['fid_column']!='OBJECTID' or table.num_rows!=184):
+        or metadata['fid_column']!='OBJECTID'
+        or not FEATURE_COUNT_RANGE[0]<=table.num_rows<=FEATURE_COUNT_RANGE[1]):
         raise CSAQuarantineError('native_schema_physical_types_crs_or_completeness_drift')
     rows=table.to_pylist();ids=[r['OBJECTID'] for r in rows];geoids=[r['GEOID'] for r in rows]
-    if ids!=list(range(1,185)) or len(set(geoids))!=184 or any(not re.fullmatch(r'\d{3}',v or '') for v in geoids):
+    if ids!=list(range(1,len(rows)+1)) or len(set(geoids))!=len(rows) or any(not re.fullmatch(r'\d{3}',v or '') for v in geoids):
         raise CSAQuarantineError('missing_duplicate_changed_source_ids_or_coverage')
     if any(table.column(name).null_count for name in FIELDS):
         raise CSAQuarantineError('native_nullability_drift')
@@ -319,33 +341,34 @@ def validate_cached_candidate_inventory(root,expected):
 
 def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
     local_only(storage)
-    body,receipt=acquire(storage,archive_path,receipt_path)
+    body,receipt,release=acquire(storage,archive_path,receipt_path)
     try:
-        if len(body)!=BYTES or digest(body)!=SHA256:
+        if not body or len(body)>MAX_SOURCE_BYTES:
             raise CSAQuarantineError('changed_truncated_or_unknown_census_publication')
+        archive_sha=digest(body)
         identity=processing_identity()
-        manifest=manifest_for(body,receipt,identity)
+        manifest=manifest_for(body,receipt,identity,release)
         if (identity.get('code_identity_scheme') == 'sha256-packaged-dagster-hifld-v1'
                 or identity.get('working_tree_status') == 'clean'):
             validate_construction_code_identity(Path(__file__).parents[3], identity['code_commit'],
                                                 identity['files'], identity=identity)
         else:
             raise CSAQuarantineError('construction_code_identity_requires_clean_or_packaged_runtime')
-        capture=f'_raw-captures/{SLUG}/{SHA256}/original.gdb.zip'
+        capture=f'_raw-captures/{SLUG}/{archive_sha}/original.gdb.zip'
         immutable(storage,capture,body)
         immutable(storage,capture+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt))
         fingerprint=digest(encode(identity))
-        version=f'v0.0.0-draft-census2024-{SHA256[:16]}-{fingerprint[:16]}'
+        version=census_latest.release_version(str(release.vintage),archive_sha,fingerprint)
         prefix=f'{SLUG}/{SLUG}/{version}'
         base=Path(storage.local_dir);root=base/prefix
         # Decode the exact immutable retained original; no external-path substitution.
-        metadata,table,inventory=inspect_archive(base/capture)
+        metadata,table,inventory=inspect_archive(base/capture,release)
         ready_path=root/'metadata/csa_candidate_ready.json'
         if root.exists():
             if not ready_path.is_file():
                 raise CSAQuarantineError('incomplete_existing_candidate')
             ready=strict_json(ready_path.read_bytes())
-            if ready.get('version')!=version or ready.get('processing_fingerprint')!=fingerprint or ready.get('source_sha256')!=SHA256 or ready.get('approved') is not False:
+            if ready.get('version')!=version or ready.get('processing_fingerprint')!=fingerprint or ready.get('source_sha256')!=archive_sha or ready.get('approved') is not False:
                 raise CSAQuarantineError('immutable_candidate_identity_conflict')
             expected={f'geopackage/{SLUG}.gpkg','candidate/typed-source.parquet','raw/source_capture.json','raw/retrieval.json','metadata/source_manifest.json','metadata/processing_identity.json','metadata/csa_source_audit.json','metadata/baseline_comparison.json'}
             # Catalog writes resolved provenance and source-manifest snapshots;
@@ -358,10 +381,14 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
                     raise CSAQuarantineError('immutable_candidate_bytes_changed:'+name)
             cached_manifest=strict_json((root/'metadata/source_manifest.json').read_bytes())
             validate_release_provenance(cached_manifest)
-            if cached_manifest.get('approved') is not False or cached_manifest.get('processing_fingerprint')!=fingerprint or cached_manifest['inputs'][0]['sha256']!=SHA256 or cached_manifest['inputs'][0]['bytes']!=BYTES or len(cached_manifest['inputs'])!=1 or cached_manifest['inputs'][0]['retrieval_url']!=URL or cached_manifest['inputs'][0].get('observed_final_url')!=URL or encode(strict_json((root/'metadata/processing_identity.json').read_bytes()))!=encode(identity):
+            original_receipt=strict_json((root/'raw/retrieval.json').read_bytes())
+            original_release=census_latest.geodatabase_release_from_receipt(original_receipt,GEODATABASE_PRODUCT)
+            expected_manifest=manifest_for(body,original_receipt,identity,original_release)
+            if (original_release.source_url!=release.source_url or cached_manifest!=expected_manifest
+                    or encode(strict_json((root/'metadata/processing_identity.json').read_bytes()))!=encode(identity)):
                 raise CSAQuarantineError('cached_provenance_or_processing_identity_changed')
             reconcile_cached_native_outputs(root,table)
-            return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':184,'reused':True}
+            return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True}
         building=base/'_building'/SLUG
         building.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='candidate-',dir=building) as temporary:
@@ -378,26 +405,28 @@ def stage_csa_candidate(storage,*,archive_path=None,receipt_path=None):
             pq.write_table(table,parquet,compression='zstd')
             if not pq.read_table(parquet).equals(table,check_metadata=True):
                 raise CSAQuarantineError('typed_parquet_roundtrip_loss')
-            audit={'approved':False,'feature_count':184,'invalid_geometries':0,'crs':'EPSG:4269','driver_arrow_schema':str(table.schema),'producer_native_layer_definition':metadata['native_layer_definition'],'members':inventory,
+            feature_count=table.num_rows
+            audit={'approved':False,'feature_count':feature_count,'invalid_geometries':0,'crs':'EPSG:4269','driver_arrow_schema':str(table.schema),'producer_native_layer_definition':metadata['native_layer_definition'],'members':inventory,
+                'source_release':release.as_metadata(),
                 'intrinsic_source_id':'Producer OBJECTID esriFieldTypeOID Length4, required/nonnullable/noneditable; GDAL return_fids and draft output expose int64. Every original value preserved; widening/mapping remains unapproved. Independent GPKG storage FID not published/source ID',
                 'coverage_GEOIDs':sorted(table['GEOID'].to_pylist()),'full_value_type_id_and_native_wkb_roundtrip':{'geopackage':True,'parquet':True},
-                'published_compatibility':'Not accepted. Published id differs from every source OBJECTID; source doubles differ from published integer areas, source fields differ, metadata2023 vs GDB2024 lineage unresolved.'}
-            payloads={'raw/source_capture.json':{'key':capture,'sha256':SHA256,'bytes':BYTES,'complete_original_gdb_members':71},'raw/retrieval.json':receipt,
+                'published_compatibility':'Not accepted. Published id differs from every source OBJECTID; source doubles differ from published integer areas, source fields differ, and the inventory metadata lineage is unresolved.'}
+            payloads={'raw/source_capture.json':{'key':capture,'sha256':archive_sha,'bytes':len(body),'complete_original_gdb_members':len(inventory),'source_release':release.as_metadata()},'raw/retrieval.json':receipt,
                 'metadata/source_manifest.json':manifest,'metadata/processing_identity.json':identity,'metadata/csa_source_audit.json':audit,
                 'metadata/baseline_comparison.json':{'schema_version':1,'approved':False,'status':'blocked','reason_codes':['baseline_source_schema_id_geometry_mapping_not_approved']}}
             for name,value in payloads.items():
                 (temp/name).write_bytes(encode(value))
-            ready={'version':version,'approved':False,'source_sha256':SHA256,'processing_fingerprint':fingerprint,
+            ready={'version':version,'approved':False,'source_sha256':archive_sha,'processing_fingerprint':fingerprint,
                 'objects':{str(p.relative_to(temp)):sha256_file(p) for p in temp.rglob('*') if p.is_file()}}
             (temp/'metadata/csa_candidate_ready.json').write_bytes(encode(ready))
             root.parent.mkdir(parents=True,exist_ok=True)
             # All source/provenance/output checks completed in a hidden build tree.
             os.rename(temp,root)
-        return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':184,'reused':False}
+        return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':feature_count,'reused':False}
     except (ValueError,TypeError,KeyError,OSError,RuntimeError,zipfile.BadZipFile,sqlite3.Error,shapely.errors.GEOSException,ET.ParseError) as exc:
         # The full original is already pinned in raw-captures when valid. Avoid a
-        # second272MB copy per policy/schema failure; retain exact pointer+receipt.
-        raw_key=f'_raw-captures/{SLUG}/{SHA256}/original.gdb.zip'
-        retained=raw_key if digest(body)==SHA256 and storage.object_exists(raw_key) else None
+        # second copy per policy/schema failure; retain exact pointer+receipt.
+        raw_key=f'_raw-captures/{SLUG}/{digest(body)}/original.gdb.zip'
+        retained=raw_key if not isinstance(exc,zipfile.BadZipFile) and storage.object_exists(raw_key) else None
         location=quarantine(storage,b'' if retained else body,{'original_receipt':receipt,'retained_full_body_key':retained,'body_sha256':digest(body),'body_bytes':len(body)},str(exc))
         raise CSAQuarantineError(f'{exc}; retained:{location}') from exc

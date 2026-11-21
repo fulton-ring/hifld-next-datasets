@@ -56,7 +56,7 @@ class UsaceNavigationMarksAreasTests(unittest.TestCase):
         ids = json.loads(captures["ids_after"][0])
         ids["objectIds"].pop()
         captures["ids_after"] = (json.dumps(ids).encode(), {})
-        with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             _validate(captures)
         captures = self._capture()
         layer = json.loads(captures["layer_before"][0])

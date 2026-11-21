@@ -21,15 +21,32 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
-    _canonical, _sha, candidate_prefix, processing_identity,
+from dagster_hifld.sources.capture_common import (
+    candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
 )
-from dagster_hifld.sources.usace_pylon_areas import (
-    _fetch_retry, _esri_polygon,
-    _parquet_bytes, _load_replay, _write_outputs,
-    PAGE_SIZE, MAX_CAPTURE_BYTES,
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import esri_polygon_wkb as _esri_polygon
+from dagster_hifld.sources.arcgis_layer import (
+    capture_witness,
+    ienc_layer_capture_roster,
+    fetch_capture_retry,
+    layer_parquet_bytes as _parquet_bytes,
+    load_replay as _load_replay, write_outputs as _write_outputs,
 )
+
+# Byte budgets previously inherited from usace_pylon_areas are declared here.
+PAGE_SIZE = 250
+MAX_BODY_BYTES = 48_000_000
+MAX_CAPTURE_BYTES = 450_000_000
+
+
+def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
+                 *, schedule: tuple[float, ...] = (0.0, 2.0, 8.0)):
+    """Retry transient transport/incomplete reads with backoff, retaining every attempt."""
+    return fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                               attempts=len(schedule), schedule=schedule)
 
 DATASET_SLUG = "airport-area-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -43,7 +60,6 @@ PRIOR_BTS_ITEM_ID = "3607d485a9854d6fa458bf507058ceae"
 BTS_ITEM_ID = "7ec34864c8804468a9cf52d437fe4b6c"
 BTS_ITEM_URL = f"https://www.arcgis.com/sharing/rest/content/items/{BTS_ITEM_ID}?f=json"
 PUBLISHER = "US Army Corps of Engineers, Army Geospatial Center; official IENC Feature Classes service"
-EXPECTED_COUNT = 72
 EXPECTED_FIELDS = [
     ("OBJECTID", "esriFieldTypeOID"), ("SHAPE", "esriFieldTypeGeometry"),
     ("Category_of_Airport", "esriFieldTypeString"), ("Object_Name", "esriFieldTypeString"),
@@ -78,24 +94,18 @@ def _capture_started_at(captures: dict[str, tuple[bytes, dict]]) -> str:
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [("bts_item", BTS_ITEM_URL), ("service_directory", SERVICE_DIRECTORY_URL),
-            ("service_before", SERVICE_URL + "?f=pjson"),
-            ("layer_before", LAYER_URL + "?f=pjson"),
-            ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-            ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
-    for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-        page_ids = ids[start:start + PAGE_SIZE]
-        urls.append((f"page_{index:03d}", _query({"objectIds":",".join(map(str,page_ids)),
-            "outFields":"*", "returnGeometry":"true", "returnZ":"true", "returnM":"true",
-            "outSR":"4326", "orderByFields":"OBJECTID ASC", "f":"json"})))
-    urls.extend([("layer_after", LAYER_URL + "?f=pjson"),
-                 ("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                 ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
-                 ("service_after", SERVICE_URL + "?f=pjson")])
-    return urls
+    return ienc_layer_capture_roster(
+        ids,
+        bts_item_url=BTS_ITEM_URL,
+        service_directory_url=SERVICE_DIRECTORY_URL,
+        service_url=SERVICE_URL,
+        layer_url=LAYER_URL,
+        page_size=PAGE_SIZE,
+    )
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]):
+    before = capture_witness(captures)
     if not {"ids_seed","bts_item","service_directory","service_before","service_after",
             "layer_before","count_before","ids_before","layer_after","count_after","ids_after"} <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
@@ -134,16 +144,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         raise ValueError("source_spatial_reference_or_page_limit_drift")
     if docs["layer_after"].get("fields") != fields or docs["layer_after"].get("geometryType") != "esriGeometryPolygon":
         raise ValueError("source_schema_changed_during_capture")
-    if docs["count_before"].get("count") != EXPECTED_COUNT or docs["count_after"].get("count") != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    seed = docs["ids_seed"].get("objectIds")
-    before, after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
-    if (not isinstance(seed,list) or not isinstance(before,list) or seed != before
-            or before != after or len(before) != EXPECTED_COUNT or len(set(before)) != EXPECTED_COUNT):
-        raise ValueError("source_id_population_drift")
     features=[]
     pages=sorted(n for n in captures if n.startswith("page_"))
-    if len(pages) != (EXPECTED_COUNT + PAGE_SIZE - 1)//PAGE_SIZE:
+    if len(pages) != (len(before) + PAGE_SIZE - 1)//PAGE_SIZE:
         raise ValueError("source_page_roster_incomplete")
     for name in pages:
         page=docs[name]
@@ -171,7 +174,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         empty_geometry_count += int(parsed_geometry.is_empty)
         invalid_geometry_count += int(not parsed_geometry.is_valid)
         got.append(attrs.get("OBJECTID"))
-    if len(features)!=EXPECTED_COUNT or sorted(got)!=sorted(before) or len(set(got))!=EXPECTED_COUNT:
+    if len(features)!=len(before) or sorted(got)!=sorted(before) or len(set(got))!=len(before):
         raise ValueError("source_feature_population_incomplete")
     features.sort(key=lambda f:f["attributes"]["OBJECTID"])
     rows=[{"attributes":f["attributes"],"geometry":f["geometry"]} for f in features]
@@ -261,7 +264,7 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
                 seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
                 ids=json.loads(seed_body).get("objectIds")
-                if not isinstance(ids,list) or len(ids)!=EXPECTED_COUNT: raise ValueError("source_seed_id_count_drift")
+                if not isinstance(ids,list) or len(ids)!=len(features): raise ValueError("source_seed_id_count_drift")
                 captures["ids_seed"]=(seed_body,seed_receipt)
                 for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name,capture_budget)
         fields,features,audit=_validate(captures)
@@ -338,7 +341,7 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
             fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],
             payload.get("objects",{}),original_receipts)
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":audit["source_feature_count"],"source_population_complete":True,
+            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
             "source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
             "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],
             "source_null_geometry_count":audit["source_null_geometry_count"],
@@ -355,4 +358,4 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
     )
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_empty_geometry_count":audit["source_empty_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_empty_geometry_count":audit["source_empty_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

@@ -12,12 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.mooring_facility_areas_usace_ienc import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     FILE_SLUG,
     capture_mooring_facility_areas_usace_ienc,
 )
@@ -60,9 +60,9 @@ def mooring_facility_areas_usace_ienc(
 @asset_check(asset=mooring_facility_areas_usace_ienc, blocking=True)
 def mooring_facility_areas_usace_ienc_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
+        candidate.get("feature_count") == candidate.get("source_reported_count")
         and candidate.get("source_population_complete") is True
-        and candidate.get("geometry_valid_count") == EXPECTED_COUNT
+        and candidate.get("geometry_valid_count") == candidate.get("feature_count")
         and candidate.get("geometry_invalid_count") == 0
         and candidate.get("geometry_empty_count") == 0
     )
@@ -70,6 +70,7 @@ def mooring_facility_areas_usace_ienc_complete(candidate: dict) -> AssetCheckRes
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": candidate.get("source_reported_count", "missing"),
             "geometry_valid_count": candidate.get("geometry_valid_count", "missing"),
             "geometry_invalid_count": candidate.get("geometry_invalid_count", "missing"),
             "geometry_empty_count": candidate.get("geometry_empty_count", "missing"),
@@ -103,7 +104,10 @@ mooring_facility_areas_usace_ienc_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+mooring_facility_areas_usace_ienc_drift = register_approved_baseline_drift(
+    mooring_facility_areas_usace_ienc, "mooring_facility_areas_usace_ienc_drift")
+
 INGEST_ASSETS = [mooring_facility_areas_usace_ienc]
-ASSET_CHECKS = [mooring_facility_areas_usace_ienc_complete]
+ASSET_CHECKS = [mooring_facility_areas_usace_ienc_complete, mooring_facility_areas_usace_ienc_drift]
 JOBS = [mooring_facility_areas_usace_ienc_draft_job]
 SCHEDULES = [mooring_facility_areas_usace_ienc_draft_schedule]

@@ -1,4 +1,4 @@
-"""Stopped draft asset for the official 2023 Census TIGER US county boundaries."""
+"""Stopped draft asset for the official current Census TIGER US county boundaries."""
 from pathlib import Path
 
 from dagster import (
@@ -8,10 +8,9 @@ from dagster import (
 
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import processing_identity
+from dagster_hifld.sources.capture_common import processing_identity
 from dagster_hifld.sources.us_county_boundaries import (
-    DATASET_SLUG, EXPECTED_BYTES, EXPECTED_FEATURE_COUNT, EXPECTED_GEOID_SHA256,
-    EXPECTED_SHA256, FILE_SLUG, candidate_version, capture_us_county_boundaries,
+    DATASET_SLUG, FILE_SLUG, capture_us_county_boundaries,
 )
 
 
@@ -24,7 +23,7 @@ class UsCountyBoundariesConfig(Config):
     group_name="census_bureau",
     compute_kind="http",
     description=(
-        "Official Census TIGER/Line 2023 US county boundaries archive. "
+        "Official Census TIGER/Line US county boundaries archive, resolved at capture time. "
         "Candidate only: the raw/published schema and ID contract await maintainer approval, "
         "and source release/freshness, coverage, rights, and release remain pending."
     ),
@@ -32,9 +31,8 @@ class UsCountyBoundariesConfig(Config):
 def us_county_boundaries_census(context, config: UsCountyBoundariesConfig,
                                 staging_storage: StagingStorageResource) -> dict:
     identity = processing_identity(Path(__file__).parents[3])
-    version = candidate_version(identity)
     result = capture_us_county_boundaries(
-        staging_storage, version=version,
+        staging_storage,
         capture_directory=config.capture_directory or None,
         identity=identity,
     )
@@ -49,17 +47,19 @@ def us_county_boundaries_census(context, config: UsCountyBoundariesConfig,
 @asset_check(asset=us_county_boundaries_census, blocking=True)
 def us_county_boundaries_source_complete(candidate: dict) -> AssetCheckResult:
     passed = (
-        candidate.get("feature_count") == EXPECTED_FEATURE_COUNT
+        type(candidate.get("feature_count")) is int and candidate["feature_count"] > 0
         and candidate.get("source_population_complete") is True
-        and candidate.get("source_archive_bytes") == EXPECTED_BYTES
-        and candidate.get("source_archive_sha256") == EXPECTED_SHA256
-        and candidate.get("source_id_sha256") == EXPECTED_GEOID_SHA256
+        and candidate.get("source_archive_bytes", 0) > 0
+        and isinstance(candidate.get("source_archive_sha256"), str)
+        and len(candidate.get("source_archive_sha256", "")) == 64
+        and bool(candidate.get("source_vintage"))
     )
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_archive_sha256": candidate.get("source_archive_sha256", "missing"),
+        "source_vintage": candidate.get("source_vintage", "missing"),
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False,
@@ -78,3 +78,8 @@ us_county_boundaries_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [us_county_boundaries_census]
+ASSET_CHECKS = [us_county_boundaries_source_complete]
+JOBS = [us_county_boundaries_draft_job]
+SCHEDULES = [us_county_boundaries_draft_schedule]

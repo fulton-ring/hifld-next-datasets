@@ -81,3 +81,8 @@ bts_marine_roro_draft_schedule = ScheduleDefinition(
     execution_timezone="America/New_York",
     default_status=DefaultScheduleStatus.STOPPED,
 )
+
+INGEST_ASSETS = [bts_intermodal_freight_marine_roll_on_roll_off]
+ASSET_CHECKS = [bts_intermodal_freight_marine_roll_on_roll_off_complete]
+JOBS = [bts_marine_roro_draft_job]
+SCHEDULES = [bts_marine_roro_draft_schedule]

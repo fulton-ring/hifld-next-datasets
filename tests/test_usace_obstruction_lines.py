@@ -6,6 +6,12 @@ from unittest.mock import patch
 
 from dagster import DefaultScheduleStatus
 from dagster_hifld.sources import usace_obstruction_lines as source
+
+COUNT = 16
+IDS = list(range(1, 17))
+ID_SHA256 = "c8aa3562cf53e860d2bff96611bbd511190e1ba0d75e502cbab10a106f04248e"
+from pyproj import CRS
+
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.usace_obstruction_lines import (
@@ -13,14 +19,14 @@ from dagster_hifld.assets.usace_obstruction_lines import (
     usace_obstruction_lines_usace_ienc,
 )
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import _canonical
+from dagster_hifld.sources.esri_common import canonical as _canonical
 
 
 class UsaceObstructionLinesTests(unittest.TestCase):
     def test_registered_asset_and_stopped_refresh_gate(self):
         self.assertIn(usace_obstruction_lines_usace_ienc,hifld_ingest_assets)
         self.assertEqual(usace_obstruction_lines_draft_schedule.default_status,DefaultScheduleStatus.STOPPED)
-        passed=usace_obstruction_lines_complete({"feature_count":16,"source_population_complete":True})
+        passed=usace_obstruction_lines_complete({"feature_count":16,"source_reported_count":16,"source_population_complete":True})
         self.assertTrue(passed.passed)
         self.assertFalse(passed.metadata["release_accepted"].value)
 
@@ -37,7 +43,7 @@ class UsaceObstructionLinesTests(unittest.TestCase):
                "spatialReference":{"latestWkid":4326},"extent":{**source.EXPECTED_EXTENT,"spatialReference":{"latestWkid":4326}},
                "fields":source.EXPECTED_FIELD_DECLARATIONS}
         attributes=[]
-        for oid in source.EXPECTED_IDS:
+        for oid in IDS:
             values={field["name"]:(oid if field["name"]=="OBJECTID" else
                                     30000 if field["name"]=="Scale_Minimum" else f"{field['name']}-{oid}")
                     for field in source.ATTRIBUTE_FIELDS}
@@ -47,15 +53,15 @@ class UsaceObstructionLinesTests(unittest.TestCase):
             "bts_item":{"id":source.BTS_ITEM_ID,"owner":"USDOT_BTS","type":"PDF","title":"Inland Electronic Navigational Charts",
                          "description":"USACE updates. Feature classes are https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes and USACE_IENC_Master_Service_gdb.zip."},
             "service_directory":{"services":[{"name":"IENC_Feature_Classes/OBSTRUCTION_LINE","type":"MapServer"}]},
-            "service_before":service,"layer_before":layer,"count_before":{"count":16},"ids_before":{"objectIds":source.EXPECTED_IDS},
+            "service_before":service,"layer_before":layer,"count_before":{"count":16},"ids_before":{"objectIds":IDS},
             "features":features,"layer_after":json.loads(json.dumps(layer)),"count_after":{"count":16},
-            "ids_after":{"objectIds":source.EXPECTED_IDS},
+            "ids_after":{"objectIds":IDS},
         }
 
     def _capture_directory(self, root: Path):
         docs=self._documents()
         receipts={}
-        expected_urls=dict(source._capture_urls(source.EXPECTED_IDS))
+        expected_urls=dict(source._capture_urls(IDS))
         for name,doc in docs.items():
             body=_canonical(doc)
             (root/f"{name}.body").write_bytes(body)
@@ -101,7 +107,7 @@ class UsaceObstructionLinesTests(unittest.TestCase):
         fields,features,audit=source._validate(captures)
         self.assertEqual(fields,source.EXPECTED_FIELD_DECLARATIONS)
         self.assertEqual(len(features),16)
-        self.assertEqual(audit["source_id_sha256"],source.EXPECTED_ID_SHA256)
+        self.assertEqual(audit["source_id_sha256"],ID_SHA256)
         self.assertEqual(audit["source_vertex_count"],32)
         self.assertEqual(features[0]["attributes"]["Feature_ID"],"Feature_ID-1")
         self.assertEqual(features[0]["geometry"]["paths"],[[[-87.999,37.0],[-87.899,37.1]]])
@@ -110,8 +116,8 @@ class UsaceObstructionLinesTests(unittest.TestCase):
         docs=self._documents();docs=json.loads(json.dumps(docs));docs["layer_before"]["fields"][2]["name"]="Changed"
         with self.assertRaisesRegex(ValueError,"source_field_schema_drift"):
             source._validate({n:(_canonical(v),{}) for n,v in docs.items()})
-        docs=self._documents();docs=json.loads(json.dumps(docs));docs["ids_after"]["objectIds"]=[*source.EXPECTED_IDS[:-1]]
-        with self.assertRaisesRegex(ValueError,"source_id_population_drift"):
+        docs=self._documents();docs=json.loads(json.dumps(docs));docs["ids_after"]["objectIds"]=[*IDS[:-1]]
+        with self.assertRaisesRegex(ValueError,"source_count_or_id_roster_drift"):
             source._validate({n:(_canonical(v),{}) for n,v in docs.items()})
         docs=self._documents();docs=json.loads(json.dumps(docs));docs["features"]["features"][0]["geometry"]["paths"][0][0].append(20)
         with self.assertRaisesRegex(ValueError,"source_xy_ordinate_contract_drift"):
@@ -130,7 +136,7 @@ class UsaceObstructionLinesTests(unittest.TestCase):
             ("feature wkid/latestWkid contradiction", lambda d: d["features"]["features"][0]["geometry"].update(
                 spatialReference={"wkid":3857,"latestWkid":4326})),
             ("feature WKT contradiction", lambda d: d["features"]["features"][0]["geometry"].update(
-                spatialReference={"latestWkid":4326,"wkt":source.CRS.from_epsg(3857).to_wkt()})),
+                spatialReference={"latestWkid":4326,"wkt":CRS.from_epsg(3857).to_wkt()})),
         ]
         for label, mutate in mutations:
             with self.subTest(label=label):
@@ -143,7 +149,7 @@ class UsaceObstructionLinesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/"capture";root.mkdir();self._capture_directory(root)
             storage=StagingStorageResource(local_dir=str(Path(tmp)/"staging"))
-            with patch.object(source,"validate_construction_code_identity") as code_identity_check, patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+            with patch.object(source,"validate_construction_code_identity") as code_identity_check, patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first=source.capture_usace_obstruction_lines(storage,version="draft",capture_directory=str(root))
             code_identity_check.assert_called_once()
             code_identity_args, code_identity_kwargs = code_identity_check.call_args
@@ -162,7 +168,7 @@ class UsaceObstructionLinesTests(unittest.TestCase):
                                            for n in capture_manifest["receipts"]}
             capture_manifest["artifact_roster"]=capture_roster_digests(root,exclude={"capture_manifest.json"})
             (root/"capture_manifest.json").write_bytes(_canonical(capture_manifest)+b"\n")
-            with patch.object(source,"validate_construction_code_identity"), patch("dagster_hifld.sources.epa_frs_common.validate_construction_code_identity"):
+            with patch.object(source,"validate_construction_code_identity"), patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 second=source.capture_usace_obstruction_lines(storage,version="draft",capture_directory=str(root))
             self.assertTrue(second["reused"])
             self.assertEqual(first["version"],second["version"])

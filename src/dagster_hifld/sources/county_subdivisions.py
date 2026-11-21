@@ -1,7 +1,9 @@
-"""Complete exact Census 2024 County_Subdivision; isolated unapproved draft.
+"""Complete current-edition County_Subdivision; isolated unapproved draft.
 
-The original ZIP is preserved either in the owned depot or an explicitly pinned,
-read-only external capture depot. No source identifier or geometry is replaced.
+The original ZIP is preserved either in the owned depot or an explicitly
+pinned, read-only external capture depot. The producer's newest published
+national substate FileGDB edition is resolved at capture time. No source
+identifier or geometry is replaced.
 """
 from __future__ import annotations
 
@@ -35,26 +37,28 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
-from dagster_hifld.sources.epa_frs_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
+from dagster_hifld.sources import census_latest
+from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
 
 SLUG='county-subdivisions-1'
 LAYER='County_Subdivision'
-GDB='tlgdb_2024_a_us_substategeo.gdb'
-URL='https://www2.census.gov/geo/tiger/TGRGDB24/'+GDB+'.zip'
-SHA256='e2409cd4ddb1a9302b130096fbcf9925ca3a701f720b8991045602bcb99d6b35'
-BYTES=736048475
-COUNT=36492
+# The producer publishes one national substate-geographic FileGDB per vintage;
+# the newest published edition is resolved at capture time, never a pinned year.
+GEODATABASE_PRODUCT='substategeo'
 LICENSE='https://www.census.gov/about/policies/quality/guidelines/copyright.html'
-RAW_KEY=f'_raw-captures/{SLUG}/{SHA256}/original.gdb.zip'
+FEATURE_COUNT_RANGE=(33000,40000)
+MAX_SOURCE_BYTES=900_000_000
+MAX_UNCOMPRESSED_BYTES=2_000_000_000
+MAX_ARCHIVE_MEMBERS=200
+RAW_KEY_PREFIX=f'_raw-captures/{SLUG}'
 READY='metadata/cousub_candidate_ready.json'
 FIELDS=('OBJECTID','COUSUBNS','GEOID','GEOIDFQ','NAMELSAD','CLASSFP','FUNCSTAT','ALAND','AWATER','INTPTLAT','INTPTLON','SHAPE')
 TYPES=(pa.int32(),*[pa.string()]*6,pa.float64(),pa.float64(),pa.string(),pa.string(),pa.binary())
 MAX_RECEIPT_BYTES=65536
 LIVE_BLOCK_BYTES=1024*1024
 BATCH_SIZE=512
-STATE_COUNTS={'01': 390, '02': 37, '04': 80, '05': 1095, '06': 404, '08': 209, '09': 174, '10': 27, '11': 1, '12': 316, '13': 586, '15': 44, '16': 170, '17': 1696, '18': 1012, '19': 1663, '20': 1525, '21': 493, '22': 576, '23': 529, '24': 290, '25': 357, '26': 1580, '27': 2759, '28': 410, '29': 1394, '30': 194, '31': 1182, '32': 71, '33': 260, '34': 569, '35': 130, '36': 1023, '37': 1041, '38': 1761, '39': 1607, '40': 305, '41': 212, '42': 2573, '44': 40, '45': 299, '46': 1328, '47': 844, '48': 862, '49': 93, '50': 256, '51': 552, '53': 242, '54': 225, '55': 1925, '56': 71, '60': 16, '66': 20, '69': 12, '72': 939, '78': 23}
 
 class CountySubdivisionQuarantineError(ValueError):
     """Changed or incomplete inputs/caches require review and cannot promote."""
@@ -92,15 +96,17 @@ def immutable(storage,key,body):
     if snapshot is None:storage.write_key_if_unchanged(key,body,None)
     elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:raise CountySubdivisionQuarantineError('immutable_capture_changed:'+key)
 
-def validate_receipt(path,receipt):
+def validate_receipt(path,receipt,release):
     unaliased(path,file=True)
-    if (receipt.get('url')!=URL or receipt.get('final_url')!=URL or type(receipt.get('status')) is not int or receipt['status']!=200
-        or receipt.get('complete_body') is not True or type(receipt.get('bytes')) is not int or receipt['bytes']!=BYTES
-        or receipt.get('sha256')!=SHA256 or path.stat().st_size!=BYTES or sha256_file(path)!=SHA256):raise CountySubdivisionQuarantineError('source_url_status_completeness_length_or_hash_drift')
-    return {'input_id':'census2024-substategeo:'+SHA256,'producer':'U.S. Census Bureau','host':'www2.census.gov','role':'producer_publication',
-        'canonical_url':URL,'retrieval_url':URL,'observed_final_url':URL,'retrieved_at':receipt.get('observed_at'),'http_status':200,'sha256':SHA256,'bytes':BYTES,
-        'license':LICENSE,'attribution':'U.S. Census Bureau, TIGER/Line 2024 national substate geographic geodatabase, County_Subdivision.',
-        'release_date_unknown_reason':'Producer edition2024. HTTP Last-Modified2024-08-08 is packaging evidence; an exact independently established publication day remains unresolved.'}
+    archive_sha=sha256_file(path);archive_bytes=path.stat().st_size
+    if (receipt.get('url')!=release.source_url or receipt.get('final_url')!=release.source_url or type(receipt.get('status')) is not int or receipt['status']!=200
+        or receipt.get('complete_body') is not True or type(receipt.get('bytes')) is not int or receipt['bytes']!=archive_bytes
+        or receipt.get('sha256')!=archive_sha
+        or archive_bytes<=0 or archive_bytes>MAX_SOURCE_BYTES):raise CountySubdivisionQuarantineError('source_url_status_completeness_length_or_hash_drift')
+    return {'input_id':f'census{release.vintage}-substategeo:'+archive_sha,'producer':'U.S. Census Bureau','host':'www2.census.gov','role':'producer_publication',
+        'canonical_url':release.source_url,'retrieval_url':str(receipt['final_url']),'observed_final_url':str(receipt['final_url']),'retrieved_at':receipt.get('observed_at'),'http_status':receipt['status'],'sha256':archive_sha,'bytes':archive_bytes,
+        'license':LICENSE,'attribution':f'U.S. Census Bureau, TIGER/Line {release.vintage} national substate geographic geodatabase, County_Subdivision layer.',
+        'release_date_unknown_reason':f'The producer identifies this as the {release.vintage} TIGER/Line edition; the directory listing and HTTP Last-Modified values are retained as discovery evidence and are not treated as the producer release day.'}
 
 def observe_external_receipt(storage,archive_path,receipt_path):
     """Retain bounded exact consumed receipt bytes BEFORE trusting any claims."""
@@ -121,53 +127,68 @@ def observe_external_receipt(storage,archive_path,receipt_path):
     immutable(storage,key+'/receipt.bin',raw);immutable(storage,key+'/observation.json',encode(diagnostic))
     try:
         if not diagnostic['complete_receipt_descriptor_read']:raise CountySubdivisionQuarantineError('external_receipt_oversized_short_or_changed')
-        receipt=strict_json(raw);validate_receipt(path,receipt)
+        receipt=strict_json(raw)
+        release=census_latest.geodatabase_release_from_receipt(receipt,GEODATABASE_PRODUCT)
+        validate_receipt(path,receipt,release)
     except (ValueError,TypeError,KeyError,OSError) as exc:
         immutable(storage,key+'/rejection.json',encode({'approved':False,'error_type':type(exc).__name__,'reason':str(exc)[:512],'source_claims_validated':False}))
         raise CountySubdivisionQuarantineError('external_capture_receipt_rejected_after_observation:'+type(exc).__name__) from exc
-    return path,receipt
+    return path,receipt,release
 
 def acquire(storage,archive_path=None,receipt_path=None):
     root=local_only(storage)
     if archive_path is not None:
         # Deliberately explicit read-only reference to a preserved complete raw
         # depot, NOT a copied staging object or claim of a new live observation.
-        path,receipt=observe_external_receipt(storage,archive_path,receipt_path)
-        pointer={'kind':'external_preserved_read_only_capture','absolute_path':str(path),'sha256':SHA256,'bytes':BYTES,'ownership':'caller/coordinator preserved original; adapter never writes or removes this file'}
+        path,receipt,release=observe_external_receipt(storage,archive_path,receipt_path)
+        archive_sha=str(receipt['sha256']);archive_bytes=int(receipt['bytes'])
+        pointer={'kind':'external_preserved_read_only_capture','absolute_path':str(path),'sha256':archive_sha,'bytes':archive_bytes,'ownership':'caller/coordinator preserved original; adapter never writes or removes this file'}
     else:
-        path=root/RAW_KEY;path.parent.mkdir(parents=True,exist_ok=True)
-        if shutil.disk_usage(root).free<BYTES+300000000:raise CountySubdivisionQuarantineError('insufficient_space_for_lossless_live_capture')
-        partial=path.parent/('capture-'+uuid4().hex+'.partial');receipt={'url':URL,'observed_at':datetime.now(timezone.utc).isoformat(),'complete_body':False}
+        # Each refresh observes the producer anew, resolving the newest published
+        # edition from the producer listing. Changed/partial bodies stay.
+        depot=root/RAW_KEY_PREFIX;depot.mkdir(parents=True,exist_ok=True)
+        if shutil.disk_usage(root).free<MAX_SOURCE_BYTES+300000000:raise CountySubdivisionQuarantineError('insufficient_space_for_lossless_live_capture')
+        partial=depot/('capture-'+uuid4().hex+'.partial');receipt={'observed_at':datetime.now(timezone.utc).isoformat(),'complete_body':False}
         try:
-            with httpx.Client(follow_redirects=False,timeout=180,headers={'Accept-Encoding':'identity'}) as client,client.stream('GET',URL) as response,partial.open('xb') as output:
-                receipt.update(status=response.status_code,final_url=str(response.url),content_length=response.headers.get('content-length'),content_encoding=response.headers.get('content-encoding'),requested_accept_encoding='identity')
-                size=0
-                try:
-                    blocks=iter(response.iter_bytes(LIVE_BLOCK_BYTES))
-                    while True:
-                        # Reserve the complete bounded decoded block BEFORE a
-                        # network read. Every consumed block is then retained,
-                        # including at most one block beyond the pinned size.
-                        if shutil.disk_usage(root).free<300000000+LIVE_BLOCK_BYTES:raise CountySubdivisionQuarantineError('oversized_source_or_storage_floor')
-                        try:block=next(blocks)
-                        except StopIteration:break
-                        output.write(block)
-                        size+=len(block)
-                        if size>BYTES:raise CountySubdivisionQuarantineError('oversized_source_or_storage_floor')
-                finally:receipt['wire_bytes_downloaded']=response.num_bytes_downloaded
+            with tempfile.TemporaryDirectory(prefix='cousub-discovery-') as discovery_root, \
+                    httpx.Client(follow_redirects=False,timeout=180,headers={'Accept-Encoding':'identity'}) as client:
+                release=census_latest.discover_geodatabase(client,Path(discovery_root),GEODATABASE_PRODUCT)
+                receipt['url']=release.source_url
+                receipt['source_release']=release.as_receipt_evidence()
+                with client.stream('GET',release.source_url) as response,partial.open('xb') as output:
+                    receipt.update(status=response.status_code,final_url=str(response.url),content_length=response.headers.get('content-length'),content_encoding=response.headers.get('content-encoding'),requested_accept_encoding='identity')
+                    size=0
+                    try:
+                        blocks=iter(response.iter_bytes(LIVE_BLOCK_BYTES))
+                        while True:
+                            # Reserve the complete bounded decoded block BEFORE a
+                            # network read. Every consumed block is then retained,
+                            # including at most one block beyond the bound size.
+                            if shutil.disk_usage(root).free<300000000+LIVE_BLOCK_BYTES:raise CountySubdivisionQuarantineError('oversized_source_or_storage_floor')
+                            try:block=next(blocks)
+                            except StopIteration:break
+                            output.write(block)
+                            size+=len(block)
+                            if size>MAX_SOURCE_BYTES:raise CountySubdivisionQuarantineError('oversized_source_or_storage_floor')
+                    finally:receipt['wire_bytes_downloaded']=response.num_bytes_downloaded
             receipt.update(bytes=partial.stat().st_size,sha256=sha256_file(partial),complete_body=True)
             if receipt['content_length'] is not None and int(receipt['content_length'])!=receipt['wire_bytes_downloaded']:raise CountySubdivisionQuarantineError('encoded_transport_truncation')
-            validate_receipt(partial,receipt)
+            archive_sha=str(receipt['sha256']);archive_bytes=int(receipt['bytes'])
+            raw_key=RAW_KEY_PREFIX+'/'+archive_sha+'/original.gdb.zip'
+            path=root/raw_key
+            validate_receipt(partial,receipt,release)
             if path.exists():
-                validate_receipt(path,receipt);partial.unlink() # verified identical refresh body only
-            else:os.replace(partial,path)
+                validate_receipt(path,receipt,release);partial.unlink() # verified identical refresh body only
+            else:
+                path.parent.mkdir(parents=True,exist_ok=True);os.replace(partial,path)
         except (OSError,ValueError,httpx.HTTPError) as exc:
             receipt.update(complete_body=False,reason=str(exc),bytes=partial.stat().st_size if partial.exists() else 0,sha256=sha256_file(partial) if partial.exists() else None)
             immutable(storage,f'_quarantine/{SLUG}/acquisitions/{uuid4().hex}.json',encode({'receipt':receipt,'preserved_partial_path':str(partial)}))
             raise CountySubdivisionQuarantineError('live_capture_failed_partial_retained:'+str(exc)) from exc
-        pointer={'kind':'owned_content_addressed_capture','key':RAW_KEY,'sha256':SHA256,'bytes':BYTES}
-    immutable(storage,f'_raw-capture-references/{SLUG}/{SHA256}/receipt-{digest(encode(receipt))}.json',encode({'capture':pointer,'receipt':receipt}))
-    return path,receipt,pointer
+        pointer={'kind':'owned_content_addressed_capture','key':raw_key,'sha256':archive_sha,'bytes':archive_bytes}
+    reference=encode({'capture':pointer,'receipt':receipt})
+    immutable(storage,f'_raw-capture-references/{SLUG}/{archive_sha}/receipt-{digest(reference)}.json',reference)
+    return path,receipt,release,pointer
 
 def processing_identity():
     identity=packaged_processing_identity(Path(__file__).parents[3])
@@ -176,17 +197,20 @@ def processing_identity():
     identity['pyogrio_gdal']=str(pyogrio.__gdal_version_string__)
     return identity
 
-def uri(path):return '/vsizip/'+str(path)+'/'+GDB
+def uri(path,release):return '/vsizip/'+str(path)+'/'+release.source_file[:-4]
 
-def native_definition(path):
+def native_definition(path,release):
+    gdb_root=release.source_file[:-4]
     with zipfile.ZipFile(path) as z:
         items=z.infolist()
-        if len(items)!=84 or len({i.filename for i in items})!=84 or sum(i.file_size for i in items)!=1050730729:raise CountySubdivisionQuarantineError('complete_archive_inventory_drift')
+        if not items or len(items)>MAX_ARCHIVE_MEMBERS or len({i.filename for i in items})!=len(items):raise CountySubdivisionQuarantineError('complete_archive_inventory_drift')
+        expanded=sum(i.file_size for i in items)
+        if expanded<=0 or expanded>MAX_UNCOMPRESSED_BYTES:raise CountySubdivisionQuarantineError('archive_expansion_drift')
         for item in items:
             parts=PurePosixPath(item.filename)
-            if parts.is_absolute() or '..' in parts.parts or len(parts.parts)!=2 or parts.parts[0]!=GDB or item.flag_bits&1 or stat.S_ISLNK(item.external_attr>>16):raise CountySubdivisionQuarantineError('unsafe_archive_member')
+            if parts.is_absolute() or '..' in parts.parts or len(parts.parts)!=2 or parts.parts[0]!=gdb_root or item.flag_bits&1 or stat.S_ISLNK(item.external_attr>>16):raise CountySubdivisionQuarantineError('unsafe_archive_member')
         members={i.filename:{'bytes':i.file_size,'crc32':f'{i.CRC:08x}'} for i in items}
-    _,t=pyogrio.read_arrow(uri(path),sql='GetLayerDefinition '+LAYER)
+    _,t=pyogrio.read_arrow(uri(path,release),sql='GetLayerDefinition '+LAYER)
     if t.num_rows!=1:raise CountySubdivisionQuarantineError('missing_native_definition')
     xml=t['FIELD_1'][0].as_py();root=ET.fromstring(xml);fields={f.findtext('Name'):{n.tag:n.text for n in f if n.tag!='Name'} for f in root.findall('./GPFieldInfoExs/GPFieldInfoEx')}
     if set(fields)!=set(FIELDS) or root.findtext('OIDFieldName')!='OBJECTID' or root.findtext('HasZ')!='false' or root.findtext('HasM')!='false':raise CountySubdivisionQuarantineError('native_schema_or_geometry_declaration_drift')
@@ -196,8 +220,8 @@ def native_definition(path):
     return {'members':members,'native_layer_definition':xml,'physical_fields':fields}
 
 @contextmanager
-def source_reader(path):
-    with pyogrio.open_arrow(uri(path),layer=LAYER,return_fids=True,use_pyarrow=True,batch_size=BATCH_SIZE) as (meta,reader):
+def source_reader(path,release):
+    with pyogrio.open_arrow(uri(path,release),layer=LAYER,return_fids=True,use_pyarrow=True,batch_size=BATCH_SIZE) as (meta,reader):
         if meta['crs']!='EPSG:4269' or meta['geometry_type']!='MultiPolygon' or meta['fid_column']!='OBJECTID':raise CountySubdivisionQuarantineError('source_crs_geometry_or_identifier_drift')
         yield meta,reader
 
@@ -226,19 +250,20 @@ def scan(reader,*,check_source=False):
             for field,values in [('CLASSFP',classes),('FUNCSTAT',functions)]:values[r[field]]=values.get(r[field],0)+1
         geom=shapely.from_wkb(batch['SHAPE'].to_pylist());invalid+=int((~shapely.is_valid(geom)).sum());empty+=int(shapely.is_empty(geom).sum())
         if not all(shapely.get_type_id(geom)==6):raise CountySubdivisionQuarantineError('native_geometry_type_drift')
-    if count!=COUNT or states!=STATE_COUNTS or any(nulls.values()) or invalid or empty:raise CountySubdivisionQuarantineError('incomplete_null_invalid_or_empty_population')
+    if not FEATURE_COUNT_RANGE[0]<=count<=FEATURE_COUNT_RANGE[1] or any(nulls.values()) or invalid or empty:raise CountySubdivisionQuarantineError('incomplete_null_invalid_or_empty_population')
     return {'rows':count,'native_attributes':len(FIELDS)-1,'state_counts':states,'class_counts':classes,'function_counts':functions,'nulls':nulls,'records_sha256':h.hexdigest(),'native_wkb_bytes':wkb_bytes,'invalid_geometry_count':invalid,'empty_geometry_count':empty,'approved':False}
 
-def source_audit(path):
-    audit=native_definition(path)
-    with source_reader(path) as (_,reader):audit.update(scan(reader,check_source=True))
+def source_audit(path,release):
+    audit=native_definition(path,release)
+    with source_reader(path,release) as (_,reader):audit.update(scan(reader,check_source=True))
+    audit['source_release']=release.as_metadata()
     return audit
 
 def geo_metadata():
     return {b'geo':encode({'version':'1.1.0','primary_column':'SHAPE','columns':{'SHAPE':{'encoding':'WKB','geometry_types':['MultiPolygon'],'crs':pyproj.CRS(4269).to_json_dict()}}})}
 
-def write_parquet(path,out):
-    with source_reader(path) as (_,reader):
+def write_parquet(path,out,release):
+    with source_reader(path,release) as (_,reader):
         writer=None
         try:
             for batch in reader:
@@ -248,8 +273,8 @@ def write_parquet(path,out):
         finally:
             if writer is not None:writer.close()
 
-def write_gpkg(path,out):
-    with source_reader(path) as (_,reader):
+def write_gpkg(path,out,release):
+    with source_reader(path,release) as (_,reader):
         schema=reader.schema.set(0,pa.field('OBJECTID',pa.int32(),nullable=False))
         converted=pa.RecordBatchReader.from_batches(schema,(native_batch(batch) for batch in reader))
         pyogrio.write_arrow(converted,out,layer=LAYER,driver='GPKG',geometry_name='SHAPE',geometry_type='MultiPolygon',crs='EPSG:4269',layer_options={'FID':'_gpkg_storage_fid','GEOMETRY_NAME':'SHAPE'})
@@ -279,22 +304,22 @@ def stable_sqlite_sha256(path):
             h.update(chunk)
     return h.hexdigest()
 
-def verify_outputs(root,path,audit,*,canonical=True):
+def verify_outputs(root,path,audit,release,*,canonical=True):
     parquet=root/'geoparquet'/f'{SLUG}.parquet';f=pq.ParquetFile(parquet)
     if f.schema_arrow.metadata!=geo_metadata():raise CountySubdivisionQuarantineError('native_parquet_metadata_drift')
-    if scan(f.iter_batches(batch_size=BATCH_SIZE))!={k:v for k,v in audit.items() if k not in ('members','native_layer_definition','physical_fields')}:raise CountySubdivisionQuarantineError('parquet_all_values_ids_nulls_types_or_wkb_drift')
+    if scan(f.iter_batches(batch_size=BATCH_SIZE))!={k:v for k,v in audit.items() if k not in ('members','native_layer_definition','physical_fields','source_release')}:raise CountySubdivisionQuarantineError('parquet_all_values_ids_nulls_types_or_wkb_drift')
     with pyogrio.open_arrow(root/'geopackage'/f'{SLUG}.gpkg',layer=LAYER,use_pyarrow=True,batch_size=BATCH_SIZE) as (meta,reader):
         if meta['crs']!='EPSG:4269' or meta['geometry_type']!='MultiPolygon':raise CountySubdivisionQuarantineError('gpkg_crs_geometry_drift')
-        if scan(reader)!={k:v for k,v in audit.items() if k not in ('members','native_layer_definition','physical_fields')}:raise CountySubdivisionQuarantineError('gpkg_all_values_ids_types_or_wkb_drift')
+        if scan(reader)!={k:v for k,v in audit.items() if k not in ('members','native_layer_definition','physical_fields','source_release')}:raise CountySubdivisionQuarantineError('gpkg_all_values_ids_types_or_wkb_drift')
     if canonical:
         with tempfile.TemporaryDirectory(prefix='.cousub-canonical-',dir=root.parent) as tmp:
-            fresh=Path(tmp)/'fresh.gpkg';write_gpkg(path,fresh)
+            fresh=Path(tmp)/'fresh.gpkg';write_gpkg(path,fresh,release)
             if stable_sqlite_sha256(fresh)!=stable_sqlite_sha256(root/'geopackage'/f'{SLUG}.gpkg'):raise CountySubdivisionQuarantineError('full_gpkg_native_container_srs_sql_or_rtree_drift')
 
-def manifest_for(path,receipt,identity,pin):
+def manifest_for(path,receipt,identity,release,pin):
     m={'schema_version':1,'processor':'HIFLD Next','approved':False,'code_commit':identity['code_commit'],
         'code_identity_scheme':identity['code_identity_scheme'],
-        'title':'County Subdivisions — exact Census2024 working draft','publisher':'U.S. Census Bureau','agency':'U.S. Census Bureau','source_url':URL,'license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(path,receipt)],
+        'title':f'County Subdivisions — {release.vintage} TIGER/Line national substate GDB, working draft','publisher':'U.S. Census Bureau','agency':'U.S. Census Bureau','source_url':release.source_url,'source_release':release.as_metadata(),'license':LICENSE,'processing_fingerprint':digest(encode(identity)),'inputs':[validate_receipt(path,receipt,release)],
         'transformations':[{'operation':'extract_complete_native_FileGDB_layer','parameters':{'layer':LAYER,'all_source_identifiers':'preserved without renumbering','OID':'physical esriFieldTypeOID Length4 int32, safe decode from GDAL int64 transport','geometry':'native EPSG4269 MultiPolygon exact WKB; no repair/reprojection/simplification','areas':'native Double Float64 retained'}}],
         'unsupported_output_formats':{'shapefile_zip':'No accepted DBF schema/ID/geometry mapping. Original complete FileGDB is retained.','pmtiles':'No accepted reprojection/quantization or visualization mapping.'},
         'prebuilt_output_policy':{'schema_version':1,'formats':{'geoparquet':{'reason':'Preserve native source physical types and exact geometry. No schema/bbox additions or release acceptance.','objects':[{'path':f'geoparquet/{SLUG}.parquet',**pin}]}}}}
@@ -316,23 +341,30 @@ def original_bundle(storage,key,version,path,identity,pin,*,create=None):
         body=seal_first_construction(storage,key,version,fp,canonical_construction_bundle(version,fp,{'receipt':receipt,'capture':pointer,'manifest':manifest}))
     payload=strict_json(body)['payload']
     if set(payload)!={'receipt','capture','manifest'}:raise CountySubdivisionQuarantineError('construction_bundle_roster_drift')
-    pointer=payload['capture']
-    if pointer.get('sha256')!=SHA256 or pointer.get('bytes')!=BYTES:raise CountySubdivisionQuarantineError('original_capture_binding_drift')
-    original_path=unaliased(pointer['absolute_path'],file=True) if pointer.get('kind')=='external_preserved_read_only_capture' else Path(storage.local_dir)/RAW_KEY
-    if pointer.get('kind') not in ('external_preserved_read_only_capture','owned_content_addressed_capture') or (pointer.get('kind')=='owned_content_addressed_capture' and pointer.get('key')!=RAW_KEY):raise CountySubdivisionQuarantineError('original_capture_pointer_drift')
-    expected=manifest_for(original_path,payload['receipt'],identity,pin);actual=payload['manifest']
+    pointer=payload['capture'];original_receipt=payload['receipt']
+    # The pointer's capture identity must agree with the retained original receipt.
+    if pointer.get('sha256')!=original_receipt.get('sha256') or pointer.get('bytes')!=original_receipt.get('bytes'):raise CountySubdivisionQuarantineError('original_capture_binding_drift')
+    original_release=census_latest.geodatabase_release_from_receipt(original_receipt,GEODATABASE_PRODUCT)
+    if pointer.get('kind') not in ('external_preserved_read_only_capture','owned_content_addressed_capture'):raise CountySubdivisionQuarantineError('original_capture_pointer_drift')
+    if pointer.get('kind')=='external_preserved_read_only_capture':
+        original_path=unaliased(pointer['absolute_path'],file=True)
+    else:
+        if not (isinstance(pointer.get('key'),str) and pointer['key'].startswith(RAW_KEY_PREFIX+'/')):raise CountySubdivisionQuarantineError('original_capture_pointer_drift')
+        original_path=Path(storage.local_dir)/pointer['key']
+    expected=manifest_for(original_path,original_receipt,identity,original_release,pin);actual=payload['manifest']
     validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files'],identity=identity)
     if encode({k:v for k,v in actual.items() if k!='code_commit'})!=encode({k:v for k,v in expected.items() if k!='code_commit'}):raise CountySubdivisionQuarantineError('original_manifest_receipt_or_processing_drift')
     return payload['receipt'],pointer,actual
 
 def source_payloads(receipt,pointer,identity,audit,manifest):
-    proof={'approved':False,'status':'pass','rows':COUNT,'native_record_hash':audit['records_sha256'],'all_native_values_types_ids_nulls_wkb':'full-population exact, bounded streaming; complete native GeoPackage container canonical byte check'}
-    return {'raw/source_capture.json':encode(pointer),'raw/retrieval.json':encode(receipt),'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),'metadata/cousub_source_audit.json':encode(audit),
+    audit={**audit,'source_release':manifest['source_release']}
+    proof={'approved':False,'status':'pass','rows':audit['rows'],'native_record_hash':audit['records_sha256'],'all_native_values_types_ids_nulls_wkb':'full-population exact, bounded streaming; complete native GeoPackage container canonical byte check'}
+    return {'raw/source_capture.json':encode({**pointer,'source_release':audit['source_release']}),'raw/retrieval.json':encode(receipt),'metadata/source_manifest.json':encode(manifest),'metadata/processing_identity.json':encode(identity),'metadata/cousub_source_audit.json':encode(audit),
         'metadata/geopackage_source_fidelity.json':encode(proof),'metadata/parquet_source_fidelity.json':encode(proof),'metadata/baseline_comparison.json':encode({'schema_version':1,'approved':False,'status':'blocked','reason_codes':['baseline_source_ID_schema_type_geometry_coverage_contract_unapproved']}),'metadata/baseline_differences.jsonl':b'','metadata/baseline_field_changes.jsonl':b''}
 
-def reconcile_cache(storage,target,version,path,audit,identity,pin,original):
-    receipt,pointer,manifest=original;expected=source_payloads(receipt,pointer,identity,audit,manifest);names={*expected,f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'};ready=strict_json((target/READY).read_bytes())
-    if set(ready)!={'version','approved','processing_fingerprint','source_sha256','objects'} or ready.get('source_sha256')!=SHA256 or ready.get('version')!=version or ready.get('approved') is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready.get('objects',{}))!=names:raise CountySubdivisionQuarantineError('ready_identity_roster_drift')
+def reconcile_cache(storage,target,version,path,audit,identity,pin,release,original):
+    receipt,pointer,manifest=original;archive_sha=str(receipt['sha256']);expected=source_payloads(receipt,pointer,identity,audit,manifest);names={*expected,f'geopackage/{SLUG}.gpkg',f'geoparquet/{SLUG}.parquet'};ready=strict_json((target/READY).read_bytes())
+    if set(ready)!={'version','approved','processing_fingerprint','source_sha256','objects'} or ready.get('source_sha256')!=archive_sha or ready.get('version')!=version or ready.get('approved') is not False or ready.get('processing_fingerprint')!=digest(encode(identity)) or set(ready.get('objects',{}))!=names:raise CountySubdivisionQuarantineError('ready_identity_roster_drift')
     snapshot='metadata/source/version_'+digest(encode(manifest))+'_source_manifest.json';derived={'metadata/quality_manifest.json','metadata/data_dictionary.json','metadata/geoparquet_layout.json','metadata/source/source_manifest.json','metadata/source/quality_manifest.json','metadata/source/data_dictionary.json','metadata/resolved_provenance.json',snapshot}|STAGED_RELEASE_DERIVATIVE_NAMES
     actual={str(p.relative_to(target)) for p in target.rglob('*') if p.is_file()}
     if actual-(names|{READY}|derived) or not (names|{READY}).issubset(actual):raise CountySubdivisionQuarantineError('unknown_or_missing_candidate_object')
@@ -345,21 +377,21 @@ def reconcile_cache(storage,target,version,path,audit,identity,pin,original):
     for n in ['metadata/source/source_manifest.json',snapshot]:
         if (target/n).exists() and (target/n).read_bytes()!=encode(manifest):raise CountySubdivisionQuarantineError('source_snapshot_drift')
     if (target/'metadata/resolved_provenance.json').exists() and strict_json((target/'metadata/resolved_provenance.json').read_bytes())!=provenance_projection(load_resolved_source_manifest(storage,SLUG,SLUG,version).metadata):raise CountySubdivisionQuarantineError('resolved_provenance_drift')
-    verify_outputs(target,path,audit)
+    verify_outputs(target,path,audit,release)
 
 def stage_county_subdivisions_candidate(storage,*,archive_path=None,receipt_path=None):
-    root=local_only(storage);path,receipt,pointer=acquire(storage,archive_path,receipt_path);audit=source_audit(path);identity=processing_identity();fp=digest(encode(identity));version=f'v0.0.0-draft-census2024-{SHA256[:16]}-{fp[:16]}';prefix=f'{SLUG}/{SLUG}/{version}';key=f'_construction-state/{SLUG}/{version}.json';incident=f'_construction-incidents/{SLUG}/{version}.json'
+    root=local_only(storage);path,receipt,release,pointer=acquire(storage,archive_path,receipt_path);audit=source_audit(path,release);identity=processing_identity();fp=digest(encode(identity));version=census_latest.release_version(str(release.vintage),str(receipt['sha256']),fp);prefix=f'{SLUG}/{SLUG}/{version}';key=f'_construction-state/{SLUG}/{version}.json';incident=f'_construction-incidents/{SLUG}/{version}.json'
     with candidate_lock(root,prefix) as target:
         if target.exists():
             try:
                 with tempfile.TemporaryDirectory(prefix='.cousub-pin-',dir=target.parent) as tmp:
-                    fresh=Path(tmp)/'fresh.parquet';write_parquet(path,fresh);pin={'sha256':sha256_file(fresh),'bytes':fresh.stat().st_size}
-                original=original_bundle(storage,key,version,path,identity,pin);reconcile_cache(storage,target,version,path,audit,identity,pin,original)
+                    fresh=Path(tmp)/'fresh.parquet';write_parquet(path,fresh,release);pin={'sha256':sha256_file(fresh),'bytes':fresh.stat().st_size}
+                original=original_bundle(storage,key,version,path,identity,pin);reconcile_cache(storage,target,version,path,audit,identity,pin,release,original)
             except (ValueError,KeyError,TypeError,OSError,RuntimeError,sqlite3.Error) as exc:
                 destination=root/'_quarantine'/SLUG/('invalid-'+uuid4().hex);destination.parent.mkdir(parents=True,exist_ok=True);os.rename(target,destination)
                 immutable(storage,incident,encode({'version':version,'reason':'candidate_trust_or_fidelity_incident_requires_original_state'}))
                 immutable(storage,str(destination.relative_to(root))+'.reason.json',encode({'reason':str(exc),'approved':False,'original_prefix':prefix}));raise CountySubdivisionQuarantineError('whole_candidate_detached_intact:'+str(exc)) from exc
-            return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':COUNT,'reused':True}
+            return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':audit['rows'],'reused':True}
         # Existing outside evidence/incident is checked before expensive outputs;
         # the shared seal refuses all partial-state bootstrap on subsequent use.
         state_path=root/key
@@ -368,13 +400,13 @@ def stage_county_subdivisions_candidate(storage,*,archive_path=None,receipt_path
             private=Path(tmp)
             for part in ('raw','metadata','geopackage','geoparquet'):(private/part).mkdir()
             if shutil.disk_usage(root).free<300000000+audit['native_wkb_bytes']*3:raise CountySubdivisionQuarantineError('insufficient_space_for_bounded_native_candidate')
-            write_gpkg(path,private/'geopackage'/f'{SLUG}.gpkg');parquet=private/'geoparquet'/f'{SLUG}.parquet';write_parquet(path,parquet);verify_outputs(private,path,audit)
-            pin={'sha256':sha256_file(parquet),'bytes':parquet.stat().st_size};manifest=manifest_for(path,receipt,identity,pin)
+            write_gpkg(path,private/'geopackage'/f'{SLUG}.gpkg',release);parquet=private/'geoparquet'/f'{SLUG}.parquet';write_parquet(path,parquet,release);verify_outputs(private,path,audit,release)
+            pin={'sha256':sha256_file(parquet),'bytes':parquet.stat().st_size};manifest=manifest_for(path,receipt,identity,release,pin)
             # Complete every source-owned report and ready manifest BEFORE the
             # first durable seal. A pre-seal metadata fault creates no trust.
             proposed=source_payloads(receipt,pointer,identity,audit,manifest)
             for n,b in proposed.items():(private/n).write_bytes(b)
-            ready={'version':version,'approved':False,'processing_fingerprint':fp,'source_sha256':SHA256,'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
+            ready={'version':version,'approved':False,'processing_fingerprint':fp,'source_sha256':str(receipt['sha256']),'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
             (private/READY).write_bytes(encode(ready))
             original=original_bundle(storage,key,version,path,identity,pin,create=(receipt,pointer,manifest));old_receipt,old_pointer,manifest=original
             # Existing trusted construction keeps its ORIGINAL receipts/HEAD;
@@ -382,4 +414,4 @@ def stage_county_subdivisions_candidate(storage,*,archive_path=None,receipt_path
             for n,b in source_payloads(old_receipt,old_pointer,identity,audit,manifest).items():(private/n).write_bytes(b)
             ready['objects']={str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY}
             (private/READY).write_bytes(encode(ready));os.rename(private,target)
-    return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':COUNT,'reused':False}
+    return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':audit['rows'],'reused':False}

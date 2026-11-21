@@ -4,12 +4,13 @@ from pathlib import Path
 from dagster import AssetKey, AssetSelection, DefaultScheduleStatus, Field, RunRequest, asset, define_asset_job, schedule
 
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.sources.generalized_units import require_local, stage_generalized_units_candidate
 
 
 @asset(key=AssetKey(['ingest','generalized-units-1','generalized-units-1']),group_name='fws',compute_kind='http',
-       description='Official FWS delegated CBRS Generalized Units layer 4: 942 native NAD83 Polygon/MultiPolygon units with all nine source attributes. Faithful draft, not a legal determination or accepted HIFLD replacement.',
+       description='Official FWS delegated CBRS Generalized Units layer 4: complete capture-time native NAD83 Polygon/MultiPolygon units with all nine source attributes. Faithful draft, not a legal determination or accepted HIFLD replacement.',
        config_schema={'capture_dir':Field(str,default_value='')})
 def fws_generalized_units(context,staging_storage:StagingStorageResource)->dict:
     require_local(staging_storage)
@@ -29,3 +30,11 @@ def fws_generalized_units_draft_refresh_schedule(context):
     # Monthly integrity/availability poll; producer updates follow enacted/adopted CBRS maps.
     require_local(context.resources.staging_storage)
     return RunRequest(run_config={'ops':{fws_generalized_units.op.name:{'config':{'capture_dir':''}}}})
+
+
+generalized_units_approved_baseline_drift = register_approved_baseline_drift(
+    fws_generalized_units, 'generalized_units_approved_baseline_drift')
+ASSET_CHECKS = [generalized_units_approved_baseline_drift]
+INGEST_ASSETS = [fws_generalized_units]
+JOBS = [fws_generalized_units_draft_refresh_job]
+SCHEDULES = [fws_generalized_units_draft_refresh_schedule]

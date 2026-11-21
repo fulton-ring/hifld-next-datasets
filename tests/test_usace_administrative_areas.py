@@ -169,10 +169,10 @@ class UsaceAdministrativeAreasTests(unittest.TestCase):
         # Population and pages are represented by valid complete capture rows.
         attrs={name:None for name,_ in EXPECTED_FIELDS if name!="SHAPE"}
         features=[]
-        for oid in range(2966):
+        for oid in range(1, 2967):
             row=dict(attrs); row["OBJECTID"]=oid
             features.append({"attributes":row,"geometry":{"rings":[[[0,0],[0,1],[1,1],[1,0],[0,0]]]}})
-        docs["ids_before"]["objectIds"]=list(range(2966));docs["ids_after"]["objectIds"]=list(range(2966))
+        docs["ids_before"]["objectIds"]=list(range(1, 2967));docs["ids_after"]["objectIds"]=list(range(1, 2967))
         captures={name:(__import__("json").dumps(doc).encode(),{}) for name,doc in docs.items()}
         captures["bts_pdf"]=(b"%PDF-1.7\nsynthetic authority-document bytes",{})
         for i,start in enumerate(range(0, len(features), PAGE_SIZE)):

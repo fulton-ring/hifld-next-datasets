@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "inventory_id": "colleges-and-universities-campuses",
+  "title": "Colleges and Universities Campuses (NCES EDGE 2025-2026 reporting-institution points successor)",
+  "agency": "U.S. Department of Education",
+  "publisher": "National Center for Education Statistics (NCES)",
+  "source_url": "https://nces.ed.gov/programs/edge/data/EDGE_GEOCODE_POSTSECSCH_2526.zip",
+  "official_description_url": "https://nces.ed.gov/programs/edge/Geographic/SchoolLocations",
+  "source_relationship": "Maintainer-selected changed successor (issue #1055, 2026-11-17). The retired 2022 ORNL product carried campus polygons. This successor is the current NCES EDGE postsecondary reporting-institution point product, with national reporting-institution coverage and no campus outlines, ORNL enrichment or historical published-ID mapping.",
+  "alias_of": {
+    "dataset_slug": "colleges-and-universities",
+    "file_slug": "colleges-and-universities",
+    "ingest_asset": "ingest/colleges-and-universities/colleges-and-universities",
+    "reason": "The Colleges and Universities adapter already reads this same NCES product. The campuses dataset is a derived byte-faithful alias of its staged candidate, not a second fetch."
+  },
+  "source_observation": {
+    "observed_at": "2026-11-18T01:30:00+00:00",
+    "http_status": 200,
+    "bytes": 2651816,
+    "sha256": "4325bd9d8ab69155a95381f4a09eb62ad75e7960c288af6c192f224ca49b5114",
+    "documentation_url": "https://nces.ed.gov/programs/edge/docs/EDGE_GEOCODE_POSTSEC_TECHDOC.pdf",
+    "documentation_bytes": 477818,
+    "documentation_sha256": "77aafe42e538bfcb27227be0102c2ed3fcb5b2e47e5c78c33cf723b52ebecf42"
+  },
+  "observed_layer": {
+    "school_year": "2025-2026",
+    "feature_count": 6438,
+    "native_geometry": "Point",
+    "native_crs": "EPSG:4326",
+    "native_identifier": "UNITID",
+    "native_identifier_type": "DBF C8 text",
+    "state_and_territory_count": 59,
+    "attributes": [
+      "UNITID",
+      "NAME",
+      "STREET",
+      "CITY",
+      "STATE",
+      "ZIP",
+      "STFIP",
+      "CNTY",
+      "NMCNTY",
+      "LOCALE",
+      "LAT",
+      "LON",
+      "CBSA",
+      "NMCBSA",
+      "CBSATYPE",
+      "CSA",
+      "NMCSA",
+      "CD",
+      "SLDL",
+      "SLDU",
+      "SCHOOLYEAR"
+    ],
+    "metadata_creation": "2026-03-05",
+    "metadata_processing": "2026-03-10",
+    "exact_publication_date": null,
+    "refresh_cadence": "Annual NCES EDGE/IPEDS school-year release"
+  },
+  "license_claim": "Rights review pending. The adapter records NCES as the producer and does not claim an accepted license, attribution or redistribution decision.",
+  "acceptance": {
+    "source_release": false,
+    "source_freshness": false,
+    "historical_hifld_equivalence": false,
+    "baseline_comparison": false,
+    "schema_contract": false,
+    "id_contract": false,
+    "coverage": false,
+    "rights": false,
+    "mapping": false,
+    "release": false
+  },
+  "implementation": {
+    "asset": "src/dagster_hifld/assets/colleges_universities_campuses.py",
+    "shared_alias_helper": "src/dagster_hifld/sources/candidate_alias.py",
+    "source_adapter": "src/dagster_hifld/sources/colleges_universities.py",
+    "schedule": "colleges_universities_campuses_source_integrity_monthly",
+    "schedule_status": "STOPPED",
+    "publication_approval": false
+  }
+}

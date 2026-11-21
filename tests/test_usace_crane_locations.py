@@ -5,13 +5,16 @@ import unittest
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+COUNT = 148
+IDS = list(range(1, COUNT + 1))
+
 from dagster_hifld.assets.usace_crane_locations import (
     usace_crane_locations_complete,
     usace_crane_locations_quality,
     usace_crane_locations_release,
 )
 from dagster_hifld.sources.usace_crane_locations import (
-    BTS_ITEM_ID, EXPECTED_FIELDS, EXPECTED_IDS, _parquet_bytes, _validate,
+    BTS_ITEM_ID, EXPECTED_FIELDS, _parquet_bytes, _validate,
 )
 
 
@@ -36,7 +39,7 @@ def _valid_capture():
     }
     attribute_fields = [name for name, _kind in EXPECTED_FIELDS if name != "SHAPE"]
     features = []
-    for oid in EXPECTED_IDS:
+    for oid in IDS:
         attributes = {name: None for name in attribute_fields}
         attributes.update(OBJECTID=oid, Scale_Minimum=0, Feature_ID=f"C-{oid}")
         features.append({"attributes": attributes, "geometry": {
@@ -47,15 +50,15 @@ def _valid_capture():
     directory = {"services": [{"name": "IENC_Feature_Classes/CRANES_POINT", "type": "MapServer"}]}
     service = {"mapName": "CRANES_POINT", "layers": [{"id": 8, "name": "CRANES_POINT"}]}
     captures = {
-        "ids_seed": _capture({"objectIds": EXPECTED_IDS}),
+        "ids_seed": _capture({"objectIds": IDS}),
         "bts_item": _capture({"id": BTS_ITEM_ID, "owner": "USDOT_BTS", "description": "Bi-monthly USACE/AGC IENC updates"}),
         "service_directory": _capture(directory),
         "service_before": _capture(service), "service_after": _capture(service),
         "layer_before": _capture(layer), "layer_after": _capture(layer),
-        "count_before": _capture({"count": len(EXPECTED_IDS)}),
-        "count_after": _capture({"count": len(EXPECTED_IDS)}),
-        "ids_before": _capture({"objectIdFieldName": "OBJECTID", "objectIds": EXPECTED_IDS}),
-        "ids_after": _capture({"objectIdFieldName": "OBJECTID", "objectIds": EXPECTED_IDS}),
+        "count_before": _capture({"count": len(IDS)}),
+        "count_after": _capture({"count": len(IDS)}),
+        "ids_before": _capture({"objectIdFieldName": "OBJECTID", "objectIds": IDS}),
+        "ids_after": _capture({"objectIdFieldName": "OBJECTID", "objectIds": IDS}),
         "page_000": _capture({"fields": page_fields, "geometryType": "esriGeometryPoint",
                               "spatialReference": {"latestWkid": 4326}, "features": features}),
     }
@@ -93,7 +96,7 @@ class UsaceCraneLocationsTests(unittest.TestCase):
             _validate(captures)
 
     def test_registered_checks_keep_release_acceptance_pending(self):
-        candidate = {"feature_count": 148, "source_population_complete": True,
+        candidate = {"feature_count": 148, "source_reported_count": COUNT, "source_population_complete": True,
                      "source_null_geometry_count": 0, "source_empty_geometry_count": 0,
                      "source_invalid_geometry_count": 0, "source_schema_sha256": "x",
                      "release_accepted": False}

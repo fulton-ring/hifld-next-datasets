@@ -45,7 +45,7 @@ class ImageWorkflowTests(unittest.TestCase):
         self.assertEqual(self.workflow["permissions"], {"contents": "read"})
         publish = self.workflow["jobs"]["publish"]
         self.assertEqual(publish["permissions"]["packages"], "write")
-        self.assertEqual(publish["if"], "github.event_name != 'pull_request'")
+        self.assertEqual(publish["if"], "github.event_name != 'pull_request' && !github.event.repository.fork")
         self.assertEqual(publish["env"]["DAGSTER_IMAGE"], "${{ needs.build-only.outputs.image }}")
         for job in self.workflow["jobs"].values():
             for step in job["steps"]:

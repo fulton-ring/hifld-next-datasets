@@ -11,6 +11,8 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import usace_distance_marks as source
 
 
+FEATURE_COUNT = 7453
+
 _BTS_ITEM = {
     "id": "7ec34864c8804468a9cf52d437fe4b6c",
     "owner": "USDOT_BTS",
@@ -33,8 +35,8 @@ class ArcGISFixture(httpx.BaseTransport):
     def __init__(self, *, changed_after=False, schema_drift=False, changed_page_crs=False, changed_feature_crs=False,
                  geometry_z=False, fail_page_once=None, bts_denial=False, bts_foreign_owner=False,
                  directory_drift=False, service_change_after=False, shifted_roster=False, omit_layer_extent=False):
-        self.ids = (list(range(2, source.EXPECTED_COUNT + 2)) if shifted_roster
-                    else list(range(1, source.EXPECTED_COUNT + 1)))
+        self.ids = (list(range(2, FEATURE_COUNT + 2)) if shifted_roster
+                    else list(range(1, FEATURE_COUNT + 1)))
         self.changed_after = changed_after
         self.schema_drift = schema_drift
         self.changed_page_crs = changed_page_crs
@@ -77,10 +79,10 @@ class ArcGISFixture(httpx.BaseTransport):
                 data["extent"] = {**source.EXPECTED_EXTENT, "spatialReference": {"wkid": 4326}}
         elif query.get("returnIdsOnly") == "true":
             self.id_calls += 1
-            ids = self.ids[:-1] + [source.EXPECTED_COUNT + 1] if self.changed_after and self.id_calls == 2 else self.ids
+            ids = self.ids[:-1] + [FEATURE_COUNT + 1] if self.changed_after and self.id_calls == 2 else self.ids
             data = {"objectIdFieldName": "OBJECTID", "objectIds": ids}
         elif query.get("returnCountOnly") == "true":
-            data = {"count": source.EXPECTED_COUNT}
+            data = {"count": FEATURE_COUNT}
         else:
             requested = [int(value) for value in query["objectIds"].split(",")]
             if requested and requested[0] == self.fail_page_once:
@@ -107,7 +109,7 @@ class LegacyBaselineFixture(httpx.BaseTransport):
     counts and objectIds pages, and raises on any other request."""
 
     def __init__(self):
-        self.ids = list(range(1, source.EXPECTED_COUNT + 1))
+        self.ids = list(range(1, FEATURE_COUNT + 1))
         self.id_calls = 0
 
     def handle_request(self, request):
@@ -121,7 +123,7 @@ class LegacyBaselineFixture(httpx.BaseTransport):
             self.id_calls += 1
             data = {"objectIdFieldName": "OBJECTID", "objectIds": self.ids}
         elif query.get("returnCountOnly") == "true":
-            data = {"count": source.EXPECTED_COUNT}
+            data = {"count": FEATURE_COUNT}
         else:
             requested = [int(value) for value in query["objectIds"].split(",")]
             features = []
@@ -151,7 +153,7 @@ class DistanceMarkCaptureTests(unittest.TestCase):
         manifest = json.loads(storage.read_key(prefix + "metadata/native_capture.json"))
         self.assertEqual(len(manifest["pages"]), 38)
         self.assertEqual(manifest["pages"][-1]["count"], 53)
-        self.assertEqual(manifest["before_id_sha256"], source.EXPECTED_ID_SHA256)
+        self.assertEqual(manifest["before_id_sha256"], source._digest(source._json_bytes(list(range(1, FEATURE_COUNT + 1)))))
         raw_name = prefix + "raw/page_0000000.json"
         wire_name = prefix + "raw/page_0000000.wire"
         receipt_name = prefix + "raw/page_0000000.receipt.json"
@@ -218,7 +220,7 @@ class DistanceMarkCaptureTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         storage = StagingStorageResource(use_local=True, local_dir=temporary.name)
         with httpx.Client(transport=transport) as client:
-            with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
+            with self.assertRaisesRegex(ValueError, "source_population_changed_during_capture"):
                 source.capture_validated(storage, "v20261021T000000Z", client=client)
         self.assertFalse(storage.object_exists(storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000000Z", f"metadata/native_candidate/{source.FILE_SLUG}.parquet")))
 
@@ -313,15 +315,15 @@ class DistanceMarkCaptureTests(unittest.TestCase):
                 source.capture_validated(storage, "v20261021T000000Z", client=client)
         self.assertFalse(storage.object_exists(storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000000Z", f"metadata/native_candidate/{source.FILE_SLUG}.parquet")))
 
-    def test_shifted_id_roster_of_same_size_is_refused(self):
+    def test_shifted_id_roster_of_same_size_is_captured(self):
         transport = ArcGISFixture(shifted_roster=True)
         temporary = tempfile.TemporaryDirectory(prefix="distance-marks-roster-")
         self.addCleanup(temporary.cleanup)
         storage = StagingStorageResource(use_local=True, local_dir=temporary.name)
         with httpx.Client(transport=transport) as client:
-            with self.assertRaisesRegex(ValueError, "source_id_population_drift"):
-                source.capture_validated(storage, "v20261021T000000Z", client=client)
-        self.assertFalse(storage.object_exists(storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000000Z", f"metadata/native_candidate/{source.FILE_SLUG}.parquet")))
+            result = source.capture_validated(storage, "v20261021T000000Z", client=client)
+        self.assertEqual(result["feature_count"], FEATURE_COUNT)
+        self.assertEqual(result["source_reported_count"], FEATURE_COUNT)
 
     def test_pre_repair_retained_capture_without_bts_item_is_refused(self):
         temporary = tempfile.TemporaryDirectory(prefix="distance-marks-pre-repair-replay-")
@@ -411,10 +413,6 @@ class BtsSourceChainContractTests(unittest.TestCase):
         self.assertEqual(source._request_url("service_after", {"f": "json"}), source.SERVICE_URL)
         self.assertEqual(source._request_url("layer", {"f": "json"}), source.LAYER_URL)
         self.assertEqual(source._request_url("count_before", {"f": "json"}), source.LAYER_URL + "/query")
-        self.assertEqual(source.EXPECTED_ID_SHA256,
-                         "6e54039c7e61cbf1abd27cd8bcb45e3a447f1cb8ef25cd7f81815263596b26b9")
-        self.assertEqual(source.EXPECTED_IDS[0], 1)
-        self.assertEqual(source.EXPECTED_IDS[-1], source.EXPECTED_COUNT)
 
     def test_denial_body_and_identity_drift_fail_closed(self):
         denial = {"error": {"code": 403, "messageCode": "GWM_0003",

@@ -7,7 +7,6 @@ accepted by this draft.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -28,12 +27,16 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.epa_frs_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.capture_common import (
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
+from dagster_hifld.sources.arcgis_layer import (
+    capture_page, capture_witness, offset_layer_capture_roster,
+)
+from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "formerly-used-defense-sites-public-properties"
 FILE_SLUG = DATASET_SLUG
@@ -43,7 +46,6 @@ LAYER_URL = f"{SERVICE_URL}/{LAYER_ID}"
 LAYER_NAME = "FUDS Property Points"
 PUBLISHER = "U.S. Army Corps of Engineers (USACE)"
 SOURCE_DESCRIPTION = "The facility or site (property) that was under the jurisdiction of the Secretary of Defense and owned by, leased to, or otherwise possessed by the United States at the time of actions leading to contamination by hazardous substances.  The FUDS program is limited to those real properties that were transferred from DoD control prior to October 17, 1986.  Properties must be located within the United States."
-EXPECTED_COUNT = 10150
 EXPECTED_LAYER_ROSTER = [(0, "FUDS FY24", "Group Layer"), (1, "FUDS Property Points", "Feature Layer"),
                         (2, "FUDS Project Point", "Feature Layer"), (3, "FUDS Munitions Response Site", "Feature Layer"),
                         (4, "FUDS Property Polygon", "Feature Layer"), (5, "Interim Risk Management (IRM)", "Group Layer"),
@@ -51,20 +53,9 @@ EXPECTED_LAYER_ROSTER = [(0, "FUDS FY24", "Group Layer"), (1, "FUDS Property Poi
                         (8, "IRM Property Boundary", "Feature Layer"), (9, "FUDS Program District Boundaries", "Feature Layer"),
                         (10, "FUDS Program Division Boundaries", "Feature Layer")]
 PAGE_SIZE = 500
-EXPECTED_ID_SHA256 = "57947ba2559b0669f4c2006769e0ce43f82f287106b4b83cde4592d96020abcf"
-EXPECTED_RECORD_SHA256 = "5c948f0c2000a2adeb626005f348dca6a04de2baea2932e43eaacc824ae4fa4b"
-EXPECTED_GEOMETRY_SHA256 = "ac4a611c7fc7392597b78039973869712e0bb689230bd7b65871a13decf81a0e"
 EXPECTED_SCHEMA_SHA256 = "b9bc1b37325702200ff61f78024485cccaeed45bfb79e6669871d2d80fbc6c14"
 MAX_RESPONSE_BYTES = 8_000_000
 MAX_TOTAL_CAPTURE_BYTES = 512_000_000
-
-
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
-
-
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
@@ -72,33 +63,21 @@ def _plain_field(field: Mapping[str, object]) -> dict[str, object]:
 
 
 def _feature_urls(ids: list[int]) -> list[tuple[str, str]]:
-    urls = [
-        ("service_before", SERVICE_URL + "?f=pjson"),
-        ("layer_before", LAYER_URL + "?f=pjson"),
-        ("count_before", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnCountOnly":"true", "f":"json"})),
-        ("ids_before", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})),
-    ]
-    for offset in range(0, len(ids), PAGE_SIZE):
-        params = {"where":"1=1", "outFields":"*", "returnGeometry":"true", "returnZ":"true", "returnM":"true",
-                  "outSR":"4326", "orderByFields":"OBJECTID ASC", "resultOffset":offset,
-                  "resultRecordCount":PAGE_SIZE, "f":"json"}
-        urls.append((f"page_{offset // PAGE_SIZE:03d}", LAYER_URL + "/query?" + urlencode(params)))
-    urls.extend([
-        ("layer_after", LAYER_URL + "?f=pjson"),
-        ("service_after", SERVICE_URL + "?f=pjson"),
-        ("count_after", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnCountOnly":"true", "f":"json"})),
-        ("ids_after", LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})),
-    ])
-    return urls
+    return offset_layer_capture_roster(
+        len(ids), layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
+        page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"},
+        short_last_page=False,
+        after_order=("layer_after", "service_after", "count_after", "ids_after"),
+    )
 
 
 def _validate_captures(
     captures: dict[str, tuple[bytes, dict[str, object]]],
     *,
-    expected_count: int = EXPECTED_COUNT,
-    expected_id_sha256: str = EXPECTED_ID_SHA256,
-    expected_record_sha256: str = EXPECTED_RECORD_SHA256,
-    expected_geometry_sha256: str = EXPECTED_GEOMETRY_SHA256,
+    expected_count: int | None = None,
+    expected_id_sha256: str | None = None,
+    expected_record_sha256: str | None = None,
+    expected_geometry_sha256: str | None = None,
     expected_schema_sha256: str = EXPECTED_SCHEMA_SHA256,
 ):
     """Validate a complete capture roster against pinned or injected expectations.
@@ -108,7 +87,7 @@ def _validate_captures(
     drift branch without network traffic.
     """
     docs = {name: json.loads(body) for name, (body, _) in captures.items()}
-    page_count = (expected_count + PAGE_SIZE - 1) // PAGE_SIZE
+    page_count = (len(docs["ids_before"].get("objectIds") or []) + PAGE_SIZE - 1) // PAGE_SIZE
     expected_names = {"service_before", "layer_before", "count_before", "ids_before", "ids_seed", "layer_after", "service_after", "count_after", "ids_after", *(f"page_{i:03d}" for i in range(page_count))}
     if set(captures) != expected_names:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
@@ -142,17 +121,20 @@ def _validate_captures(
         if docs[name] != layer: raise ValueError("source_layer_metadata_changed_during_capture")
     if docs["service_after"] != service:
         raise ValueError("source_service_metadata_changed_during_capture")
-    if docs["count_before"].get("count") != expected_count or docs["count_after"].get("count") != expected_count:
+    count_before = docs["count_before"].get("count")
+    count_after = docs["count_after"].get("count")
+    if type(count_before) is not int or count_before < 1 or count_before != count_after:
         raise ValueError("source_count_drift")
     rosters = [docs[name].get("objectIds") for name in ("ids_before", "ids_seed", "ids_after")]
-    if any(not isinstance(roster, list) or len(roster) != expected_count or
-           any(type(value) is not int for value in roster) or len(set(roster)) != expected_count
+    if any(not isinstance(roster, list) or not roster
+           or any(type(value) is not int or value <= 0 for value in roster)
+           or len(set(roster)) != len(roster) or len(roster) != count_before
            for roster in rosters):
         raise ValueError("source_id_population_drift")
     if any(sorted(roster) != sorted(rosters[0]) for roster in rosters[1:]):
         raise ValueError("source_id_population_drift")
     ids = sorted(rosters[0])
-    if _sha(_canonical(ids)) != expected_id_sha256:
+    if expected_id_sha256 and _sha(_canonical(ids)) != expected_id_sha256:
         raise ValueError("source_id_roster_drift")
     if docs["ids_before"].get("objectIdFieldName") != "OBJECTID" or docs["ids_after"].get("objectIdFieldName") != "OBJECTID":
         raise ValueError("source_id_field_changed")
@@ -160,7 +142,7 @@ def _validate_captures(
         raise ValueError("source_count_changed_during_capture")
 
     features = []
-    for page_idx, offset in enumerate(range(0, expected_count, PAGE_SIZE)):
+    for page_idx, offset in enumerate(range(0, len(ids), PAGE_SIZE)):
         page = docs[f"page_{page_idx:03d}"]
         if not isinstance(page, dict) or "error" in page:
             raise ValueError("source_page_error")
@@ -168,7 +150,7 @@ def _validate_captures(
         if not isinstance(rows, list): raise ValueError("source_page_missing_features")
         expected = ids[offset:offset + PAGE_SIZE]
         actual = [r.get("attributes", {}).get("OBJECTID") for r in rows if isinstance(r, dict)]
-        full_nonfinal = len(expected) == PAGE_SIZE and offset + PAGE_SIZE < expected_count
+        full_nonfinal = len(expected) == PAGE_SIZE and offset + PAGE_SIZE < len(ids)
         exceeded = page.get("exceededTransferLimit") is True
         if actual != expected or len(rows) != len(expected):
             raise ValueError("source_page_id_slice_incomplete_or_reordered")
@@ -178,6 +160,7 @@ def _validate_captures(
         if spatial and spatial.get("latestWkid") != 4326:
             raise ValueError("source_page_spatial_reference_drift")
         features.extend(rows)
+    capture_witness(captures, captured_ids=[row["attributes"]["OBJECTID"] for row in features])
     attr_names = [field["name"] for field in fields if field["name"] != "SHAPE"]
     null_geometry = 0
     geometry_records = []
@@ -196,9 +179,9 @@ def _validate_captures(
     features.sort(key=lambda row: row["attributes"]["OBJECTID"])
     record_sha = _sha(_canonical(features))
     geometry_sha = _sha(_canonical(geometry_records))
-    if record_sha != expected_record_sha256:
+    if expected_record_sha256 and record_sha != expected_record_sha256:
         raise ValueError("source_record_value_drift")
-    if geometry_sha != expected_geometry_sha256:
+    if expected_geometry_sha256 and geometry_sha != expected_geometry_sha256:
         raise ValueError("source_geometry_or_coverage_drift")
     audit = {"source_feature_count":len(features), "source_id_sha256":_sha(_canonical(ids)),
              "source_record_sha256":record_sha, "source_geometry_sha256":geometry_sha,
@@ -254,7 +237,7 @@ def capture_fuds_public_properties(storage: StagingStorageResource, *, version: 
         raise ValueError("unsafe_local_staging_root")
     base.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(base).free < MAX_TOTAL_CAPTURE_BYTES + 64_000_000: raise ValueError("disk_floor_before_acquisition")
-    attempt_root = Path(capture_directory) if capture_directory else Path("/tmp/hifld-native-reconstruction/99/captures")
+    attempt_root = Path(capture_directory) if capture_directory else default_capture_dir("hifld-native-reconstruction", "99", "captures")
     capture_root = (attempt_root / f"{version}-{uuid4().hex}").absolute()
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
@@ -263,10 +246,12 @@ def capture_fuds_public_properties(storage: StagingStorageResource, *, version: 
     try:
         with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/fuds-public-properties-draft"}) as client:
             seed_url = LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})
-            seed_body, seed_receipt = capture_get(client, seed_url, capture_root, "ids_seed", max_bytes=MAX_RESPONSE_BYTES)
+            seed_body, seed_receipt = capture_page(client, seed_url, capture_root, "ids_seed",
+                                                   page_max_bytes=MAX_RESPONSE_BYTES)
             seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or len(seed) != EXPECTED_COUNT or
-                    any(type(value) is not int for value in seed) or len(set(seed)) != EXPECTED_COUNT):
+            if (not isinstance(seed, list) or not seed
+                    or any(type(value) is not int or value <= 0 for value in seed)
+                    or len(set(seed)) != len(seed)):
                 raise ValueError("source_seed_id_population_drift")
             captures["ids_seed"] = (seed_body, seed_receipt)
             for name, url in _feature_urls(sorted(seed)):
@@ -275,7 +260,8 @@ def capture_fuds_public_properties(storage: StagingStorageResource, *, version: 
                 per_response = min(MAX_RESPONSE_BYTES, remaining // 2)
                 if per_response <= 0:
                     raise ValueError("source_capture_total_byte_budget_exhausted")
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=per_response)
+                body, receipt = capture_page(client, url, capture_root, name,
+                                              page_max_bytes=per_response)
                 captures[name] = (body, receipt)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:
@@ -315,7 +301,7 @@ def capture_fuds_public_properties(storage: StagingStorageResource, *, version: 
     audit={**extracted["audit"],"source_fields":[_plain_field(f) for f in source_fields],"official_layer_name":LAYER_NAME,"layer_id":LAYER_ID,"service_url":SERVICE_URL,"release_date_unknown":True,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     version=content_derived_version(audit["source_record_sha256"],audit["source_geometry_sha256"],audit["source_schema_sha256"],identity)
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":EXPECTED_COUNT,"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+    (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":len(extracted["features"]),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
     state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs={rel:parquet_body,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
@@ -329,7 +315,7 @@ def capture_fuds_public_properties(storage: StagingStorageResource, *, version: 
         if not isinstance(payload,dict):raise ValueError("cached_first_candidate_invalid")
         objects=payload.get("objects",{})
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],objects,payload.get("capture_receipts",{}))
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":audit["null_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(extracted["features"]),"capture_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_null_geometry_count":audit["null_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     for relative,body in outputs.items():write_immutable(storage,f"{prefix}/{relative}",body)
     descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
     for name,descriptor in descriptors.items():
@@ -339,4 +325,4 @@ def capture_fuds_public_properties(storage: StagingStorageResource, *, version: 
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
     seal_ready_candidate(storage,state_key,version,fingerprint,payload)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":EXPECTED_COUNT,"source_null_geometry_count":audit["null_geometry_count"],"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}
+    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(extracted["features"]),"capture_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_null_geometry_count":audit["null_geometry_count"],"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}
