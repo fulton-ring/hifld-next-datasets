@@ -30,7 +30,17 @@ def _fixture_table(rows=2):
          "09", "12", "G5410", "A", "E",
          244749261.0, 709795.0, "+33.4820954", "-112.4096789",
          shapely.to_wkb(shapely.MultiPolygon([shapely.box(-112.5, 33.4, -112.4, 33.5)]))),
-    ][:rows]
+    ]
+    for i in range(2, rows):
+        lea = f"{1000 + i:05d}"
+        geoid = f"04{100 + i:04d}"
+        records.append((
+            "04", lea, geoid, f"9600000US{geoid}", f"Synthetic Secondary District {i}", "00",
+            "09", "12", "G5410", None, "E",
+            89511446.0 + i, 476695.0 + i, "+44.1829927", "-72.4750489",
+            shapely.to_wkb(shapely.MultiPolygon([shapely.box(-72.5 - i, 44.1, -72.4 - i, 44.2)])),
+        ))
+    records = records[:rows]
     columns = [
         pa.array([r[0] for r in records], type=pa.string()),
         pa.array([r[1] for r in records], type=pa.string()),

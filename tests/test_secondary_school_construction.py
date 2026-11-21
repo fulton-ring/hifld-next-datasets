@@ -130,7 +130,7 @@ class SecondarySchoolConstructionTests(unittest.TestCase):
     def test_population_outside_the_guard_is_quarantined(self):
         with patch.object(source, "CONFIG", replace(source.CONFIG, feature_count_range=(3, 10))):
             with self.assertRaisesRegex(ValueError, "source_layer_population_or_geometry_drift"):
-                source.capture(self.storage, client=self.client)
+                source.capture(self.storage, "ignored-run", self.client)
         evidence = snapshot(self.root / "stage" / "_quarantine")
         self.assertIn(self.archive, evidence.values())
         self.assertFalse((self.root / "stage" / source.DATASET_SLUG).exists())
@@ -156,7 +156,7 @@ class SecondarySchoolConstructionTests(unittest.TestCase):
         self.responses[DIRECTORY] = b'<a href="another-product.gdb.zip">other</a>'
         with self.guarded():
             with self.assertRaisesRegex(ValueError, "published_geodatabase_missing_or_ambiguous"):
-                source.capture(self.storage, client=self.client)
+                source.capture(self.storage, "ignored-run", self.client)
         self.assertEqual(self.requests, [ROOT, DIRECTORY])
         self.assertFalse((self.root / "stage" / source.DATASET_SLUG).exists())
 
