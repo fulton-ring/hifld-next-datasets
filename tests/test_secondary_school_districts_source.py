@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import tempfile
 import unittest
 import zipfile
@@ -70,8 +71,8 @@ class SecondarySchoolDistrictsSourceTests(unittest.TestCase):
                          ["OBJECTID", "STATEFP", "SCSDLEA", "GEOID", "GEOIDFQ", "NAME", "LSAD",
                           "LOGRADE", "HIGRADE", "MTFCC", "SDTYP", "FUNCSTAT", "ALAND", "AWATER",
                           "INTPTLAT", "INTPTLON", "geometry"])
-        self.assertNotIn("TGRGDB", Path(source.__file__).read_text(encoding="utf-8"))
-        self.assertNotIn("tlgdb_2024", Path(source.__file__).read_text(encoding="utf-8"))
+        self.assertIsNone(re.search(r"TGRGDB\d{2}|tlgdb_\d{4}",
+                                    Path(source.__file__).read_text(encoding="utf-8")))
 
     def test_build_geoparquet_preserves_all_attributes_ids_and_native_wkb(self):
         source_table = _fixture_table()
@@ -132,17 +133,17 @@ class SecondarySchoolDistrictsSourceTests(unittest.TestCase):
             table.column_names.index("NAME"), "NAME",
             pa.array(["Tampered District", "Agua Fria Union High School District"], type=pa.string()))
         with self.assertRaisesRegex(ValueError, "native_output_attribute_parity_drift:NAME"):
-            source._assert_full_parity(renamed, [1, 2], body, config=config)
+            source._shared._assert_full_parity(renamed, [1, 2], body, config=config)
         reidentified = table.set_column(
             table.column_names.index("GEOID"), "GEOID",
             pa.array(["0400999", "0400450"], type=pa.string()))
         with self.assertRaisesRegex(ValueError, "native_output_attribute_parity_drift:GEOID"):
-            source._assert_full_parity(reidentified, [1, 2], body, config=config)
+            source._shared._assert_full_parity(reidentified, [1, 2], body, config=config)
         altered = table.set_column(
             table.column_names.index("SCSDLEA"), "SCSDLEA",
             pa.array(["00082", "99999"], type=pa.string()))
         with self.assertRaisesRegex(ValueError, "native_output_attribute_parity_drift:SCSDLEA"):
-            source._assert_full_parity(altered, [1, 2], body, config=config)
+            source._shared._assert_full_parity(altered, [1, 2], body, config=config)
 
     def test_archive_validation_requires_one_intact_geodatabase(self):
         valid = io.BytesIO()

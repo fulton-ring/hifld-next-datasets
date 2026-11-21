@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -65,8 +66,7 @@ class UnifiedSchoolDistrictsSourceTests(unittest.TestCase):
                           "LOGRADE", "HIGRADE", "MTFCC", "SDTYP", "FUNCSTAT", "ALAND", "AWATER",
                           "INTPTLAT", "INTPTLON", "geometry"])
         module_code = Path(unified_school_districts.__file__).read_text(encoding="utf-8")
-        self.assertNotIn("TGRGDB", module_code)
-        self.assertNotIn("tlgdb_2024", module_code)
+        self.assertIsNone(re.search(r"TGRGDB\d{2}|tlgdb_\d{4}", module_code))
 
     def test_layer_specs_are_explicit_and_independent(self):
         unified = unified_school_districts.CONFIG
