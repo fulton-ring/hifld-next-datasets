@@ -1,11 +1,11 @@
 """Dagster draft assets for the DISDI public MIRTA DoD Sites points release."""
 from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.mirta_dod_sites_points import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
     EXPECTED_FID_COLUMN,
     FILE_SLUG,
     capture_mirta_dod_sites_points,
@@ -21,9 +21,11 @@ class MirtaDodSitesPointsConfig(Config):
     group_name="department_of_defense",
     compute_kind="http",
     description=(
-        "DISDI Program (OASD EI&E) public FY24 MIRTA release, DoD Sites points layer, from the "
+        "DISDI Program (OASD EI&E) public FY25 V2 MIRTA release, DoD Sites points layer, from the "
         "producer's own acq.osd.mil ZIP. Native OBJECTID feature IDs are preserved verbatim as the "
-        "leading integer column. Draft only; the DHS GII continuation of the former HIFLD "
+        "leading integer column. Completeness is witnessed at capture time (driver feature count "
+        "versus row walk bound to the OBJECTID roster); upstream edits surface as a non-blocking "
+        "approved-baseline drift warning. Draft only; the DHS GII continuation of the former HIFLD "
         "Open layer is credential-gated, the published property key is degenerate, and source, "
         "schema/ID, coverage, rights and release acceptance remain pending."
     ),
@@ -32,7 +34,7 @@ def mirta_dod_sites_points(context, config: MirtaDodSitesPointsConfig,
                            staging_storage: StagingStorageResource) -> dict:
     result = capture_mirta_dod_sites_points(
         staging_storage,
-        version="v20250902",
+        version="v20261116",
         capture_directory=config.capture_directory or None,
     )
     context.instance.add_dynamic_partitions(
@@ -45,14 +47,19 @@ def mirta_dod_sites_points(context, config: MirtaDodSitesPointsConfig,
 
 @asset_check(asset=mirta_dod_sites_points, blocking=True)
 def mirta_dod_sites_points_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_COUNT
+    count = candidate.get("feature_count")
+    reported = candidate.get("source_reported_count")
+    passed = (candidate.get("source_population_complete") is True
+              and type(count) is int and count > 0
+              and reported == count
               and candidate.get("candidate_ready") is not None
               and candidate.get("source_fid_unique") is True
               and candidate.get("source_id_degenerate") is True)
     return AssetCheckResult(
         passed=passed,
         metadata={
-            "complete_source_population": candidate.get("feature_count", 0),
+            "complete_source_population": count if count is not None else "missing",
+            "source_reported_count": reported if reported is not None else "missing",
             "source_fid_column": EXPECTED_FID_COLUMN,
             "source_fid_unique": candidate.get("source_fid_unique"),
             "source_fid_sha256": candidate.get("source_fid_sha256", "missing"),
@@ -87,6 +94,10 @@ def mirta_dod_sites_points_geometry_quality(candidate: dict) -> AssetCheckResult
     )
 
 
+mirta_dod_sites_points_approved_baseline_drift = register_approved_baseline_drift(
+    mirta_dod_sites_points, "mirta_dod_sites_points_approved_baseline_drift")
+
+
 mirta_dod_sites_points_draft_job = define_asset_job(
     "mirta_dod_sites_points_draft_refresh",
     selection=AssetSelection.assets(mirta_dod_sites_points),
@@ -100,6 +111,7 @@ mirta_dod_sites_points_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [mirta_dod_sites_points]
-ASSET_CHECKS = [mirta_dod_sites_points_complete, mirta_dod_sites_points_geometry_quality]
+ASSET_CHECKS = [mirta_dod_sites_points_complete, mirta_dod_sites_points_geometry_quality,
+                mirta_dod_sites_points_approved_baseline_drift]
 JOBS = [mirta_dod_sites_points_draft_job]
 SCHEDULES = [mirta_dod_sites_points_draft_schedule]

@@ -12,13 +12,12 @@ from dagster import (
     define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.nhd_flowline import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_nhd_flowline,
 )
@@ -33,10 +32,11 @@ class NhdFlowlineConfig(Config):
     group_name="usgs",
     compute_kind="http",
     description=(
-        "USGS 3DHP_all FeatureServer layer 50 'Flowline' (30,251,533 source "
-        "features observed 2026-11-13) as the maintained successor named by the "
+        "USGS 3DHP_all FeatureServer layer 50 'Flowline' (the complete layer: the "
+        "national 3DHP flowline network) as the maintained successor named by the "
         "HIFLD inventory entry nhd/flowline. Resumable keyset-streamed complete "
-        "capture; unapproved faithful candidate. Succession coverage, freshness, "
+        "capture over the producer's own count answers and ascending OBJECTID "
+        "walk; unapproved faithful candidate. Succession coverage, freshness, "
         "schema/ID contract, rights and release decisions remain pending."
     ),
 )
@@ -60,14 +60,15 @@ def nhd_flowline(
 
 @asset_check(asset=nhd_flowline, blocking=True)
 def nhd_flowline_complete(candidate: dict) -> AssetCheckResult:
-    passed = (
-        candidate.get("feature_count") == EXPECTED_COUNT
-        and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
-    )
+    count = candidate.get("source_reported_count")
+    passed = (candidate.get("source_population_complete") is True
+              and type(count) is int and count > 0
+              and candidate.get("feature_count") == count)
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": count if count is not None else "missing",
             "source_id_sha256": candidate.get("source_id_sha256", "missing"),
             "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_release_accepted": False,
@@ -83,6 +84,10 @@ def nhd_flowline_complete(candidate: dict) -> AssetCheckResult:
     )
 
 
+nhd_flowline_drift = register_approved_baseline_drift(
+    nhd_flowline, "nhd_flowline_drift")
+
+
 nhd_flowline_draft_job = define_asset_job(
     "nhd_flowline_draft_refresh",
     selection=AssetSelection.assets(nhd_flowline),
@@ -96,6 +101,6 @@ nhd_flowline_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [nhd_flowline]
-ASSET_CHECKS = [nhd_flowline_complete]
+ASSET_CHECKS = [nhd_flowline_complete, nhd_flowline_drift]
 JOBS = [nhd_flowline_draft_job]
 SCHEDULES = [nhd_flowline_draft_schedule]

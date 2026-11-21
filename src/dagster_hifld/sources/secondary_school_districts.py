@@ -1,4 +1,11 @@
-"""Issue #307 adapter over the shared Census school-district GDB extractor."""
+"""Issue #307 adapter over the shared Census school-district GDB extractor.
+
+Discovers the maintained nationwide school geodatabase at capture time and
+preserves its complete ``School_District_Secondary`` layer, native fields,
+identifiers, EPSG:4269 coordinates and MultiPolygon WKB in an immutable local
+candidate. No TGRGDB edition, archive digest or exact population is pinned; the
+configured population range is a plausibility guard.
+"""
 from __future__ import annotations
 
 import httpx
@@ -9,23 +16,58 @@ from dagster_hifld.sources import census_tiger_common as _shared
 
 DATASET_SLUG = "secondary-school-districts"
 FILE_SLUG = DATASET_SLUG
-SOURCE_URL = _shared.SOURCE_URL
-SOURCE_HOST = _shared.SOURCE_HOST
+SOURCE_URL = ""
+SOURCE_HOST = "www2.census.gov"
 LAYER_NAME = "School_District_Secondary"
-EXPECTED_COUNT = 481
+# Nationwide secondary school districts have sat near 480 for the current
+# decade (481 in the 2024 edition, 472 observed in 2026). The band brackets that
+# stable population while excluding a single-state subset (the largest state
+# holds far fewer) and contamination from the ~10,800-row Unified layer.
+FEATURE_COUNT_RANGE = (300, 700)
 MAX_ARCHIVE_BYTES = _shared.MAX_ARCHIVE_BYTES
 MAX_UNCOMPRESSED_BYTES = _shared.MAX_UNCOMPRESSED_BYTES
-EXPECTED_SOURCE_FIELDS = _shared.EXPECTED_SOURCE_FIELDS
-EXPECTED_OUTPUT_FIELDS = _shared.EXPECTED_OUTPUT_FIELDS
+# 2026 Census native layout for School_District_Secondary. Five fields were
+# added to the 2024 layout this adapter previously inherited: STATEFP, SCSDLEA,
+# LSAD, MTFCC and FUNCSTAT. Verified against the 2026 national school GDB.
+EXPECTED_SOURCE_FIELDS = [
+    ("STATEFP", pa.string()),
+    ("SCSDLEA", pa.string()),
+    ("GEOID", pa.string()),
+    ("GEOIDFQ", pa.string()),
+    ("NAME", pa.string()),
+    ("LSAD", pa.string()),
+    ("LOGRADE", pa.string()),
+    ("HIGRADE", pa.string()),
+    ("MTFCC", pa.string()),
+    ("SDTYP", pa.string()),
+    ("FUNCSTAT", pa.string()),
+    ("ALAND", pa.float64()),
+    ("AWATER", pa.float64()),
+    ("INTPTLAT", pa.string()),
+    ("INTPTLON", pa.string()),
+    ("SHAPE", pa.binary()),
+]
+EXPECTED_OUTPUT_FIELDS = ["OBJECTID", "STATEFP", "SCSDLEA", "GEOID", "GEOIDFQ", "NAME", "LSAD",
+                          "LOGRADE", "HIGRADE", "MTFCC", "SDTYP", "FUNCSTAT", "ALAND", "AWATER",
+                          "INTPTLAT", "INTPTLON", "geometry"]
 
 CONFIG = _shared.SchoolDistrictLayerConfig(
     dataset_slug=DATASET_SLUG,
     layer_name=LAYER_NAME,
-    expected_count=EXPECTED_COUNT,
+    expected_count=None,
     issue_number=307,
     inventory_id=DATASET_SLUG,
     title="Secondary School Districts",
-    coverage_statement="Equivalence to the historical HIFLD archive population is not established.",
+    coverage_statement=(
+        "The full producer-declared native layer population is checked against its scanned rows "
+        "and native ID roster. The configured population range is a plausibility guard, not an "
+        "assertion of the current population. All source attributes and coordinates are retained."
+    ),
+    source_url=SOURCE_URL,
+    source_vintage="",
+    expected_source_fields=list(EXPECTED_SOURCE_FIELDS),
+    discover_current=True,
+    feature_count_range=FEATURE_COUNT_RANGE,
 )
 
 
@@ -67,7 +109,7 @@ def _assert_full_parity(source: pa.Table, ids: list[int], parquet: bytes) -> Non
 
 
 def _source_records_sha256(table: pa.Table, ids: list[int]) -> str:
-    return _shared._source_records_sha256(table, ids)
+    return _shared._source_records_sha256(table, ids, CONFIG)
 
 
 def _packaged_code_sha256() -> str:

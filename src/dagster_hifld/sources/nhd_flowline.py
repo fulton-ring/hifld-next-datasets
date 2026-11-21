@@ -15,13 +15,17 @@ never fetched.
 
 Completeness at this scale is established without the producer's
 ``returnIdsOnly`` roster: that request fails server-side with an error document
-for this population (observed 2026-11-13), so the pinned feature count, strict
-ascending OBJECTID keyset walk, page-count ceiling, per-page
-``exceededTransferLimit`` consistency and the empty tail-page witness together
-prove the captured population. The per-value, per-geometry and ID-roster
-baseline digests stay unpinned until the first complete capture; they are
-computed and reported by ``build_nhd_flowline_baseline`` and then pinned as
-constants for later drift refusal.
+for this population (observed 2026-11-13), so the capture-time witness uses the
+producer's own count answers, the strict ascending OBJECTID keyset walk
+re-derived from the retained pages, the page-count ceiling, per-page
+``exceededTransferLimit`` consistency and the empty tail-page witness: the
+walk length must equal both count answers and consist of unique positive
+OBJECTIDs (``capture_completeness.validate_capture_witness``). The per-value,
+per-geometry and ID-roster baseline digests, geometry gate counts and observed
+bounds are computed from the retained pages of every capture and reported in
+the candidate audit rather than pinned; an upstream edit between captures
+changes the reported population and is witnessed by the approved-baseline
+drift check, not by a code pin.
 
 Scale note (observed 2026-11-13): one 2,500-feature keyset page carries about
 6.4-8.5 MB of JSON, so a complete raw-evidence capture is on the order of 100
@@ -53,6 +57,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -110,24 +115,19 @@ SPATIAL_METADATA_IDS = frozenset({90, 92, 94})
 SPATIAL_METADATA_NAMES = frozenset({"Spatial Metadata - DEM LimitationArea",
                                     "Spatial Metadata - EDH Workunit Area",
                                     "Spatial Metadata - Elevation Workunit Area"})
-EXPECTED_COUNT = 30_251_533
 EXPECTED_SCHEMA_SHA256 = "d0d84dca81d1be2999febebda4c6527ac6fe67cfb4470b48f6f926090a6f3c6f"
-# The per-value, geometry and ID-roster baselines cannot be computed without a
-# complete capture of the 30.25M-feature population; they are pinned here as
-# empty (checked only when non-empty) and recorded by the first complete
-# capture for the maintainer to pin.
-EXPECTED_RECORD_SHA256 = ""
-EXPECTED_GEOMETRY_SHA256 = ""
-EXPECTED_IDS_SHA256 = ""
-EXPECTED_NULL_GEOMETRY_COUNT = 0
 EXPECTED_LAYER_EXTENT = {"xmin": -19824887.0683, "ymin": -1615773.7974999994,
-                         "xmax": 20007564.228499997, "ymax": 11518862.833800001}
-BASELINE_PENDING_NOTE = (
-    "The record, geometry and ID-roster baseline digests are not pinned yet: the "
-    "30,251,533-feature population cannot be captured inside one session, so no "
-    "complete capture existed when this draft was implemented (observed "
-    "2026-11-13). build_nhd_flowline_baseline computes them from a completed "
-    "resumable capture directory for the maintainer to pin.")
+                          "xmax": 20007564.228499997, "ymax": 11518862.833800001}
+# The producer serves volatile display-only metadata (drawingInfo) in the
+# layer document; the before/after witness comparison covers only the
+# data-bearing contract fields, each pinned individually above.
+LAYER_CONTRACT_KEYS = ("id", "name", "type", "geometryType", "hasZ", "hasM",
+                        "capabilities", "advancedQueryCapabilities",
+                        "sourceSpatialReference", "extent", "fields", "maxRecordCount")
+
+
+def _layer_contract_view(document: dict) -> dict:
+    return {key: document.get(key) for key in LAYER_CONTRACT_KEYS}
 
 NATIVE_FIELDS: tuple[tuple[str, str, bool, int | None], ...] = (
     ("OBJECTID", "esriFieldTypeOID", False, None),
@@ -169,7 +169,7 @@ METADATA_NAMES = ("service_doc", "alias_service", "service_before", "layer_befor
 
 
 class NhdFlowlineError(ValueError):
-    """The source snapshot cannot be represented as the pinned Flowline candidate."""
+    """The source snapshot cannot be represented as the approved-contract Flowline candidate."""
 
     def __init__(self, code: str):
         self.code = code
@@ -382,10 +382,10 @@ def _reject_error_response(capture_root: Path, name: str, body: bytes) -> None:
         raise NhdFlowlineError("source_page_error")
 
 
-def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
+def _load_receipt_map(capture_root: Path, count: int) -> dict[str, dict[str, object]]:
     """Load every expected receipt without holding any page body in memory."""
     return {name: _load_receipt(capture_root, name)
-            for name in _expected_capture_names(EXPECTED_COUNT)}
+            for name in _expected_capture_names(count)}
 
 
 class _RetainedCaptureViews(Mapping):
@@ -474,13 +474,19 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         raise NhdFlowlineError("source_schema_drift")
     if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise NhdFlowlineError("source_schema_baseline_drift")
-    if docs["count_before"].get("count") != EXPECTED_COUNT:
+    count_before = docs["count_before"].get("count")
+    if type(count_before) is not int or count_before <= 0:
         raise NhdFlowlineError("source_count_drift")
-    for name in ("layer_after", "service_after", "count_after"):
+    count_after = json.loads(_read_capture(capture_root, "count_after")[0]).get("count")
+    if type(count_after) is not int or count_after != count_before:
+        raise NhdFlowlineError("source_metadata_or_count_changed_during_capture")
+    for name in ("layer_after", "service_after"):
         body, _receipt = _read_capture(capture_root, name)
-        mirror = {"layer_after": "layer_before", "service_after": "service_before",
-                  "count_after": "count_before"}[name]
-        if json.loads(body) != docs[mirror]:
+        document = json.loads(body)
+        if name == "layer_after":
+            if _layer_contract_view(document) != _layer_contract_view(docs["layer_before"]):
+                raise NhdFlowlineError("source_layer_metadata_changed_during_capture")
+        elif document != docs["service_before"]:
             raise NhdFlowlineError("source_metadata_or_count_changed_during_capture")
     after_fields = json.loads(_read_capture(capture_root, "layer_after")[0]).get("fields")
     if not isinstance(after_fields, list) or [_plain_field(x) for x in after_fields] != fields:
@@ -518,7 +524,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
     vertex_count = 0
     featuretype_distribution: dict[object, int] = {}
     bounds_extrema: list[float] | None = None
-    page_bodies = [name for name in _expected_capture_names(EXPECTED_COUNT)
+    page_bodies = [name for name in _expected_capture_names(count_before)
                    if name.startswith("page_") and name != "page_tail"]
     try:
         for page_name in page_bodies:
@@ -583,18 +589,19 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
         if writer is not None:
             writer.close()
             writer = None
-        if len(ids) != EXPECTED_COUNT or last_objectid == 0:
+        if last_objectid == 0:
             raise NhdFlowlineError("source_page_population_incomplete")
-        ids_sha = _sha(_canonical(list(ids)))
+        # The producer cannot enumerate this population (returnIdsOnly fails
+        # server-side, observed 2026-11-13), so the walk re-derived from the
+        # retained pages is the ID roster witness: its length must equal both
+        # count answers and consist of unique positive OBJECTIDs.
+        walk_ids = list(ids)
+        try:
+            validate_capture_witness(count_before, walk_ids, count_after, walk_ids)
+        except ValueError as exc:
+            raise NhdFlowlineError("source_count_or_id_roster_drift") from exc
+        ids_sha = _sha(_canonical(walk_ids))
         record_sha, geometry_sha = record_hash.hexdigest(), geometry_hash.hexdigest()
-        if EXPECTED_RECORD_SHA256 and record_sha != EXPECTED_RECORD_SHA256:
-            raise NhdFlowlineError("source_value_or_geometry_baseline_drift")
-        if EXPECTED_GEOMETRY_SHA256 and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-            raise NhdFlowlineError("source_geometry_or_coverage_drift")
-        if EXPECTED_IDS_SHA256 and ids_sha != EXPECTED_IDS_SHA256:
-            raise NhdFlowlineError("source_id_roster_drift")
-        if null_geometry_count != EXPECTED_NULL_GEOMETRY_COUNT:
-            raise NhdFlowlineError("source_null_geometry_count_drift")
         if tmp_path is not None:
             tmp_path.replace(sink_path)
     finally:
@@ -614,6 +621,7 @@ def _stream_validate(capture_root: Path, *, parquet_sink: Path | None) -> dict[s
             "null_geometry_count": null_geometry_count, "parquet_path": sink_path,
             "path_count": path_count, "vertex_count": vertex_count,
             "featuretype_distribution": featuretype_distribution, "observed_bounds": bounds,
+            "feature_count": len(ids), "min_objectid": ids[0],
             "max_objectid": last_objectid}
 
 
@@ -680,7 +688,7 @@ def fetch_nhd_flowline_pages(capture_root: Path, *, client: httpx.Client | None 
             if name != "service_doc":
                 _reject_error_response(capture_root, name, retained[name][0])
         count_before = json.loads(retained["count_before"][0]).get("count")
-        if count_before != EXPECTED_COUNT:
+        if type(count_before) is not int or count_before <= 0:
             raise NhdFlowlineError("source_count_drift")
         last_objectid = pages[-1]["last_objectid"] if pages else 0
         while not (capture_root / "page_tail.body").exists():
@@ -712,8 +720,8 @@ def fetch_nhd_flowline_pages(capture_root: Path, *, client: httpx.Client | None 
                           "exceeded_transfer_limit": more, "captured_at": receipt["observed_at"],
                           "body_sha256": _sha(body)})
             _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
-            if len(pages) > (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE:
-                raise NhdFlowlineError("source_page_count_exceeds_pinned_population")
+            if len(pages) > (count_before + PAGE_SIZE - 1) // PAGE_SIZE:
+                raise NhdFlowlineError("source_page_count_exceeds_reported_count")
             if len(features) < PAGE_SIZE or more is False:
                 tail_body, tail_receipt = _retained_or_fetch(active, capture_root, "page_tail",
                                                              _page_url(last_objectid))
@@ -764,8 +772,13 @@ def fetch_nhd_flowline_pages(capture_root: Path, *, client: httpx.Client | None 
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_ids_sha256": extracted["ids_sha"],
         "source_schema_sha256": extracted["schema_sha"],
-        "source_feature_count": EXPECTED_COUNT,
+        "source_feature_count": extracted["feature_count"],
+        "source_reported_count": extracted["feature_count"],
+        "source_min_objectid": extracted["min_objectid"],
         "source_max_objectid": extracted["max_objectid"],
+        "source_null_geometry_count": extracted["null_geometry_count"],
+        "source_featuretype_distribution": extracted["featuretype_distribution"],
+        "observed_bounds": extracted["observed_bounds"],
         "resumed_pages": len(pages),
         "first_captured_at": first_captured_at, "last_captured_at": last_captured_at,
     }) + b"\n")
@@ -789,22 +802,31 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     parquet_descriptor = _parquet_descriptor(parquet_path)
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     if storage.object_snapshot(state_key) is not None:
+        # The reuse path must report the same validated digests the fresh seal
+        # reported, so the blocking check keeps its ID evidence for a reused
+        # candidate too.
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
-             "source_schema_sha256": extracted["schema_sha"]},
+             "source_schema_sha256": extracted["schema_sha"],
+             "source_ids_sha256": extracted["ids_sha"],
+             "feature_count": extracted["feature_count"],
+             "source_null_geometry_count": extracted["null_geometry_count"]},
             parquet_descriptor)
     audit = {
-        "source_feature_count": EXPECTED_COUNT, "source_id_sha256": extracted["ids_sha"],
+        "source_feature_count": extracted["feature_count"],
+        "source_reported_count": extracted["feature_count"],
+        "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
         "source_geometry_sha256": extracted["geometry_sha"],
         "source_schema_sha256": extracted["schema_sha"], "source_crs_epsg": SOURCE_CRS_WKID,
         "source_layer_native_sr": NATIVE_LAYER_SR,
         "geometry_type": "LineString ZM / MultiLineString ZM",
         "null_geometry_count": extracted["null_geometry_count"],
-        "unique_source_id_count": EXPECTED_COUNT,
+        "unique_source_id_count": extracted["feature_count"],
         "source_path_count": extracted["path_count"],
         "source_vertex_count": extracted["vertex_count"],
+        "source_min_objectid": extracted["min_objectid"],
         "source_max_objectid": extracted["max_objectid"],
         "source_featuretype_distribution": extracted["featuretype_distribution"],
         "observed_bounds": extracted["observed_bounds"],
@@ -816,10 +838,6 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "crosswalk_doi": "10.3886/E241367V1",
         "crosswalk_layer_row": "3D Hydrography Program (3DHP) Layers",
         "crosswalk_open_id": "650c07e542fa43b6a327c7f683681712",
-        "baseline_pending_note": BASELINE_PENDING_NOTE,
-        "baseline_pending_complete_capture": bool(
-            not EXPECTED_RECORD_SHA256 or not EXPECTED_GEOMETRY_SHA256
-            or not EXPECTED_IDS_SHA256),
         "producer_service_refresh_statement": EXPECTED_COPYRIGHT_TEXT,
         "source_release_date": None,
         "source_release_date_unknown_reason":
@@ -828,21 +846,23 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
             "featuredate values are core-database load dates; neither is a dataset release "
             "date. Quarterly service updates and annual staged products are documented by USGS.",
         "pagination": {"mode": "objectid_keyset_asc", "page_size": PAGE_SIZE,
-                       "pages": (EXPECTED_COUNT + PAGE_SIZE - 1) // PAGE_SIZE,
-                       "tail_witness_page": True, "resumable": True,
-                       "resumed_pages": resumed_pages,
-                       "id_roster_enumeration_note":
-                           "returnIdsOnly over the full population fails server-side "
-                           "(error 500 observed 2026-11-13), so completeness uses the pinned "
-                           "count, strict ascending OBJECTID walk, page-count ceiling and the "
-                           "empty tail-page witness instead of an enumerated roster."},
+                        "pages": (extracted["feature_count"] + PAGE_SIZE - 1) // PAGE_SIZE,
+                        "tail_witness_page": True, "resumable": True,
+                        "resumed_pages": resumed_pages,
+                        "id_roster_enumeration_note":
+                            "returnIdsOnly over the full population fails server-side "
+                            "(error 500 observed 2026-11-13), so completeness uses the "
+                            "producer's own count answers, the strict ascending OBJECTID "
+                            "walk re-derived from the retained pages, the page-count ceiling "
+                            "and the empty tail-page witness instead of an enumerated "
+                            "roster."},
         "capture_window_utc": {"first_page": first_captured_at, "last_page": last_captured_at},
         "freshness_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
         "mapping_approved": False, "release_accepted": False,
     }
     source_objects = {parquet_name: parquet_descriptor}
-    receipts = _load_receipt_map(capture_root)
+    receipts = _load_receipt_map(capture_root, extracted["feature_count"])
     manifest = {
         "schema_version": 1, "approved": False,
         "title": "Flowline (USGS 3DHP_all)",
@@ -968,7 +988,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
+            "feature_count": extracted["feature_count"],
+            "source_reported_count": extracted["feature_count"],
+            "source_population_complete": True,
             "source_null_geometry_count": extracted["null_geometry_count"],
             "source_id_sha256": extracted["ids_sha"],
             "source_schema_sha256": extracted["schema_sha"],
@@ -1002,8 +1024,10 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT,
-            "source_null_geometry_count": EXPECTED_NULL_GEOMETRY_COUNT,
+            "feature_count": audit["feature_count"],
+            "source_reported_count": audit["feature_count"],
+            "source_population_complete": True,
+            "source_null_geometry_count": audit["source_null_geometry_count"],
             "source_id_sha256": audit.get("source_ids_sha256", ""),
             "source_schema_sha256": audit["source_schema_sha256"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
@@ -1061,12 +1085,4 @@ def capture_nhd_flowline(storage: StagingStorageResource, *, version: str,
         raise
 
 
-def build_nhd_flowline_baseline(capture_root: str) -> dict[str, object]:
-    """Recompute the content baseline from a completed capture (used to pin constants)."""
-    extracted = _stream_validate(Path(capture_root).absolute(), parquet_sink=None)
-    return {"source_record_sha256": extracted["record_sha"],
-            "source_geometry_sha256": extracted["geometry_sha"],
-            "source_ids_sha256": extracted["ids_sha"],
-            "source_schema_sha256": extracted["schema_sha"],
-            "source_feature_count": EXPECTED_COUNT,
-            "source_max_objectid": extracted["max_objectid"]}
+
