@@ -34,8 +34,16 @@ def page():
 def decode(p):return f.decode_pages([p],[7000,7001])
 
 
+def ordered_json(value):
+    return (json.dumps(value,separators=(',',':'),allow_nan=False)+'\n').encode()
+
+
 def synthetic_capture_bodies(ids):
-    """Full synthetic retained capture {name: (body, receipt)} for one roster."""
+    """Full synthetic retained capture {name: (body, receipt)} for one roster.
+
+    Page bodies use an order-preserving dump because decode_pages requires the
+    original feature attribute order; canonical encode() sorts keys.
+    """
     ids=list(ids);n=len(ids)
     pages=f.derive_pages(ids);urls=f.capture_urls(pages);bodies={}
     for name in urls:
@@ -55,7 +63,7 @@ def synthetic_capture_bodies(ids):
             for oid in chunk:
                 attrs={d['name']:None for d in f.FIELD_DEFINITIONS};attrs.update(YEAR=-4360 if oid==ids[0] else None,MO=None,DAY=4 if oid==ids[0] else None,VEI=None,VOL_ID=101.0,NUM='0101-06=',NAME=' literal name ',COMMENTS='<p> 001 literal & text </p>',TIME_ERUPT='D1',SIG_ID=42,TSU_ID=2800,HAZ_EVENT_ID=1,OBJECTID=oid,ID=10106,COUNTRY='Explicit synthetic country')
                 features.append({'attributes':attrs,'geometry':{'x':1669681.0424083103,'y':4543887.574736076}})
-            body=f.encode({'objectIdFieldName':'OBJECTID','geometryType':'esriGeometryPoint','spatialReference':{'wkid':102100,'latestWkid':3857},'fields':copy.deepcopy(f.PAGE_FIELDS),'features':features,'exceededTransferLimit':False})
+            body=ordered_json({'objectIdFieldName':'OBJECTID','geometryType':'esriGeometryPoint','spatialReference':{'wkid':102100,'latestWkid':3857},'fields':copy.deepcopy(f.PAGE_FIELDS),'features':features,'exceededTransferLimit':False})
         bodies[name]=body
     return {name:(bodies[name],{'url':urls[name],'final_url':urls[name],'status':200,'bytes':len(bodies[name]),'sha256':f.digest(bodies[name]),'complete_body':True,'observed_at':'2026-10-19T00:00:00+00:00'})for name in urls}
 
