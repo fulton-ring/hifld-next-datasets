@@ -1,13 +1,11 @@
 """Draft Dagster assets for the FEMA NFHL LOMAs capture."""
 from dagster import AssetCheckResult, AssetKey, AssetSelection, Config, DefaultScheduleStatus, ScheduleDefinition, asset, asset_check, define_asset_job
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.nfhl_lomas import (
     DATASET_SLUG,
-    EXPECTED_COUNT,
-    EXPECTED_NAN_GEOMETRY_COUNT,
-    EXPECTED_NULL_GEOMETRY_COUNT,
     FILE_SLUG,
     capture_nfhl_lomas,
 )
@@ -23,8 +21,10 @@ class NfhlLomasConfig(Config):
     compute_kind="http",
     description=(
         "FEMA NFHL MapServer layer 34 'LOMAs' from the producer's own REST publication. "
-        "Fails closed while the population pins are unestablished; once pinned, candidate extraction "
-        "only — release date, freshness, rights, and schema/ID acceptance remain pending."
+        "Completeness is witnessed at capture time by the producer's own before/after count "
+        "and ID rosters plus the walked population; upstream edits surface as a non-blocking "
+        "approved-baseline drift warning. Candidate extraction only — release date, "
+        "freshness, rights, and schema/ID acceptance remain pending."
     ),
 )
 def fema_nfhl_lomas(context, config: NfhlLomasConfig, staging_storage: StagingStorageResource) -> dict:
@@ -43,18 +43,20 @@ def fema_nfhl_lomas(context, config: NfhlLomasConfig, staging_storage: StagingSt
 
 @asset_check(asset=fema_nfhl_lomas, blocking=True)
 def fema_nfhl_lomas_complete(candidate: dict) -> AssetCheckResult:
-    passed = (EXPECTED_COUNT is not None
-              and candidate.get("feature_count") == EXPECTED_COUNT
-              and candidate.get("candidate_ready") is not None
-              and candidate.get("source_null_geometry_count") == EXPECTED_NULL_GEOMETRY_COUNT
-              and candidate.get("source_nan_string_geometry_count") == EXPECTED_NAN_GEOMETRY_COUNT)
+    count = candidate.get("source_reported_count")
+    passed = (candidate.get("source_population_complete") is True
+              and type(count) is int and count > 0
+              and candidate.get("feature_count") == count
+              and candidate.get("candidate_ready") is not None)
     return AssetCheckResult(
         passed=passed,
         metadata={
             "complete_source_population": candidate.get("feature_count", 0),
+            "source_reported_count": count if count is not None else "missing",
+            "source_id_sha256": candidate.get("source_id_sha256", "missing"),
+            "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
             "source_null_geometry_count": candidate.get("source_null_geometry_count", 0),
             "source_nan_string_geometry_count": candidate.get("source_nan_string_geometry_count", 0),
-            "population_pins_established": EXPECTED_COUNT is not None,
             "technical_geometry_quality_accepted": False,
             "source_release_accepted": False,
             "source_freshness_accepted": False,
@@ -65,6 +67,10 @@ def fema_nfhl_lomas_complete(candidate: dict) -> AssetCheckResult:
             "release_accepted": False,
         },
     )
+
+
+fema_nfhl_lomas_approved_baseline_drift = register_approved_baseline_drift(
+    fema_nfhl_lomas, "fema_nfhl_lomas_approved_baseline_drift")
 
 
 nfhl_lomas_draft_job = define_asset_job(
@@ -80,6 +86,6 @@ nfhl_lomas_draft_schedule = ScheduleDefinition(
 )
 
 INGEST_ASSETS = [fema_nfhl_lomas]
-ASSET_CHECKS = [fema_nfhl_lomas_complete]
+ASSET_CHECKS = [fema_nfhl_lomas_complete, fema_nfhl_lomas_approved_baseline_drift]
 JOBS = [nfhl_lomas_draft_job]
 SCHEDULES = [nfhl_lomas_draft_schedule]

@@ -33,11 +33,12 @@ def _fixture():
         {"name": "SHAPE", "type": "esriFieldTypeGeometry", "alias": "SHAPE", "domain": None},
         {"name": "GlobalID", "type": "esriFieldTypeGlobalID", "alias": "GlobalID", "length": 38, "domain": None},
     ]
+    crs = {"wkid": 4269, "latestWkid": 4269}
     layer = {"id": 34, "name": "LOMAs", "type": "Feature Layer", "geometryType": "esriGeometryPoint",
              "maxRecordCount": 2000, "advancedQueryCapabilities": {"supportsPagination": True},
-             "sourceSpatialReference": {"wkid": 4269, "latestWkid": 4269},
+             "sourceSpatialReference": crs,
              "extent": {"xmin": -100.0, "ymin": 20.0, "xmax": -60.0, "ymax": 45.0,
-                        "spatialReference": {"wkid": 4269, "latestWkid": 4269}},
+                        "spatialReference": crs},
              "fields": fields}
     service = {"mapName": "NFHL",
                "layers": [{"id": 34, "name": "LOMAs", "type": "Feature Layer"}]}
@@ -53,9 +54,6 @@ def _fixture():
         {"attributes": attrs(12), "geometry": {"x": "NaN", "y": "NaN"}},
     ]
     ids = [10, 11, 12]
-    schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f} for f in fields]
-    geom = [[10, -86.41197568433415, 34.148463868949534], [11, None, None], [12, "NaN", "NaN"]]
-    crs = {"wkid": 4269, "latestWkid": 4269}
     page0 = {"features": features[:2], "spatialReference": crs, "exceededTransferLimit": True}
     page1 = {"features": features[2:], "spatialReference": crs}
     docs = {"service_before": service, "service_after": service, "layer_before": layer, "layer_after": layer,
@@ -67,25 +65,21 @@ def _fixture():
     captures = {name: (json.dumps(doc, separators=(",", ":"), ensure_ascii=False).encode(), {"status": 200})
                 for name, doc in docs.items()}
     captures["service_doc"] = (SERVICE_DOC_BODY, {"status": 200})
-    return fields, features, captures, schema, geom
+    return fields, features, captures
 
 
-def _pinset():
-    _, features, _, schema, geom = _fixture()
-    return _pins(features, schema, geom)
+def _contract(fields):
+    """The module's remaining producer contracts, patched to the fixture's values.
 
-
-def _pins(features, schema, geom):
-    return dict(EXPECTED_COUNT=3, PAGE_SIZE=2,
-                EXPECTED_NULL_GEOMETRY_COUNT=1, EXPECTED_NAN_GEOMETRY_COUNT=1,
-                EXPECTED_ID_SHA256=hashlib.sha256(_canonical([10, 11, 12])).hexdigest(),
-                EXPECTED_RECORD_SHA256=hashlib.sha256(_canonical(features)).hexdigest(),
-                EXPECTED_GEOMETRY_SHA256=hashlib.sha256(_canonical(geom)).hexdigest(),
+    Only the schema pin and the service layer roster are code pins; the
+    population is witnessed at capture time, and the PAGE_SIZE patch matches
+    the fixture's two-record pages.
+    """
+    schema = [{k: f[k] for k in ("name", "type", "alias", "length", "nullable", "domain") if k in f}
+              for f in fields]
+    return dict(PAGE_SIZE=2,
                 EXPECTED_SCHEMA_SHA256=hashlib.sha256(_canonical(schema)).hexdigest(),
-                EXPECTED_SERVICE_LAYER_ROSTER=[(34, "LOMAs", "Feature Layer")],
-                EXPECTED_LAYER_EXTENT={"xmin": -100.0, "ymin": 20.0, "xmax": -60.0, "ymax": 45.0},
-                EXPECTED_OBSERVED_BOUNDS={"xmin": -86.41197568433415, "ymin": 34.148463868949534,
-                                          "xmax": -86.41197568433415, "ymax": 34.148463868949534})
+                EXPECTED_SERVICE_LAYER_ROSTER=[(34, "LOMAs", "Feature Layer")])
 
 
 class _Attempt:
@@ -101,9 +95,9 @@ class _Attempt:
             (self.capture_root / f"{name}.wire").write_bytes(body)
             self.receipts[name] = receipt
 
-    def validate(self, parquet_name=None):
-        parquet_path = self.capture_root / parquet_name if parquet_name else None
-        return source._validate_and_extract(self.capture_root, self.receipts, parquet_path=parquet_path)
+    def validate(self, parquet_name="candidate.parquet"):
+        return source._validate_and_extract(self.capture_root, self.receipts,
+                                            parquet_path=self.capture_root / parquet_name)
 
     def __enter__(self):
         return self
@@ -115,8 +109,8 @@ class _Attempt:
 
 class NfhlLomasValidationTests(unittest.TestCase):
     def test_native_fields_and_null_and_nan_geometry_preserved_in_parquet(self):
-        fields, features, captures, schema, geom = _fixture()
-        with patch.multiple(source, **_pins(features, schema, geom)), _Attempt(captures) as attempt:
+        fields, features, captures = _fixture()
+        with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
             _, original_fields, extracted = attempt.validate(parquet_name="candidate.parquet")
             table = pq.read_table(attempt.capture_root / "candidate.parquet")
         self.assertEqual(original_fields[0]["name"], "OBJECTID")
@@ -134,101 +128,81 @@ class NfhlLomasValidationTests(unittest.TestCase):
         self.assertEqual(extracted["audit"]["nan_string_geometry_count"], 1)
 
     def test_streamed_candidate_keeps_one_row_group_per_page(self):
-        _, _, captures, schema, geom = _fixture()
-        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
+        fields, _, captures = _fixture()
+        with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
             attempt.validate(parquet_name="candidate.parquet")
             parquet = pq.ParquetFile(attempt.capture_root / "candidate.parquet")
         self.assertEqual(parquet.num_row_groups, 2)
         self.assertEqual(parquet.metadata.num_rows, 3)
 
     def test_id_roster_response_order_is_not_population_drift(self):
-        _, _, captures, schema, geom = _fixture()
+        fields, _, captures = _fixture()
         for name, ids in (("ids_seed", [12, 10, 11]), ("ids_before", [11, 12, 10]), ("ids_after", [10, 11, 12])):
             doc = json.loads(captures[name][0])
             doc["objectIds"] = ids
             captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
-        features = [row for i in range(2) for row in json.loads(captures[f"page_{i:03d}"][0])["features"]]
-        record_sha = hashlib.sha256(_canonical(features)).hexdigest()
-        with patch.multiple(source, **{**_pins(features, schema, geom), "EXPECTED_RECORD_SHA256": record_sha}), \
-                _Attempt(captures) as attempt:
+        with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
             _, _, extracted = attempt.validate()
         self.assertEqual(extracted["ids"], [10, 11, 12])
 
+    def test_id_roster_change_between_witnesses_is_rejected(self):
+        fields, _, captures = _fixture()
+        doc = json.loads(captures["ids_after"][0])
+        doc["objectIds"] = [10, 11]
+        captures["ids_after"] = (json.dumps(doc, separators=(",", ":")).encode(), {"status": 200})
+        with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
+            with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+                attempt.validate()
+
     def test_missing_service_documentation_link_is_rejected(self):
-        _, _, captures, _, _ = _fixture()
+        fields, _, captures = _fixture()
         captures["service_doc"] = (b"<html>unrelated</html>", {"status": 200})
-        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
+        with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "fema_service_documentation_link_drift"):
                 attempt.validate()
 
     def test_crs_drift_is_rejected(self):
-        _, _, captures, _, _ = _fixture()
+        fields, _, captures = _fixture()
         page = json.loads(captures["page_000"][0])
         page["spatialReference"] = {"wkid": 4326, "latestWkid": 4326}
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
+        with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_page_000_crs_drift"):
                 attempt.validate()
 
     def test_layer_geometry_type_drift_is_rejected(self):
-        _, _, captures, _, _ = _fixture()
+        fields, _, captures = _fixture()
         layer = json.loads(captures["layer_before"][0])
         layer["geometryType"] = "esriGeometryPolyline"
         captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
+        with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "exact_nfhl_lomas_layer_metadata_drift"):
                 attempt.validate()
 
     def test_unexpected_field_is_quarantined_by_contract(self):
-        _, _, captures, _, _ = _fixture()
+        fields, _, captures = _fixture()
         layer = json.loads(captures["layer_before"][0])
         layer["fields"].append({"name": "SURPRISE", "type": "esriFieldTypeString"})
         captures["layer_before"] = (json.dumps(layer, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
+        with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_schema_contract_drift"):
                 attempt.validate()
 
     def test_missing_page_id_is_not_accepted(self):
-        _, _, captures, _, _ = _fixture()
+        fields, _, captures = _fixture()
         page = json.loads(captures["page_000"][0])
         page["features"] = page["features"][:1]
         captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
+        with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_page_id_slice_incomplete_or_reordered"):
                 attempt.validate()
 
-    def test_record_value_change_is_detected(self):
-        _, _, captures, _, _ = _fixture()
-        page = json.loads(captures["page_000"][0])
-        page["features"][0]["attributes"]["STATUS"] = "Changed"
-        captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
-            with self.assertRaisesRegex(ValueError, "source_record_value_drift"):
-                attempt.validate()
-
-    def test_coordinate_change_is_detected(self):
-        _, _, captures, _, _ = _fixture()
-        page = json.loads(captures["page_000"][0])
-        page["features"][0]["geometry"]["y"] = 34.2
-        captures["page_000"] = (json.dumps(page, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
-            with self.assertRaisesRegex(ValueError, "source_geometry_or_coverage_drift"):
-                attempt.validate()
-
-    def test_observed_coverage_drift_is_detected(self):
-        _, _, captures, _, _ = _fixture()
-        pins = _pinset()
-        pins["EXPECTED_OBSERVED_BOUNDS"] = {"xmin": -86.5, "ymin": 34.1, "xmax": -86.4, "ymax": 34.2}
-        with patch.multiple(source, **pins), _Attempt(captures) as attempt:
-            with self.assertRaisesRegex(ValueError, "source_observed_coverage_drift"):
-                attempt.validate()
-
     def test_final_page_cannot_claim_transfer_truncation(self):
-        _, _, captures, _, _ = _fixture()
+        fields, _, captures = _fixture()
         final = json.loads(captures["page_001"][0])
         final["exceededTransferLimit"] = True
         captures["page_001"] = (json.dumps(final, separators=(",", ":")).encode(), {"status": 200})
-        with patch.multiple(source, **_pinset()), _Attempt(captures) as attempt:
+        with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
             with self.assertRaisesRegex(ValueError, "source_page_unexpected_exceeded_transfer_limit"):
                 attempt.validate()
 
@@ -260,57 +234,21 @@ class EmptyClient:
         return False
 
 
-class NfhlLomasCaptureTests(unittest.TestCase):
-    def test_pins_pending_completion_writes_contract_and_stages_nothing(self):
-        import tempfile
-        from pathlib import Path
-        fields, features, fixture_captures, schema, geom = _fixture()
-        bodies = {name: body for name, (body, _) in fixture_captures.items()}
-        fake, requested = _fake_capture_get(bodies)
-        pins = {"PAGE_SIZE": 2, "DOC_CAPTURE_BASE_DELAY_SECONDS": 0.01, "PAGE_CAPTURE_BASE_DELAY_SECONDS": 0.01,
-                "EXPECTED_SERVICE_LAYER_ROSTER": [(34, "LOMAs", "Feature Layer")],
-                "EXPECTED_COUNT": None, "EXPECTED_ID_SHA256": None, "EXPECTED_RECORD_SHA256": None,
-                "EXPECTED_GEOMETRY_SHA256": None, "EXPECTED_SCHEMA_SHA256": None,
-                "EXPECTED_LAYER_EXTENT": {"xmin": -100.0, "ymin": 20.0, "xmax": -60.0, "ymax": 45.0},
-                "EXPECTED_OBSERVED_BOUNDS": {"xmin": -86.41197568433415, "ymin": 34.148463868949534,
-                                             "xmax": -86.41197568433415, "ymax": 34.148463868949534}}
-        with tempfile.TemporaryDirectory(prefix="lomas-pins-pending-") as temporary, \
-                patch.multiple(source, **pins), \
-                patch.object(source, "capture_get", side_effect=fake), \
-                patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
-            root = Path(temporary)
-            storage = source.StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
-            with self.assertRaisesRegex(source._PinsPendingError, "source_population_pins_not_established"):
-                source.capture_nfhl_lomas(storage, version="vfixture", capture_directory=str(root / "captures"))
-            self.assertEqual(set(storage.list_prefix()), set())
-            attempt = next((root / "captures").iterdir())
-            contract = json.loads((attempt / "population_pins.json").read_bytes())
-            self.assertEqual(contract["expected_count"], 3)
-            self.assertEqual(contract["expected_null_geometry_count"], 1)
-            self.assertEqual(contract["expected_nan_geometry_count"], 1)
-            self.assertIn("expected_record_sha256", contract)
-            manifest = json.loads((attempt / "capture_manifest.json").read_bytes())
-            self.assertTrue(manifest["complete"])
-            self.assertFalse(manifest["staged"])
+def _capture_patches(fields):
+    return dict(_contract(fields), DOC_CAPTURE_BASE_DELAY_SECONDS=0.01,
+                PAGE_CAPTURE_BASE_DELAY_SECONDS=0.01)
 
-    def test_live_mode_still_rejects_completeness_drift(self):
-        import tempfile
-        from pathlib import Path
-        fields, features, fixture_captures, schema, geom = _fixture()
+
+class NfhlLomasCaptureTests(unittest.TestCase):
+    def test_capture_rejects_incomplete_page_and_quarantines(self):
+        fields, _, fixture_captures = _fixture()
         bodies = {name: body for name, (body, _) in fixture_captures.items()}
         page = json.loads(bodies["page_001"])
         page["features"] = page["features"][:0]
         bodies["page_001"] = json.dumps(page, separators=(",", ":")).encode()
         fake, _ = _fake_capture_get(bodies)
-        pins = {"PAGE_SIZE": 2, "DOC_CAPTURE_BASE_DELAY_SECONDS": 0.01, "PAGE_CAPTURE_BASE_DELAY_SECONDS": 0.01,
-                "EXPECTED_SERVICE_LAYER_ROSTER": [(34, "LOMAs", "Feature Layer")],
-                "EXPECTED_COUNT": None, "EXPECTED_ID_SHA256": None, "EXPECTED_RECORD_SHA256": None,
-                "EXPECTED_GEOMETRY_SHA256": None, "EXPECTED_SCHEMA_SHA256": None,
-                "EXPECTED_LAYER_EXTENT": {"xmin": -100.0, "ymin": 20.0, "xmax": -60.0, "ymax": 45.0},
-                "EXPECTED_OBSERVED_BOUNDS": {"xmin": -86.41197568433415, "ymin": 34.148463868949534,
-                                             "xmax": -86.41197568433415, "ymax": 34.148463868949534}}
-        with tempfile.TemporaryDirectory(prefix="lomas-live-drift-") as temporary, \
-                patch.multiple(source, **pins), \
+        with tempfile.TemporaryDirectory(prefix="lomas-drift-") as temporary, \
+                patch.multiple(source, **_capture_patches(fields)), \
                 patch.object(source, "capture_get", side_effect=fake), \
                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
             root = Path(temporary)
@@ -321,27 +259,79 @@ class NfhlLomasCaptureTests(unittest.TestCase):
             manifest = json.loads((attempt / "capture_manifest.json").read_bytes())
             self.assertFalse(manifest["complete"])
 
-    def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
-        import tempfile
-        from pathlib import Path
+    def test_upstream_added_feature_passes_completeness_and_warns_on_drift(self):
+        from dagster import AssetCheckSeverity
 
+        from dagster_hifld.assets.nfhl_lomas import (
+            fema_nfhl_lomas_approved_baseline_drift,
+            fema_nfhl_lomas_complete,
+        )
+
+        fields, features, fixture_captures = _fixture()
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+        # Upstream edit: the producer adds one feature (OBJECTID 13) between
+        # captures; every capture-time witness reflects the new population.
+        added = {"attributes": {"OBJECTID": 13, "CASENUMBER": "22-01-2346B", "STATUS": "Processed",
+                                "CID": "010099", "DATEENDED": 1704153600000, "LAT": 34.2, "LON": -86.3,
+                                "GlobalID": "{9585E72B-E15E-4949-8B7A-6D7D29569B65}"},
+                 "geometry": {"x": -86.3, "y": 34.2}}
+        ids = [10, 11, 12, 13]
+        crs = {"wkid": 4269, "latestWkid": 4269}
+        for name in ("ids_seed", "ids_before", "ids_after"):
+            body = json.loads(bodies[name])
+            body["objectIds"] = ids
+            bodies[name] = json.dumps(body, separators=(",", ":")).encode()
+        for name in ("count_before", "count_after"):
+            body = json.loads(bodies[name])
+            body["count"] = 4
+            bodies[name] = json.dumps(body, separators=(",", ":")).encode()
+        bodies["page_000"] = json.dumps(
+            {"features": features[:2], "spatialReference": crs, "exceededTransferLimit": True},
+            separators=(",", ":")).encode()
+        bodies["page_001"] = json.dumps(
+            {"features": [features[2], added], "spatialReference": crs},
+            separators=(",", ":")).encode()
+        fake, _ = _fake_capture_get(bodies)
+        with tempfile.TemporaryDirectory(prefix="lomas-upstream-edit-") as temporary, \
+                patch.multiple(source, **_capture_patches(fields)), \
+                patch.object(source, "capture_get", side_effect=fake), \
+                patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
+            root = Path(temporary)
+            storage = source.StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            candidate = source.capture_nfhl_lomas(storage, version="vfixture",
+                                                  capture_directory=str(root / "captures"))
+        # Completeness: the capture passes with the full walked population.
+        self.assertEqual(candidate["feature_count"], 4)
+        self.assertEqual(candidate["source_reported_count"], 4)
+        self.assertTrue(candidate["source_population_complete"])
+        complete = fema_nfhl_lomas_complete(candidate)
+        self.assertTrue(complete.passed)
+        # Drift: no independently approved baseline exists, so the check warns
+        # (non-blocking) instead of failing the run.
+        drift = fema_nfhl_lomas_approved_baseline_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+
+    def test_tiny_capture_seal_catalog_then_postcatalog_cache(self):
         from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
         from dagster_hifld.resources import StagingStorageResource
         from dagster_hifld.source_manifest import load_resolved_source_manifest, snapshot_source_metadata
 
-        fields, features, fixture_captures, schema, geom = _fixture()
+        fields, _, fixture_captures = _fixture()
         bodies = {name: body for name, (body, _) in fixture_captures.items()}
         fake, _ = _fake_capture_get(bodies)
 
         with tempfile.TemporaryDirectory(prefix="lomas-e2e-") as temporary:
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
-            with patch.multiple(source, **_pins(features, schema, geom)), \
+            with patch.multiple(source, **_capture_patches(fields)), \
                  patch.object(source, "capture_get", side_effect=fake), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_lomas(storage, version="vfixture",
                                                       capture_directory=str(root / "captures"))
                 self.assertEqual(candidate["feature_count"], 3)
+                self.assertEqual(candidate["source_reported_count"], 3)
                 self.assertEqual(candidate["source_null_geometry_count"], 1)
                 self.assertEqual(candidate["source_nan_string_geometry_count"], 1)
                 prefix = f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{candidate['version']}"
@@ -365,22 +355,22 @@ class NfhlLomasCaptureTests(unittest.TestCase):
                                                    capture_directory=str(root / "captures"))
                 self.assertTrue(reused["reused"])
                 self.assertEqual(reused["version"], candidate["version"])
+                self.assertEqual(reused["feature_count"], 3)
+                self.assertEqual(reused["source_reported_count"], 3)
+                self.assertTrue(reused["source_population_complete"])
 
     def test_generated_source_manifest_identifies_the_lomas_inventory(self):
-        import tempfile
-        from pathlib import Path
-
         from dagster_hifld.resources import StagingStorageResource
         from dagster_hifld.source_manifest import load_resolved_source_manifest
 
-        _, features, fixture_captures, schema, geom = _fixture()
+        fields, _, fixture_captures = _fixture()
         bodies = {name: body for name, (body, _) in fixture_captures.items()}
         fake, _ = _fake_capture_get(bodies)
 
         with tempfile.TemporaryDirectory(prefix="lomas-identity-") as temporary:
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
-            with patch.multiple(source, **_pins(features, schema, geom)), \
+            with patch.multiple(source, **_capture_patches(fields)), \
                  patch.object(source, "capture_get", side_effect=fake), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_lomas(storage, version="vfixture",
@@ -397,7 +387,6 @@ class NfhlLomasCaptureTests(unittest.TestCase):
 
     def test_missing_approval_preserves_populated_accepted_inventory(self):
         import os
-        import tempfile
 
         from dagster_hifld.assets.publish import _copy_version_files
         from dagster_hifld.release_approval import ReleaseApprovalError
@@ -429,7 +418,9 @@ class NfhlLomasWiringTests(unittest.TestCase):
 
         self.assertEqual([asset.key.to_user_string() for asset in wiring.INGEST_ASSETS],
                          [f"ingest/{source.DATASET_SLUG}/{source.FILE_SLUG}"])
-        self.assertEqual(len(wiring.ASSET_CHECKS), 1)
+        self.assertEqual(len(wiring.ASSET_CHECKS), 2)
+        self.assertIs(wiring.ASSET_CHECKS[0], wiring.fema_nfhl_lomas_complete)
+        self.assertIs(wiring.ASSET_CHECKS[1], wiring.fema_nfhl_lomas_approved_baseline_drift)
         self.assertEqual(wiring.nfhl_lomas_draft_schedule.default_status, wiring.DefaultScheduleStatus.STOPPED)
 
     def test_discovery_collects_the_dataset(self):
@@ -437,6 +428,23 @@ class NfhlLomasWiringTests(unittest.TestCase):
 
         names = [asset.key.to_user_string() for asset in discovered("INGEST_ASSETS")]
         self.assertIn(f"ingest/{source.DATASET_SLUG}/{source.FILE_SLUG}", names)
+
+    def test_blocking_check_uses_capture_reported_count(self):
+        from dagster_hifld.assets.nfhl_lomas import fema_nfhl_lomas_complete
+
+        passed = fema_nfhl_lomas_complete({"feature_count": 3, "source_reported_count": 3,
+                                           "source_population_complete": True,
+                                           "candidate_ready": "some/path"})
+        self.assertTrue(passed.passed)
+        self.assertEqual(passed.metadata["source_reported_count"].value, 3)
+        missing = fema_nfhl_lomas_complete({"feature_count": 3, "source_reported_count": 3,
+                                            "source_population_complete": False,
+                                            "candidate_ready": "some/path"})
+        self.assertFalse(missing.passed)
+        mismatch = fema_nfhl_lomas_complete({"feature_count": 2, "source_reported_count": 3,
+                                             "source_population_complete": True,
+                                             "candidate_ready": "some/path"})
+        self.assertFalse(mismatch.passed)
 
 
 if __name__ == "__main__":

@@ -13,23 +13,22 @@ The producer serializes the Esri date field DATEENDED as an epoch-millisecond
 integer and carries the LAT/LON doubles verbatim; both are retained verbatim
 in the candidate.
 
+Completeness is established at capture time without a population pin: the
+producer's own count channel and OBJECTID roster are read before and after the
+paged walk (``capture_completeness.validate_capture_witness``), every page's
+ids must equal its ascending roster slice, and the walked ids must cover the
+full population. An upstream edit between captures changes the reported
+population and is witnessed by the approved-baseline drift check, not by a
+code pin. The null-geometry and string-"NaN"-ordinate counts and the observed
+bounds are observed facts reported in the candidate audit, not pinned.
+Publication stays blocked pending the freshness, schema/ID contract, rights
+and release decisions; all runtime approval flags are false and the draft
+refresh schedule is stopped.
+
 Validation and candidate extraction stream: every page body is decoded once
 from the attempt directory and the full-population record/geometry digests and
 the GeoParquet candidate are built one feature at a time, so peak memory stays
 bounded by the page size plus the metadata, not by the population.
-
-Until a dated complete capture establishes the population pins below, the
-module runs in live mode: acquisition and validation complete, the computed
-population contract is written to ``population_pins.json`` in the attempt
-directory, and the run fails closed with
-``source_population_pins_not_established`` without staging anything. With
-pins set, the module reproduces every pin and stages the unapproved candidate
-exactly like its NFHL siblings.
-
-The complete 543,656-feature layer was captured 2026-11-16 as 272 full-width
-2,000-record pages of the sorted OBJECTID roster with unchanged before/after
-count/id/metadata brackets, zero null-geometry rows and zero string-"NaN"
-ordinate rows; the observed bounds are within the declared layer extent.
 """
 from __future__ import annotations
 
@@ -50,6 +49,7 @@ import pyproj
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -79,30 +79,19 @@ MIN_FREE_BYTES = 3_000_000_000
 # while probing this layer; identical requests succeed moments later). Every
 # request retries a bounded number of times for that transient mode; a retry
 # re-issues the exact same request, and completeness is still enforced by the
-# pinned before/after id rosters, counts, exact page id slices, and
-# full-record digests, so retries can never mask drift.
+# before/after count and ID witnesses and exact page id slices, so retries can
+# never mask drift.
 DOC_CAPTURE_ATTEMPTS = 4
 DOC_CAPTURE_BASE_DELAY_SECONDS = 10.0
 PAGE_CAPTURE_ATTEMPTS = 3
 PAGE_CAPTURE_BASE_DELAY_SECONDS = 5.0
-# Pins below are the observed 2026-11-16 complete-layer population contract,
-# established by a dated live-mode capture of all 272 full-width roster pages
-# (before/after count/id/metadata brackets unchanged during capture); the
-# module's own capture must reproduce every pin. The service layer roster is
-# the same cheap independently re-verifiable service contract. The live-mode
-# path (pins unset, contract written to ``population_pins.json``, nothing
-# staged) remains available for future re-establishment.
-EXPECTED_COUNT = 543656
-EXPECTED_ID_SHA256 = "4082f46fb9f9c445f31422d654f828c729d3933dc3e54fc8e9abc0f18796102c"
-EXPECTED_RECORD_SHA256 = "1c13fa6af7b42a694f8ec23ad762f06014e3e327bcf007b2c88c888cb39ae211"
-EXPECTED_GEOMETRY_SHA256 = "53ee687bad81d2b0f0840bf4493288e7954024fb7a48996cad483f40e43c7dd2"
+# Schema contract pin: the layer's field roster is the producer's current
+# service contract, not a snapshot of the population (the population itself is
+# witnessed at capture time, see the module docstring).
 EXPECTED_SCHEMA_SHA256 = "328e606a5d54ce05e781cd0e7b9045912fbd1a2252fc871b9092a131ce37964d"
-EXPECTED_NULL_GEOMETRY_COUNT = 0
-EXPECTED_NAN_GEOMETRY_COUNT = 0
-EXPECTED_OBSERVED_BOUNDS = {"xmin": -161.79400000032945, "ymin": 13.26000000001352,
-                            "xmax": 144.78699999988265, "ymax": 64.95900000019401}
-EXPECTED_LAYER_EXTENT = {"xmin": -161.79400323620945, "ymin": 13.259999734813519,
-                         "xmax": 144.78700289562266, "ymax": 64.95900129937401}
+# The NFHL MapServer's own published layer roster: a service contract, not a
+# population snapshot; a roster change means the producer's service itself
+# changed and the capture is refused for review.
 EXPECTED_SERVICE_LAYER_ROSTER = [
     (0, "NFHL Availability", "Feature Layer"), (3, "FIRM Panels", "Feature Layer"),
     (1, "LOMRs", "Feature Layer"), (34, "LOMAs", "Feature Layer"),
@@ -123,10 +112,6 @@ EXPECTED_SERVICE_LAYER_ROSTER = [
 ]
 
 
-class _PinsPendingError(Exception):
-    """Raised when a live-mode capture completes but population pins are unset."""
-
-
 def _stable_layer(doc: object) -> object:
     """Layer document without the producer's volatile display symbology.
 
@@ -134,9 +119,9 @@ def _stable_layer(doc: object) -> object:
     between the 2026-11-12 before/after layer documents of one unchanged
     capture window (observed on the live LOMAs layer); it is cosmetic display
     state, not data. Every data-bearing part of the layer contract — fields,
-    geometry type, extent, count, pagination — is still compared, and the
-    published schema/ID contract remains pinned separately, so a symbology
-    edit cannot mask real drift.
+    geometry type, extent, count, pagination — is still compared, the schema
+    contract remains pinned separately and the ID population is witnessed at
+    capture time, so a symbology edit cannot mask real drift.
     """
     if not isinstance(doc, dict):
         return doc
@@ -269,15 +254,12 @@ def _validate_service_brackets(docs: dict[str, object], count: int) -> \
     _validate_spatial_reference(layer.get("sourceSpatialReference"), "source_layer")
     extent = layer.get("extent", {})
     _validate_spatial_reference(extent.get("spatialReference"), "source_layer_extent")
-    if EXPECTED_LAYER_EXTENT is not None \
-            and {key: extent.get(key) for key in EXPECTED_LAYER_EXTENT} != EXPECTED_LAYER_EXTENT:
-        raise ValueError("source_layer_extent_drift")
     fields_value = layer.get("fields")
     if not isinstance(fields_value, list) or any(not isinstance(x, dict) for x in fields_value):
         raise ValueError("source_field_roster_drift")
     fields = [_plain_field(x) for x in fields_value]
     schema_sha = _sha(_canonical(fields))
-    if EXPECTED_SCHEMA_SHA256 is not None and schema_sha != EXPECTED_SCHEMA_SHA256:
+    if schema_sha != EXPECTED_SCHEMA_SHA256:
         raise ValueError("source_schema_contract_drift")
     if docs["layer_after"].get("fields") is None or [_plain_field(x) for x in docs["layer_after"]["fields"]] != fields:
         raise ValueError("source_field_schema_changed_during_capture")
@@ -286,24 +268,16 @@ def _validate_service_brackets(docs: dict[str, object], count: int) -> \
             raise ValueError("source_layer_metadata_changed_during_capture")
     if docs["service_after"] != service:
         raise ValueError("source_service_metadata_changed_during_capture")
-    if (docs["count_before"].get("count") != count
-            or docs["count_after"].get("count") != count):
-        raise ValueError("source_count_drift")
-    if EXPECTED_COUNT is not None and count != EXPECTED_COUNT:
-        raise ValueError("source_count_drift")
-    base = docs["ids_before"].get("objectIds")
-    if (not isinstance(base, list) or len(base) != count
-            or any(type(value) is not int for value in base) or len(set(base)) != count):
+    count_after = docs["count_after"].get("count")
+    if count_after != count:
+        raise ValueError("source_count_changed_during_capture")
+    ids = validate_capture_witness(count, docs["ids_before"].get("objectIds"),
+                                   count_after, docs["ids_after"].get("objectIds"))
+    seed = docs["ids_seed"].get("objectIds")
+    if (not isinstance(seed, list) or len(seed) != count
+            or any(type(value) is not int or value <= 0 for value in seed)
+            or len(set(seed)) != count or sorted(seed) != ids):
         raise ValueError("source_id_population_drift")
-    ids = sorted(base)
-    for name in ("ids_seed", "ids_after"):
-        roster_ids = docs[name].get("objectIds")
-        if (not isinstance(roster_ids, list) or len(roster_ids) != count
-                or any(type(value) is not int for value in roster_ids) or len(set(roster_ids)) != count
-                or sorted(roster_ids) != ids):
-            raise ValueError("source_id_population_drift")
-    if EXPECTED_ID_SHA256 is not None and _sha(_canonical(ids)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_drift")
     if any(docs[name].get("objectIdFieldName") != "OBJECTID" for name in ("ids_before", "ids_after", "ids_seed")):
         raise ValueError("source_id_field_changed")
     if docs["count_before"] != docs["count_after"]:
@@ -366,13 +340,14 @@ class _CandidateParquetWriter:
 
 
 def _stream_validate_pages(pages, *, count: int, ids: list[int], attr_names: list[str],
-                           writer: _CandidateParquetWriter | None) -> dict[str, object]:
+                           writer: _CandidateParquetWriter) -> dict[str, object]:
     """Stream-validate every page document and hash the full populations incrementally.
 
     Every page's ids must equal its ascending roster slice, so features arrive in
     ascending OBJECTID order — the exact order the full-population canonical JSON
     digests are computed over — and both digests plus the GeoParquet candidate can
     be built one feature at a time without retaining the population in memory.
+    The walked ids are collected for the capture-time completeness witness.
     """
     record_digest, geometry_digest = hashlib.sha256(), hashlib.sha256()
     record_digest.update(b"[")
@@ -382,6 +357,7 @@ def _stream_validate_pages(pages, *, count: int, ids: list[int], attr_names: lis
     nan_geometry = 0
     bounds: dict[str, float] | None = None
     seen = 0
+    captured_ids: list[int] = []
     for page_idx, offset in enumerate(range(0, count, PAGE_SIZE)):
         page = next(pages)
         if not isinstance(page, dict) or "error" in page:
@@ -429,39 +405,35 @@ def _stream_validate_pages(pages, *, count: int, ids: list[int], attr_names: lis
             geometry_digest.update(separator)
             geometry_digest.update(_canonical(geometry_record))
             separator = b","
+            captured_ids.append(oid)
             seen += 1
-        if writer is not None:
-            writer.add_page(rows)
+        writer.add_page(rows)
     record_digest.update(b"]")
     geometry_digest.update(b"]")
     record_sha = record_digest.hexdigest()
     geometry_sha = geometry_digest.hexdigest()
-    if EXPECTED_GEOMETRY_SHA256 is not None and geometry_sha != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_or_coverage_drift")
-    if EXPECTED_RECORD_SHA256 is not None and record_sha != EXPECTED_RECORD_SHA256:
-        raise ValueError("source_record_value_drift")
-    if EXPECTED_OBSERVED_BOUNDS is not None and bounds != EXPECTED_OBSERVED_BOUNDS:
-        raise ValueError("source_observed_coverage_drift")
     return {"source_feature_count": seen, "source_record_sha256": record_sha,
             "source_geometry_sha256": geometry_sha, "null_geometry_count": null_geometry,
-            "nan_string_geometry_count": nan_geometry, "observed_bounds": bounds}
+            "nan_string_geometry_count": nan_geometry, "observed_bounds": bounds,
+            "captured_ids": captured_ids}
 
 
 def _validate_and_extract(capture_root: Path, receipts: Mapping[str, Mapping[str, object]], *,
-                          parquet_path: Path | None) -> tuple[dict, list, dict[str, object]]:
-    """Stream-validate the captured attempt against the population contract.
+                          parquet_path: Path) -> tuple[dict, list, dict[str, object]]:
+    """Stream-validate the captured attempt and build the candidate GeoParquet.
 
     Every capture body is decoded once from the attempt directory; no capture
-    body, decoded page or full-population structure is retained in memory. With
-    ``parquet_path`` set, the candidate GeoParquet is written row group by row
-    group while the pages stream through validation; in live mode (pins unset)
-    it stays None and the candidate is not built.
+    body, decoded page or full-population structure is retained in memory. The
+    candidate GeoParquet is written row group by row group while the pages
+    stream through validation, and the capture-time completeness witness
+    (before/after counts and id rosters plus the full walked population) is
+    enforced before the result is returned.
     """
     docs = {name: _read_capture_doc(capture_root, name) for name in
             ("service_before", "layer_before", "count_before", "count_after", "layer_after", "service_after",
              "ids_before", "ids_seed", "ids_after")}
     count = docs["count_before"].get("count") if isinstance(docs["count_before"], dict) else None
-    if not isinstance(count, int) or count < 0:
+    if not isinstance(count, int) or count <= 0:
         raise ValueError("source_count_drift")
     page_count = (count + PAGE_SIZE - 1) // PAGE_SIZE
     expected_names = {"service_doc", "service_before", "layer_before", "count_before", "ids_before", "ids_seed",
@@ -472,38 +444,32 @@ def _validate_and_extract(capture_root: Path, receipts: Mapping[str, Mapping[str
     if SERVICE_URL.encode("utf-8") not in _read_capture_body(capture_root, "service_doc"):
         raise ValueError("fema_service_documentation_link_drift")
     layer, fields_value, ids, attr_names, schema_sha = _validate_service_brackets(docs, count)
-    writer = _CandidateParquetWriter(parquet_path, fields_value) if parquet_path is not None else None
+    writer = _CandidateParquetWriter(parquet_path, fields_value)
     try:
         tail = _stream_validate_pages(
             (_read_capture_doc(capture_root, f"page_{page_idx:03d}") for page_idx in range(page_count)),
             count=count, ids=ids, attr_names=attr_names, writer=writer)
     finally:
-        if writer is not None:
-            writer.close()
-    audit = {"source_feature_count": tail["source_feature_count"], "source_id_sha256": _sha(_canonical(ids)),
+        writer.close()
+    validate_capture_witness(count, docs["ids_before"].get("objectIds"),
+                             docs["count_after"].get("count"), docs["ids_after"].get("objectIds"),
+                             tail["captured_ids"])
+    audit = {"source_feature_count": tail["source_feature_count"], "source_reported_count": count,
+             "source_id_sha256": _sha(_canonical(tail["captured_ids"])),
              "source_record_sha256": tail["source_record_sha256"],
              "source_geometry_sha256": tail["source_geometry_sha256"],
              "source_schema_sha256": schema_sha, "source_crs_epsg": SOURCE_CRS_WKID,
              "geometry_type": "Point", "null_geometry_count": tail["null_geometry_count"],
              "nan_string_geometry_count": tail["nan_string_geometry_count"],
-             "observed_bounds": tail["observed_bounds"], "declared_layer_extent": EXPECTED_LAYER_EXTENT,
+             "observed_bounds": tail["observed_bounds"],
+             "declared_layer_extent": {key: layer.get("extent", {}).get(key) for key in
+                                       ("xmin", "ymin", "xmax", "ymax")},
              "unique_source_id_count": len(ids),
              "source_release_date": None,
              "source_release_date_unknown_reason":
                  "FEMA updates the NFHL continuously and publishes no release date for this layer; "
                  "fetch time and the DataLumos archive modification date (2024-10-31) are not release dates."}
-    contract = {}
-    if EXPECTED_COUNT is None:
-        contract = {"expected_count": tail["source_feature_count"], "expected_id_sha256": _sha(_canonical(ids)),
-                    "expected_record_sha256": tail["source_record_sha256"],
-                    "expected_geometry_sha256": tail["source_geometry_sha256"],
-                    "expected_schema_sha256": schema_sha,
-                    "expected_observed_bounds": tail["observed_bounds"],
-                    "expected_null_geometry_count": tail["null_geometry_count"],
-                    "expected_nan_geometry_count": tail["nan_string_geometry_count"],
-                    "expected_layer_extent": {key: layer.get("extent", {}).get(key) for key in
-                                              ("xmin", "ymin", "xmax", "ymax")}}
-    return layer, fields_value, {"audit": audit, "ids": ids, "contract": contract}
+    return layer, fields_value, {"audit": audit, "ids": ids}
 
 
 def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
@@ -551,12 +517,13 @@ def _code_identity() -> dict[str, object]:
 
 
 def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
-                               capture_directory: str | None = None) -> dict[str, object]:
-    """Capture, verify, and (with pins set) stage the NFHL LOMAs candidate.
+                                capture_directory: str | None = None) -> dict[str, object]:
+    """Capture, verify, and stage the NFHL LOMAs candidate.
 
-    With population pins unset, the capture completes in live mode: the
-    computed population contract is written to ``population_pins.json`` in the
-    attempt directory and the run fails closed without staging anything.
+    Completeness is witnessed at capture time by the producer's own count
+    channel and OBJECTID roster before and after the paged walk plus the full
+    walked population; an upstream edit between captures is witnessed by the
+    approved-baseline drift check, not by a code pin.
     """
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource) \
             or storage.bucket or not storage.use_local or not storage.local_dir or storage.prefix:
@@ -597,7 +564,7 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
                 # small hash-pinned receipts are kept in memory and streamed back
                 # during validation, so the population is never held.
                 receipts[name] = receipt
-        parquet_path = None if EXPECTED_COUNT is None else capture_root / "candidate.parquet"
+        parquet_path = capture_root / "candidate.parquet"
         layer, source_fields, extracted = _validate_and_extract(capture_root, receipts, parquet_path=parquet_path)
     except Exception as exc:
         receipts_all: dict[str, dict[str, object]] = {}
@@ -620,16 +587,6 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
                                           _RetainedCaptureEvidence(capture_root, quarantinable),
                                           type(exc).__name__)
         raise
-    if EXPECTED_COUNT is None:
-        (capture_root / "population_pins.json").write_bytes(_canonical(
-            {"established_by": "live-mode complete capture (pins unset at capture time)",
-             "captured_at": datetime.now(timezone.utc).isoformat(),
-             "layer_id": LAYER_ID, "layer_name": LAYER_NAME, **extracted["contract"]}) + b"\n")
-        (capture_root / "capture_manifest.json").write_bytes(_canonical(
-            {"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True, "staged": False,
-             "reason_code": "source_population_pins_not_established",
-             "source_feature_count": extracted["audit"]["source_feature_count"]}) + b"\n")
-        raise _PinsPendingError("source_population_pins_not_established")
     identity = _code_identity()
     parquet_body = parquet_path.read_bytes()
     rel = f"geoparquet/{DATASET_SLUG}.parquet"
@@ -702,7 +659,7 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     (capture_root / "capture_manifest.json").write_bytes(
         _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
-                    "source_feature_count": EXPECTED_COUNT,
+                    "source_feature_count": audit["source_feature_count"],
                     "source_record_sha256": audit["source_record_sha256"],
                     "source_geometry_sha256": audit["source_geometry_sha256"],
                     "receipts": dict(sorted(receipts.items()))}) + b"\n")
@@ -718,7 +675,12 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
                                 audit["source_record_sha256"], audit["source_schema_sha256"], objects,
                                 payload.get("capture_receipts", {}))
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-                "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
+                "feature_count": audit["source_feature_count"],
+                "source_reported_count": audit["source_reported_count"],
+                "source_population_complete": True,
+                "source_id_sha256": audit["source_id_sha256"],
+                "source_schema_sha256": audit["source_schema_sha256"],
+                "source_null_geometry_count": audit["null_geometry_count"],
                 "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "source_release_accepted": False, "source_freshness_accepted": False,
@@ -757,7 +719,12 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
     seal_ready_candidate(storage, state_key, version, fingerprint, payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_COUNT, "source_null_geometry_count": audit["null_geometry_count"],
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_reported_count"],
+            "source_population_complete": True,
+            "source_id_sha256": audit["source_id_sha256"],
+            "source_schema_sha256": audit["source_schema_sha256"],
+            "source_null_geometry_count": audit["null_geometry_count"],
             "source_nan_string_geometry_count": audit["nan_string_geometry_count"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json",
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
