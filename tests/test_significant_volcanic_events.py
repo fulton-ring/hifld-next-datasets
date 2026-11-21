@@ -227,6 +227,28 @@ print(json.dumps({'metadata_sha256':hashlib.sha256(output.schema.metadata[b'geo'
         self.assertEqual(sorted(pages),[f'page_{i:04d}'for i in range((len(ids)+f.PAGE_SIZE-1)//f.PAGE_SIZE)])
         table,audit=f.inspect_captures(captures)
         self.assertEqual(table.num_rows,len(ids));self.assertEqual(audit['source_reported_count'],len(ids))
+    def test_page_url_requests_full_field_set_geometry_and_order(self):
+        # Regression: without outFields the live service answers objectIds
+        # queries with the NAME attribute only, so the pipeline cannot decode
+        # its own pages. The exact wire form also matches the previously
+        # retained captures' receipts.
+        self.assertEqual(f.page_url([7805,7806]),f.BASE+'/query?f=json&objectIds=7805%2C7806&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC')
+    def test_name_only_page_response_is_quarantined(self):
+        # Emulates the live service response to a page query without outFields:
+        # every feature carries only NAME. Must quarantine with a reason, not
+        # a raw KeyError.
+        ids=list(range(7000,7600))
+        captures=synthetic_capture_bodies(ids)
+        for name in f.derive_pages(ids):
+            body,recv=captures[name]
+            doc=json.loads(body)
+            for feat in doc['features']:
+                feat['attributes']={'NAME':feat['attributes']['NAME']}
+            body=ordered_json(doc)
+            recv=dict(recv);recv['bytes']=len(body);recv['sha256']=f.digest(body)
+            captures[name]=(body,recv)
+        with self.assertRaisesRegex(f.VolcanicQuarantineError,'targeted_page_feature_without_integer_OBJECTID'):
+            f.inspect_captures(captures)
     def test_cached_authored_snapshot_and_resolved_wrapper_exact(self):
         with tempfile.TemporaryDirectory()as d:
             base=Path(d);version='v0.0.0-draft-structural';root=base/f.SLUG/f.SLUG/version;(root/'geoparquet').mkdir(parents=True)

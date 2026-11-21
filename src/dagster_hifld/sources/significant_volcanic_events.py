@@ -68,8 +68,12 @@ PAGE_FIELDS=[{'name': 'YEAR', 'type': 'esriFieldTypeSmallInteger', 'alias': 'YEA
 PRE_PAGE_URLS={'ncei': LANDING, 'hazards_viewer': 'https://www.ncei.noaa.gov/maps/hazards/?layers=0', 'hazards_js': 'https://www.ncei.noaa.gov/maps/hazards/assets/index-Cyvq2L9n.js', 'volcano_item': 'https://www.arcgis.com/sharing/rest/content/items/e991eccebfa5425e9180d884af76f16a?f=json', 'volcano_service': SERVICE+'?f=pjson', 'volcano_layer': BASE+'?f=pjson', 'count_before': BASE+'/query?where=1%3D1&returnCountOnly=true&f=json', 'ids_before': BASE+'/query?where=1%3D1&returnIdsOnly=true&f=json'}
 POST_PAGE_URLS={'layer_after': BASE+'?f=pjson', 'count_after': BASE+'/query?where=1%3D1&returnCountOnly=true&f=json', 'ids_after': BASE+'/query?where=1%3D1&returnIdsOnly=true&f=json'}
 
+# The live service answers an objectIds query with only the NAME attribute
+# unless outFields is explicit; the exact wire form is also what the previously
+# retained captures recorded, so those captures replay unchanged.
 def page_url(ids):
-    return BASE+'/query?f=json&objectIds='+",".join(map(str,ids)).replace(",","%2C")
+    return (BASE+'/query?f=json&objectIds='+",".join(map(str,ids)).replace(",","%2C")
+        +'&outFields=%2A&returnGeometry=true&returnZ=true&returnM=true&orderByFields=OBJECTID+ASC')
 
 def derive_pages(ids):
     pages={}
@@ -514,7 +518,13 @@ def inspect_captures(captures):
     pages=[]
     for index,(name,_url)in enumerate(page_urls.items()):
         expected=ids[index*PAGE_SIZE:(index+1)*PAGE_SIZE];page=strict_json(captures[name][0])
-        if sorted(x['attributes']['OBJECTID']for x in page.get('features',[]))!=expected:raise VolcanicQuarantineError('targeted_page_missing_extra_ID')
+        oids=[]
+        for x in page.get('features',[]):
+            attrs=x.get('attributes')if type(x)is dict else None
+            oid=attrs.get('OBJECTID')if type(attrs)is dict else None
+            if type(oid)is not int:raise VolcanicQuarantineError('targeted_page_feature_without_integer_OBJECTID')
+            oids.append(oid)
+        if sorted(oids)!=expected:raise VolcanicQuarantineError('targeted_page_missing_extra_ID')
         pages.append(page)
     table=decode_pages(pages,ids);years=[x for x in table['YEAR'].to_pylist()if x is not None];countries=Counter(table['COUNTRY'].to_pylist());audit={'count':table.num_rows,'source_reported_count':count,'source_id_sha256':digest(encode(ids)),'original_OBJECTIDs':ids,'original_SIG_IDs':table['SIG_ID'].to_pylist(),'original_event_IDs':table['ID'].to_pylist(),'original_VOL_IDs':table['VOL_ID'].to_pylist(),'countries':sorted(countries.items(),key=lambda x:repr(x[0])),'crs':'EPSG3857','field_count':59,'BCE_count':sum(y<0 for y in years),'unknown_years':table['YEAR'].null_count,'minimum_YEAR':min(years),'maximum_YEAR':max(years),'date_semantics':'YEAR/MO/DAY components and literal TIME_ERUPT codes retained; no BCE or unknown dates inferred.','editingInfo':before.get('editingInfo'),'release_date_established':False}
     return table,audit
