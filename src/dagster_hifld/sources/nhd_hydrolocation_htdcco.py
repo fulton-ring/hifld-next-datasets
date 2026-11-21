@@ -62,6 +62,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources import arcgis_layer
 from dagster_hifld.sources.capture_common import (
+    load_checkpoint_receipt_map,
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
@@ -899,15 +900,6 @@ def _doc_client() -> httpx.Client:
     )
 
 
-def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
-    """Load every expected receipt without holding any segment body in memory."""
-    state = _load_state(capture_root)
-    names = [*METADATA_NAMES, *AFTER_NAMES,
-             *(str(entry["name"]) for entry in state.get("segments", [])
-               if isinstance(entry, dict) and entry.get("name"))]
-    return {name: _load_receipt(capture_root, name) for name in names}
-
-
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_segments: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
@@ -981,7 +973,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     parquet_body = Path(extracted["parquet_path"]).read_bytes()
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
-    receipts = _load_receipt_map(capture_root)
+    receipts = load_checkpoint_receipt_map(capture_root, (*METADATA_NAMES, *AFTER_NAMES),
+                                           _load_state(capture_root), _load_receipt)
     manifest = {
         "schema_version": 1, "approved": False,
         "title": "HydroLocation - Headwater, Terminus, Divergence, Confluence, "
