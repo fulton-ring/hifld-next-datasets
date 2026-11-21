@@ -3,6 +3,7 @@ import json
 import tempfile
 import unittest
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 from xml.sax.saxutils import escape
@@ -21,6 +22,7 @@ from dagster_hifld.assets.electric_retail_service_territories import (
     electric_retail_service_territories_population_complete,
     electric_retail_service_territories_release_pending,
 )
+from dagster_hifld.sources import capture_common
 from dagster_hifld.sources import electric_retail_service_territories_common as source
 
 SERVICE_HEADERS = ["Data Year", "Utility Number", "Utility Name", "Short Form", "State", "County"]
@@ -175,6 +177,56 @@ def _client(eia_body=None, tiger_body=None):
 
 
 class ElectricRetailTerritoryTests(unittest.TestCase):
+    def test_identical_refresh_preserves_first_capture_and_candidate(self):
+        from dagster_hifld.resources import StagingStorageResource
+
+        with tempfile.TemporaryDirectory() as tmp, _client() as client, \
+                patch.object(source, "MIN_COUNTY_COUNT", 1), patch.object(capture_common, "datetime") as clock:
+            root = Path(tmp) / "capture"
+            storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "stage"))
+            clock.now.return_value = datetime(2026, 11, 20, tzinfo=timezone.utc)
+            first = source.capture_electric_retail_service_territories(storage, client=client,
+                capture_directory=str(root))
+            staged = {key: storage.read_key(key) for key in storage.list_prefix()}
+            retained = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+            clock.now.return_value = datetime(2026, 11, 21, tzinfo=timezone.utc)
+            with patch.object(StagingStorageResource, "write_key_if_unchanged",
+                    side_effect=AssertionError("refresh attempted a staged write")):
+                second = source.capture_electric_retail_service_territories(storage, client=client,
+                    capture_directory=str(root))
+            self.assertEqual(first, second)
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix()}, staged)
+            self.assertEqual({path: path.read_bytes() for path in retained}, retained)
+
+    def test_refresh_rejects_conflicting_or_partial_existing_candidate(self):
+        from dagster_hifld.resources import StagingStorageResource
+
+        with tempfile.TemporaryDirectory() as tmp, _client() as client, patch.object(source, "MIN_COUNTY_COUNT", 1):
+            stage = Path(tmp) / "stage"
+            storage = StagingStorageResource(use_local=True, local_dir=str(stage))
+            first = source.capture_electric_retail_service_territories(storage, client=client,
+                capture_directory=str(Path(tmp) / "capture"))
+            ready = stage / first["candidate_ready"]
+            receipt = ready.parent.parent / "raw/eia861_page.receipt.json"
+            original = receipt.read_bytes()
+            for file, replacement, error in (
+                (receipt, original.replace(b"https://", b"http://", 1), "electric_territory_capture_changed"),
+                (ready.parent.parent / "raw/eia861_page.wire", b"altered wire", "candidate_readback_mismatch"),
+                (ready, None, "electric_territory_candidate_incomplete"),
+            ):
+                with self.subTest(path=file.name):
+                    before = file.read_bytes()
+                    if replacement is None:
+                        file.unlink()
+                    else:
+                        file.write_bytes(replacement)
+                    with patch.object(StagingStorageResource, "write_key_if_unchanged",
+                            side_effect=AssertionError("invalid candidate attempted a staged write")):
+                        with self.assertRaisesRegex(ValueError, error):
+                            source.capture_electric_retail_service_territories(storage, client=client,
+                                capture_directory=str(Path(tmp) / "capture"))
+                    file.write_bytes(before)
+
     def test_oversized_dbf_is_refused_before_payload_read_or_decode(self):
         with zipfile.ZipFile(io.BytesIO(_tiger_zip())) as archive:
             members = {name: archive.read(name) for name in archive.namelist()}

@@ -491,12 +491,18 @@ def capture_electric_retail_service_territories(
     """Capture the current EIA-861 and TIGER county inputs and stage one draft candidate."""
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource):
         raise ValueError("explicit_staging_resource_required")
-    root = Path(capture_directory).absolute() if capture_directory else Path(
-        tempfile.mkdtemp(prefix="hifld-electric-retail-")
-    )
-    if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
-        raise ValueError("unsafe_capture_directory")
-    root.mkdir(parents=True, exist_ok=True)
+    if capture_directory:
+        root = Path(capture_directory).absolute()
+        if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
+            raise ValueError("unsafe_capture_directory")
+        try:
+            root.mkdir(parents=True)
+        except FileExistsError:
+            if not root.is_dir() or root.is_symlink():
+                raise ValueError("unsafe_capture_directory") from None
+            root = Path(tempfile.mkdtemp(prefix=f"{root.name}-refresh-", dir=root.parent))
+    else:
+        root = Path(tempfile.mkdtemp(prefix="hifld-electric-retail-"))
     owned_client = client is None
     client = client or httpx.Client(
         timeout=httpx.Timeout(300.0, connect=30.0), follow_redirects=False,
@@ -559,6 +565,31 @@ def capture_electric_retail_service_territories(
         version = content_derived_version(record_sha, geometry_sha, schema_sha, identity)
         prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
         parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
+        ready_key = f"{prefix}/metadata/candidate_ready.json"
+        ready_snapshot = storage.object_snapshot(ready_key)
+        receipts = {
+            "eia861_page": page_receipt, "eia861_zip": eia_receipt,
+            "eia_reuse_policy": reuse_receipt, "tiger_county_zip": tiger_receipt,
+            "tiger_annual_listing": tiger_release["evidence_receipts"][0],
+            "tiger_product_listing": tiger_release["evidence_receipts"][1],
+        }
+        if ready_snapshot is not None:
+            for name, fresh in receipts.items():
+                original = json.loads(storage.read_key(f"{prefix}/raw/{name}.receipt.json"))
+                if (not isinstance(original, dict) or not isinstance(original.get("observed_at"), str)
+                        or original != {**fresh, "observed_at": original["observed_at"]}):
+                    raise ValueError("electric_territory_capture_changed:" + name)
+                receipts[name] = original
+        elif storage.list_prefix(prefix + "/"):
+            raise ValueError("electric_territory_candidate_incomplete:" + version)
+
+        def stage(name: str, body: bytes, *, verify_write: bool = True) -> None:
+            key = f"{prefix}/{name}"
+            if ready_snapshot is None:
+                write_immutable(storage, key, body)
+            if (ready_snapshot is not None or verify_write) and storage.read_key(key) != body:
+                raise ValueError("candidate_readback_mismatch:" + name)
+
         utility_count = len({row["utility_number"] for row in features})
         county_count = len({geoid for record in records for geoid in record["geoids"]})
         state_count = len({row["state"] for row in features})
@@ -577,22 +608,22 @@ def capture_electric_retail_service_territories(
             "source_population_complete": True,
         }
         inputs = [
-            _input("eia861_page", page_receipt, purpose="methodology",
+            _input("eia861_page", receipts["eia861_page"], purpose="methodology",
                    license=REUSE_URL, release_date=None,
                    unknown_reason="Producer release page; retrieval time is not a publication date."),
-            _input("eia861_zip", eia_receipt, purpose="data",
+            _input("eia861_zip", receipts["eia861_zip"], purpose="data",
                    license=REUSE_URL, release_date=None,
                    unknown_reason=f"EIA-861 data year {year}; the producer page and ZIP headers do not establish an exact publication date."),
-            _input("eia_reuse_policy", reuse_receipt, purpose="license",
+            _input("eia_reuse_policy", receipts["eia_reuse_policy"], purpose="license",
                    license=REUSE_URL, release_date=None,
                    unknown_reason="Producer reuse policy page; revision date is not established by this capture."),
-            _input("tiger_annual_listing", tiger_release["evidence_receipts"][0], purpose="methodology",
+            _input("tiger_annual_listing", receipts["tiger_annual_listing"], purpose="methodology",
                    license="https://www.usa.gov/government-works", release_date=None,
                    unknown_reason="Census annual directory listing; retrieval time is not a publication date."),
-            _input("tiger_product_listing", tiger_release["evidence_receipts"][1], purpose="methodology",
+            _input("tiger_product_listing", receipts["tiger_product_listing"], purpose="methodology",
                    license="https://www.usa.gov/government-works", release_date=None,
                    unknown_reason="Census product directory listing; retrieval time is not a publication date."),
-            _input("tiger_county_zip", tiger_receipt, purpose="data",
+            _input("tiger_county_zip", receipts["tiger_county_zip"], purpose="data",
                    license="https://www.usa.gov/government-works", release_date=None,
                    unknown_reason=f"TIGER/Line {tiger_release['edition']} county archive; the directory listing does not establish an exact archive publication date."),
         ]
@@ -651,12 +682,7 @@ def capture_electric_retail_service_territories(
             },
             "acquisition_receipts": {
                 name: {**_stable_receipt(receipt), "observed_at": receipt.get("observed_at")}
-                for name, receipt in (
-                    ("eia861_page", page_receipt), ("eia861_zip", eia_receipt),
-                    ("eia_reuse_policy", reuse_receipt), ("tiger_county_zip", tiger_receipt),
-                    ("tiger_annual_listing", tiger_release["evidence_receipts"][0]),
-                    ("tiger_product_listing", tiger_release["evidence_receipts"][1]),
-                )
+                for name, receipt in receipts.items()
             },
             "eia861": {
                 "territory_row_count": len(territory_rows), "frame_utility_count": len(frame),
@@ -673,23 +699,27 @@ def capture_electric_retail_service_territories(
             "processing_identity": identity,
             **APPROVALS,
         }
-        raw_inputs = {
-            "eia861_page": page_receipt, "eia861_zip": eia_receipt,
-            "eia_reuse_policy": reuse_receipt, "tiger_county_zip": tiger_receipt,
-            "tiger_annual_listing": tiger_release["evidence_receipts"][0],
-            "tiger_product_listing": tiger_release["evidence_receipts"][1],
-        }
         source_files = {
             "tiger_annual_listing": "county-annual-listing",
             "tiger_product_listing": "county-product-listing",
         }
-        for name, receipt in raw_inputs.items():
+        for name, receipt in receipts.items():
             stem = source_files.get(name, name)
-            body = (root / f"{stem}.body").read_bytes()
-            wire = (root / f"{stem}.wire").read_bytes()
-            write_immutable(storage, f"{prefix}/raw/{name}.body", body)
-            write_immutable(storage, f"{prefix}/raw/{name}.wire", wire)
-            write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
+            for suffix, size_field, hash_field in (
+                ("body", "bytes", "sha256"),
+                ("wire", "wire_bytes", "wire_sha256"),
+            ):
+                relative = f"raw/{name}.{suffix}"
+                if ready_snapshot is None:
+                    stage(relative, (root / f"{stem}.{suffix}").read_bytes(), verify_write=False)
+                else:
+                    key = f"{prefix}/{relative}"
+                    snapshot = storage.object_snapshot(key)
+                    if (snapshot is None or snapshot.size != receipt[size_field]
+                            or storage.sha256_key(key) != receipt[hash_field]
+                            or storage.object_snapshot(key) != snapshot):
+                        raise ValueError("candidate_readback_mismatch:" + relative)
+            stage(f"raw/{name}.receipt.json", _canonical(receipt) + b"\n", verify_write=False)
         ready = {"approved": False, "version": version, "objects": {parquet_path: {"bytes": len(output), "sha256": _sha(output)}}, "source_population_complete": True, **APPROVALS}
         ready_body = _canonical(ready) + b"\n"
         for name, body in (
@@ -699,9 +729,9 @@ def capture_electric_retail_service_territories(
             ("metadata/processing_identity.json", _canonical(identity) + b"\n"),
             ("metadata/candidate_ready.json", ready_body),
         ):
-            write_immutable(storage, f"{prefix}/{name}", body)
-            if storage.read_key(f"{prefix}/{name}") != body:
-                raise ValueError("candidate_readback_mismatch:" + name)
+            stage(name, body)
+        if ready_snapshot is not None and storage.object_snapshot(ready_key) != ready_snapshot:
+            raise ValueError("electric_territory_candidate_changed:" + version)
         return {
             "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": len(features), "utility_count": utility_count,
@@ -713,7 +743,7 @@ def capture_electric_retail_service_territories(
             "source_year": year, "tiger_edition": tiger_release["edition"],
             "source_population_complete": True,
             "null_geometry_count": 0, "invalid_geometry_count": 0,
-            "candidate_ready": f"{prefix}/metadata/candidate_ready.json",
+            "candidate_ready": ready_key,
             "prebuilt_geoparquet": f"{prefix}/{parquet_path}",
             "prebuilt_geoparquet_sha256": _sha(output),
             **APPROVALS,
