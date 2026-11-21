@@ -119,11 +119,14 @@ class JSONStream(httpx.SyncByteStream):
 
 
 def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
-                   service=None, alias=None, layer=None, doc_page=None,
-                   refuse_counts=()) -> httpx.MockTransport:
+                   ids_seed=None, service=None, alias=None, layer=None, doc_page=None,
+                   refuse_counts=(), layer_after_mutate=None) -> httpx.MockTransport:
     count = count if count is not None else len(rows)
     objectids = ids if ids is not None else list(FIXTURE_OBJECTIDS)
+    seed_ids = ids_seed if ids_seed is not None else objectids
     layer_fields = layer_fields if layer_fields is not None else _fixture_layer_fields()
+    layer_doc_calls = [0]
+    ids_calls = [0]
 
     def layer_doc():
         if callable(layer):
@@ -148,14 +151,23 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
             return httpx.Response(200, stream=JSONStream(document),
                                   headers={"content-type": "application/json"})
         if path.rstrip("/").endswith(f"/{src.LAYER_ID}"):
-            return httpx.Response(200, stream=JSONStream(layer_doc()),
+            layer_doc_calls[0] += 1
+            document = layer_doc()
+            if layer_after_mutate is not None and layer_doc_calls[0] > 1:
+                document = layer_after_mutate(document)
+            return httpx.Response(200, stream=JSONStream(document),
                                   headers={"content-type": "application/json"})
         if query.get("returnCountOnly") == ["true"]:
             return httpx.Response(200, stream=JSONStream({"count": count}),
                                   headers={"content-type": "application/json"})
         if query.get("returnIdsOnly") == ["true"]:
+            ids_calls[0] += 1
+            # The module fetches the seed roster first, then the before
+            # bracket; keep them independently controllable so the
+            # seed-vs-before drift is exercisable.
+            served = seed_ids if ids_calls[0] == 1 else objectids
             return httpx.Response(200, stream=JSONStream(
-                {"objectIdFieldName": "OBJECTID", "objectIds": objectids}),
+                {"objectIdFieldName": "OBJECTID", "objectIds": served}),
                 headers={"content-type": "application/json"})
         if query.get("resultOffset") is not None:
             offset = int(query["resultOffset"][0])
@@ -181,27 +193,11 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, ids=None,
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, segment_size=2,
                  mock_construction_validators=True):
-    import dagster_hifld.assets.nhd_hydrolocation_htdcco as asset_module
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(src, "EXPECTED_IDS_SHA256", ""),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
-        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
-        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
-        patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_NAN_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_EMPTY_GEOMETRY_COUNT", None),
-        patch.object(src, "EXPECTED_OBSERVED_BOUNDS", None),
-        patch.object(src, "EXPECTED_FEATURETYPE_DISTRIBUTION",
-                     {featuretype: sum(1 for row in rows_fixture()
-                                       if row["attributes"]["featuretype"] == featuretype)
-                      for featuretype in sorted({row["attributes"]["featuretype"]
-                                                 for row in rows_fixture()})}),
         patch.object(src, "SEGMENT_START_RECORDS", segment_size),
         patch.object(src, "SEGMENT_PROBE_BASE_DELAY_SECONDS", 0.0),
         patch.object(src, "DOC_CAPTURE_BASE_DELAY_SECONDS", 0.0),
-        patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
-        patch.object(asset_module, "EXPECTED_NULL_GEOMETRY_COUNT", None),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
@@ -244,24 +240,14 @@ class NhdHydrolocationHtdccoTests(unittest.TestCase):
                          "HydroLocation - Headwater, Terminus, Divergence, Confluence, "
                          "Catchment Outlet")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPoint")
-        self.assertEqual(src.EXPECTED_COUNT, 450_345)
         self.assertEqual(src.MAX_RECORD_COUNT, 2500)
         self.assertEqual(src.SEGMENT_START_RECORDS, 2000)
         self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
                          "4c4ab8e34f34e4705dd04722bc2e4e0c7cacc210c7bf7e0a34741b86cbebf981")
-        self.assertEqual(src.EXPECTED_IDS_SHA256,
-                         "7d4e83c206bf5aef7506958ff17970ed2b03a69e130149ae2775f05cb9419644")
-        self.assertEqual(src.EXPECTED_RECORD_SHA256,
-                         "f3c2b1234560ea1440681fcd020db912f772086fa33d94acd55dffd0bd40e040")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256,
-                         "62aa18e08e9e9c5d383a079b8813274af2177f31ac96e53fbe3431c0f23582c1")
-        self.assertEqual(src.EXPECTED_NULL_GEOMETRY_COUNT, 0)
-        self.assertEqual(src.EXPECTED_NAN_GEOMETRY_COUNT, 0)
-        self.assertEqual(src.EXPECTED_EMPTY_GEOMETRY_COUNT, 0)
-        self.assertEqual(src.EXPECTED_OBSERVED_BOUNDS,
-                         {"xmin": -159.03087330659716, "ymin": 35.62011031851847,
-                          "xmax": -72.58587289898243, "ymax": 68.41197038989377})
-        self.assertTrue(src.BASELINE_PENDING_NOTE)
+        self.assertRegex(src.EXPECTED_SCHEMA_SHA256, "^[0-9a-f]{64}$")
+        self.assertEqual(src.EXPECTED_FEATURETYPE_LABELS,
+                         {1: "Catchment Outlet", 2: "Confluence", 4: "Divergence",
+                          5: "Terminus", 6: "Headwater"})
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
                             for key in keys))
@@ -436,8 +422,19 @@ class NhdHydrolocationHtdccoTests(unittest.TestCase):
     def test_drift_and_provenance_failures_are_quarantined(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+
+        def layer_after_maxrecordcount(document):
+            document = dict(document)
+            document["maxRecordCount"] = 2000
+            return document
+
         cases = {
-            "source_count_drift": dict(count=FIXTURE_COUNT + 1),
+            # The producer's count answer and its enumerated OBJECTID roster
+            # must agree at capture time; a count naming more records than the
+            # roster fails the witness (not a pin) and quarantines the attempt.
+            "source_count_or_id_roster_drift": dict(count=FIXTURE_COUNT + 1),
+            "source_layer_metadata_changed_during_capture": dict(
+                layer_after_mutate=layer_after_maxrecordcount),
             "source_schema_drift": dict(layer_fields=_fixture_layer_fields()
                                         + [{"name": "EXTRA", "type": "esriFieldTypeString",
                                             "alias": "EXTRA", "nullable": True, "length": 4,
@@ -468,7 +465,8 @@ class NhdHydrolocationHtdccoTests(unittest.TestCase):
                                           "xmax": 1.0,
                                           "spatialReference": {
                                               "latestWkid": src.NATIVE_LAYER_SR["latestWkid"]}}}),
-            "source_id_population_drift": dict(ids=list(FIXTURE_OBJECTIDS)[:-1]),
+            "source_id_population_drift": dict(
+                ids=list(FIXTURE_OBJECTIDS)[:-1], ids_seed=list(FIXTURE_OBJECTIDS)),
             "unexpected_source_geometry_members": dict(rows=[
                 {**rows[0], "geometry": {**rows[0]["geometry"], "curves": []}},
                 *rows[1:]]),
@@ -518,7 +516,7 @@ class NhdHydrolocationHtdccoTests(unittest.TestCase):
                                          .read_bytes())
                     self.assertTrue(failure["reason_code"])
 
-    def test_geometry_gates_are_enforced_once_pinned(self):
+    def test_geometry_gates_are_reported_not_pinned(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         transport = make_responder(rows)
@@ -526,54 +524,68 @@ class NhdHydrolocationHtdccoTests(unittest.TestCase):
             root = Path(tmp)
             capture_root = root / "capture"
             with fixture_mode(schema_sha, transport):
-                src.capture_nhd_hydrolocation_htdcco(
+                result = src.capture_nhd_hydrolocation_htdcco(
                     _staging(root), version="gate-run", capture_directory=str(capture_root))
-                baseline = json.loads((capture_root / "computed_baseline.json").read_bytes())
-                with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT", 0):
-                    with self.assertRaisesRegex(src.NhdHydrolocationHtdccoError,
-                                                "source_null_geometry_count_drift"):
-                        src.fetch_nhd_hydrolocation_htdcco_pages(capture_root)
-                with patch.object(src, "EXPECTED_NAN_GEOMETRY_COUNT", 0):
-                    with self.assertRaisesRegex(src.NhdHydrolocationHtdccoError,
-                                                "source_nan_geometry_count_drift"):
-                        src.fetch_nhd_hydrolocation_htdcco_pages(capture_root)
-                with patch.object(src, "EXPECTED_RECORD_SHA256",
-                                  baseline["source_record_sha256"]):
-                    with patch.object(src, "EXPECTED_GEOMETRY_SHA256",
-                                      baseline["source_geometry_sha256"]):
-                        with patch.object(src, "EXPECTED_NULL_GEOMETRY_COUNT",
-                                          baseline["source_null_geometry_count"]):
-                            with patch.object(src, "EXPECTED_NAN_GEOMETRY_COUNT",
-                                              baseline["source_nan_geometry_count"]):
-                                with patch.object(
-                                        src, "EXPECTED_OBSERVED_BOUNDS",
-                                        baseline["observed_bounds"]):
-                                    again = src.capture_nhd_hydrolocation_htdcco(
-                                        _staging(root), version="gate-run-verify",
-                                        capture_directory=str(capture_root))
-                                    self.assertTrue(again["reused"])
+            # The fixture carries one null-geometry and one NaN-ordinate
+            # feature; the capture-time witness reports those counts in the
+            # audit instead of gating on pinned values.
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertEqual(result["source_reported_count"], FIXTURE_COUNT)
+            self.assertTrue(result["source_population_complete"])
+            self.assertEqual(result["source_null_geometry_count"], 1)
+            self.assertEqual(result["source_nan_geometry_count"], 1)
+            prefix = f"{src.DATASET_SLUG}/{src.FILE_SLUG}/{result['version']}"
+            audit = json.loads((root / "staging" / prefix / "metadata"
+                                / "source_audit.json").read_bytes())
+            self.assertEqual(audit["source_feature_count"], FIXTURE_COUNT)
+            self.assertEqual(audit["source_reported_count"], FIXTURE_COUNT)
+            self.assertEqual(audit["null_geometry_count"], 1)
+            self.assertEqual(audit["nan_geometry_count"], 1)
 
-    def test_pinned_baseline_drift_is_refused_and_quarantined(self):
-        rows = _fixture_rows()
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        # Acceptance criterion: the producer adds one feature between runs.
+        # The capture-time witness compares before/after counts and ID
+        # rosters, so a consistent single-feature addition must pass
+        # completeness; only the (unconfigured) approved-baseline drift check
+        # warns about it.
+        rows = _fixture_rows() + [{
+            "attributes": {
+                "OBJECTID": 8, "id3dhp": "000008",
+                "featuredate": 1709587421000 + 7, "mainstemid": "00007X",
+                "universalreferenceid": "ur-7", "gnisid": 2407,
+                "gnisidlabel": "Feature 7", "featuretype": 2,
+                "featuretypelabel": "Confluence", "workunitid": "19050401",
+            },
+            "geometry": {"x": -70.7, "y": 47.0, "z": 3.5},
+        }]
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
-        transport = make_responder(rows)
+        transport = make_responder(rows, ids=[*FIXTURE_OBJECTIDS, 8])
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
             with fixture_mode(schema_sha, transport):
                 storage = _staging(root)
-                src.capture_nhd_hydrolocation_htdcco(
-                    storage, version="pin-run", capture_directory=str(capture_root))
-                with patch.object(src, "EXPECTED_IDS_SHA256", "0" * 64):
-                    with self.assertRaisesRegex(src.NhdHydrolocationHtdccoError,
-                                                "source_id_roster_drift"):
-                        src.capture_nhd_hydrolocation_htdcco(
-                            storage, version="pin-run-drift", capture_directory=str(capture_root))
-                quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
-                                     .glob("*"))
-                self.assertTrue(quarantined)
-                failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
-                self.assertTrue(failure["reason_code"].startswith("source_id_roster_drift"))
+                first = src.capture_nhd_hydrolocation_htdcco(
+                    storage, version="witness-run", capture_directory=str(capture_root))
+                self.assertFalse(first["reused"])
+                self.assertEqual(first["feature_count"], FIXTURE_COUNT + 1)
+                self.assertEqual(first["source_reported_count"], FIXTURE_COUNT + 1)
+                self.assertTrue(first["source_population_complete"])
+                table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+                self.assertEqual(table.column("OBJECTID").to_pylist(),
+                                 [*FIXTURE_OBJECTIDS, 8])
+            from dagster import AssetCheckSeverity
+            from dagster_hifld.assets.nhd_hydrolocation_htdcco import (
+                nhd_hydrolocation_htdcco_drift)
+            candidate = {"dataset_slug": src.DATASET_SLUG, "file_slug": src.FILE_SLUG,
+                         "feature_count": FIXTURE_COUNT + 1,
+                         "source_id_sha256": first["source_id_sha256"],
+                         "release_accepted": False}
+            drift = nhd_hydrolocation_htdcco_drift(candidate)
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(drift.metadata["comparison_status"].value,
+                             "skipped_no_approved_baseline")
 
     def test_packaged_runtime_without_git_seals_and_reuses_with_real_validator(self):
         """Reproduce the shipped /app layout: package + manifests, no .git.

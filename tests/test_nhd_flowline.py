@@ -130,9 +130,11 @@ class JSONStream(httpx.SyncByteStream):
 
 
 def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=None,
-                   layer=None, geometry=None, doc_page=None) -> httpx.MockTransport:
+                   layer=None, geometry=None, doc_page=None,
+                   layer_after_mutate=None) -> httpx.MockTransport:
     count = count if count is not None else len(rows)
     layer_fields = layer_fields if layer_fields is not None else _fixture_layer_fields()
+    layer_doc_calls = [0]
 
     def layer_doc():
         if callable(layer):
@@ -155,7 +157,11 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
             return httpx.Response(200, stream=JSONStream(service_doc),
                                   headers={"content-type": "application/json"})
         if path.rstrip("/").endswith(f"/{src.LAYER_ID}"):
-            return httpx.Response(200, stream=JSONStream(layer_doc()),
+            layer_doc_calls[0] += 1
+            document = layer_doc()
+            if layer_after_mutate is not None and layer_doc_calls[0] > 1:
+                document = layer_after_mutate(document)
+            return httpx.Response(200, stream=JSONStream(document),
                                   headers={"content-type": "application/json"})
         if query.get("returnCountOnly") == ["true"]:
             return httpx.Response(200, stream=JSONStream({"count": count}),
@@ -190,14 +196,8 @@ def make_responder(rows: list[dict], *, layer_fields=None, count=None, service=N
 @contextmanager
 def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=None,
                  real_identity: bool = False):
-    import dagster_hifld.assets.nhd_flowline as asset_module
     contexts = [
-        patch.object(src, "EXPECTED_COUNT", FIXTURE_COUNT),
         patch.object(src, "EXPECTED_SCHEMA_SHA256", schema_sha),
-        patch.object(src, "EXPECTED_RECORD_SHA256", ""),
-        patch.object(src, "EXPECTED_GEOMETRY_SHA256", ""),
-        patch.object(src, "EXPECTED_IDS_SHA256", ""),
-        patch.object(asset_module, "EXPECTED_COUNT", FIXTURE_COUNT),
         patch.object(src, "_default_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
@@ -242,14 +242,11 @@ class NhdFlowlineTests(unittest.TestCase):
         self.assertEqual(src.LAYER_ID, 50)
         self.assertEqual(src.LAYER_NAME, "Flowline")
         self.assertEqual(src.GEOMETRY_TYPE, "esriGeometryPolyline")
-        self.assertEqual(src.EXPECTED_COUNT, 30_251_533)
         self.assertEqual(src.PAGE_SIZE, 2500)
         self.assertEqual(len(src.NATIVE_FIELDS), 33)
         self.assertEqual(src.MIN_FREE_BYTES, 350_000_000_000)
-        self.assertEqual(src.EXPECTED_RECORD_SHA256, "")
-        self.assertEqual(src.EXPECTED_GEOMETRY_SHA256, "")
-        self.assertEqual(src.EXPECTED_IDS_SHA256, "")
-        self.assertTrue(src.BASELINE_PENDING_NOTE)
+        self.assertEqual(src.EXPECTED_SCHEMA_SHA256,
+                         "d0d84dca81d1be2999febebda4c6527ac6fe67cfb4470b48f6f926090a6f3c6f")
         keys = defs.resolve_asset_graph().get_all_asset_keys()
         self.assertTrue(any(key.path == ["ingest", src.DATASET_SLUG, src.DATASET_SLUG]
                             for key in keys))
@@ -464,7 +461,8 @@ class NhdFlowlineTests(unittest.TestCase):
             sealed = json.loads((root / "staging" / prefix / "metadata"
                                  / "source_audit.json").read_bytes())
             self.assertEqual(sealed["source_feature_count"], FIXTURE_COUNT)
-            self.assertTrue(sealed["baseline_pending_complete_capture"])
+            self.assertEqual(sealed["source_reported_count"], FIXTURE_COUNT)
+            self.assertEqual(sealed["unique_source_id_count"], FIXTURE_COUNT)
             self.assertEqual(sealed["pagination"]["mode"], "objectid_keyset_asc")
             self.assertTrue(sealed["pagination"]["resumable"])
             self.assertFalse(sealed["release_accepted"])
@@ -555,8 +553,7 @@ class NhdFlowlineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_root = root / "capture"
-            with fixture_mode(schema_sha, transport, page_size=2), \
-                    patch.object(src, "EXPECTED_COUNT", count):
+            with fixture_mode(schema_sha, transport, page_size=2):
                 src.fetch_nhd_flowline_pages(capture_root)
                 tracemalloc.start()
                 try:
@@ -693,8 +690,20 @@ class NhdFlowlineTests(unittest.TestCase):
     def test_drift_and_provenance_failures_are_quarantined(self):
         rows = _fixture_rows()
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+
+        def layer_after_maxrecordcount(document):
+            document = dict(document)
+            document["maxRecordCount"] = 2000
+            return document
+
         cases = {
-            "source_count_drift": dict(count=FIXTURE_COUNT + 1),
+            # The producer's count answers and the ascending OBJECTID walk
+            # re-derived from the retained pages must agree: a count naming
+            # more records than the walk proves fails the witness (not a pin)
+            # and quarantines the attempt.
+            "source_count_or_id_roster_drift": dict(count=FIXTURE_COUNT + 1),
+            "source_layer_metadata_changed_during_capture": dict(
+                layer_after_mutate=layer_after_maxrecordcount),
             "source_schema_drift": dict(layer_fields=_fixture_layer_fields()
                                         + [{"name": "EXTRA", "type": "esriFieldTypeString",
                                             "alias": "EXTRA", "nullable": True, "length": 4,
@@ -790,20 +799,33 @@ class NhdFlowlineTests(unittest.TestCase):
                                          .read_bytes())
                     self.assertTrue(failure["reason_code"])
 
-    def test_null_geometry_contract_is_enforced(self):
+    def test_null_geometry_is_reported_not_pinned(self):
+        # Every feature of the fixture carries null geometry; the capture-time
+        # witness reports that count in the result and the audit instead of
+        # refusing the capture against a pinned value.
         rows = [{**row, "geometry": None} for row in _fixture_rows()]
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         transport = make_responder(rows)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             with fixture_mode(schema_sha, transport, page_size=2):
-                with self.assertRaisesRegex(src.NhdFlowlineError,
-                                            "source_null_geometry_count_drift"):
-                    src.capture_nhd_flowline(_staging(root), version="null-geometry-run",
-                                             capture_directory=str(root / "capture"))
+                result = src.capture_nhd_flowline(_staging(root), version="null-geometry-run",
+                                                  capture_directory=str(root / "capture"))
+            self.assertEqual(result["feature_count"], FIXTURE_COUNT)
+            self.assertEqual(result["source_reported_count"], FIXTURE_COUNT)
+            self.assertEqual(result["source_null_geometry_count"], FIXTURE_COUNT)
 
-    def test_pinned_baseline_drift_is_refused_and_quarantined(self):
+    def test_upstream_added_feature_passes_and_warns_on_unapproved_drift(self):
+        # Acceptance criterion: the producer adds one feature between runs.
+        # The capture-time witness compares the count answers against the
+        # ascending OBJECTID walk, so a consistent single-feature addition
+        # must pass completeness; only the (unconfigured) approved-baseline
+        # drift check warns about it.
         rows = _fixture_rows()
+        added_attrs = dict(_fixture_attrs(FIXTURE_OBJECTIDS[0]))
+        added_attrs.update({"OBJECTID": 4, "id3dhp": "0000009"})
+        rows.insert(3, {"attributes": added_attrs,
+                        "geometry": _fixture_geometry(FIXTURE_OBJECTIDS[0])})
         schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
         transport = make_responder(rows)
         with tempfile.TemporaryDirectory() as tmp:
@@ -811,24 +833,25 @@ class NhdFlowlineTests(unittest.TestCase):
             capture_root = root / "capture"
             with fixture_mode(schema_sha, transport, page_size=2):
                 storage = _staging(root)
-                src.capture_nhd_flowline(storage, version="pin-run",
-                                         capture_directory=str(capture_root))
-                baseline = json.loads((capture_root / "computed_baseline.json").read_bytes())
-                with patch.object(src, "EXPECTED_RECORD_SHA256",
-                                  baseline["source_record_sha256"]):
-                    again = src.capture_nhd_flowline(storage, version="pin-run-verify",
-                                                     capture_directory=str(capture_root))
-                    self.assertTrue(again["reused"])
-                with patch.object(src, "EXPECTED_IDS_SHA256", "0" * 64):
-                    with self.assertRaisesRegex(src.NhdFlowlineError,
-                                                "source_id_roster_drift"):
-                        src.capture_nhd_flowline(storage, version="pin-run-drift",
+                first = src.capture_nhd_flowline(storage, version="witness-run",
                                                  capture_directory=str(capture_root))
-                quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG)
-                                     .glob("*"))
-                self.assertTrue(quarantined)
-                failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
-                self.assertEqual(failure["reason_code"], "source_id_roster_drift")
+                self.assertFalse(first["reused"])
+                self.assertEqual(first["feature_count"], FIXTURE_COUNT + 1)
+                self.assertEqual(first["source_reported_count"], FIXTURE_COUNT + 1)
+                self.assertTrue(first["source_population_complete"])
+                table = pq.read_table(capture_root / f"{src.FILE_SLUG}.parquet")
+                self.assertEqual(table.column("OBJECTID").to_pylist(), [1, 2, 3, 4, 5, 8])
+            from dagster import AssetCheckSeverity
+            from dagster_hifld.assets.nhd_flowline import nhd_flowline_drift
+            candidate = {"dataset_slug": src.DATASET_SLUG, "file_slug": src.FILE_SLUG,
+                         "feature_count": FIXTURE_COUNT + 1,
+                         "source_id_sha256": first["source_id_sha256"],
+                         "release_accepted": False}
+            drift = nhd_flowline_drift(candidate)
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(drift.metadata["comparison_status"].value,
+                             "skipped_no_approved_baseline")
 
 
 if __name__ == "__main__":
