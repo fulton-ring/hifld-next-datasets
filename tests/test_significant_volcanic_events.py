@@ -205,7 +205,7 @@ print(json.dumps({'metadata_sha256':hashlib.sha256(output.schema.metadata[b'geo'
             'source_reported_count':audit2['source_reported_count'],'source_id_sha256':audit2['source_id_sha256'],'source_population_complete':True}
         self.assertEqual(table2.num_rows,len(ids)+1);self.assertTrue(noaa_significant_volcanic_events_complete(candidate2).passed)
         drift=noaa_significant_volcanic_events_drift(candidate2)
-        self.assertEqual(drift.severity.name,'WARN');self.assertEqual(drift.metadata['comparison_status'],'skipped_no_approved_baseline');self.assertFalse(drift.passed)
+        self.assertEqual(drift.severity.name,'WARN');self.assertEqual(drift.metadata['comparison_status'].value,'skipped_no_approved_baseline');self.assertFalse(drift.passed)
         self.assertNotEqual(candidate['source_id_sha256'],candidate2['source_id_sha256'])
     def test_observed_count_outside_plausibility_band_quarantined(self):
         for n in(f.COUNT_FLOOR-1,f.COUNT_CEIL+1):
