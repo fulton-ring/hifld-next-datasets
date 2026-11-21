@@ -8,25 +8,32 @@ import json
 import tempfile
 import unittest
 import zipfile
-from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
 
 import fiona
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dagster import AssetCheckSeverity, DagsterInstance, materialize
+
+import dagster_hifld.assets.mirta_dod_sites_points as assets
 from dagster_hifld.assets.mirta_dod_sites_points import mirta_dod_sites_points_draft_schedule
+from dagster_hifld.capture_completeness import approved_baseline_drift
+from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
+from dagster_hifld.resources import StagingStorageResource
+import dagster_hifld.sources.mirta_dod_sites_points as src
 from dagster_hifld.sources.mirta_dod_sites_points import (
-    DATASET_SLUG, EXPECTED_COUNT, EXPECTED_FID_COLUMN, EXPECTED_FID_FIRST, EXPECTED_FID_LAST,
-    EXPECTED_FIELDS, FIELD_ORDER, FID_SHA, ID_SHA, RECORD_SHA,
+    DATASET_SLUG, EXPECTED_FID_COLUMN, EXPECTED_FIELDS, FIELD_ORDER,
     RELEASE_NOTES_URL, SOURCE_RELEASE, SOURCE_URL, _canonical, _load_capture,
     _parquet, _sha,
 )
 
-_GDB = "FY24_MIRTA_Final.gdb"
-_POINTS_LAYER = "FY24MirtaLocations"
-_BOUNDARY_LAYER = "FY24MirtaLocations_A"
+_GDB = "FY25_MIRTA_FinalV2.gdb"
+_POINTS_LAYER = "FY25MIRTALocations_P"
+_BOUNDARY_LAYER = "FY25MirtaLocations_A"
+_NOTES = b"fixture release notes"
 
 
 def _rows():
@@ -47,140 +54,132 @@ def _rows():
     ]
 
 
-def _counts(rows, name):
-    return dict(Counter(row["properties"][name] for row in rows))
+def _added_rows():
+    """The baseline rows plus one site the publisher added upstream."""
+    rows = _rows()
+    rows.append(
+        {"geometry": {"type": "Point", "coordinates": (-97.3646, 32.7815)},
+         "properties": {"OBJECTID": 2000, "countryName": "usa", "featureDescription": "na",
+                        "featureName": "Added TS", "isCui": "no", "isFirrmaSite": "no",
+                        "isJointBase": "no", "mediaId": "na", "mirtaLocationsIdpk": " ",
+                        "sdsId": None, "siteName": "Added TS", "siteOperationalStatus": "act",
+                        "siteReportingComponent": "armyNationalGuard", "stateNameCode": "tx"}})
+    return rows
 
 
-def _gdb_layer_roster(gdb):
-    return fiona.listlayers(str(gdb))
+def _build_archive(root: Path, rows) -> tuple[bytes, frozenset]:
+    """Build one fixture archive (gdb + top-level release notes) and its member set."""
+    gdb = root / _GDB
+    # Layers are written in the archive's observed roster order.
+    boundary_schema = {"geometry": "Polygon", "properties": {"siteName": "str:100"}}
+    with fiona.open(str(gdb), "w", driver="OpenFileGDB", layer=_BOUNDARY_LAYER,
+                    crs="EPSG:4326", schema=boundary_schema) as sink:
+        sink.write({"geometry": {"type": "Polygon",
+                                 "coordinates": [[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0)]]},
+                    "properties": {"siteName": "Fort Example"}})
+    point_schema = {"geometry": "Point", "properties": {"OBJECTID": "int64",
+                                                        **dict(EXPECTED_FIELDS)}}
+    with fiona.open(str(gdb), "w", driver="OpenFileGDB", layer=_POINTS_LAYER,
+                    crs="EPSG:4326", schema=point_schema) as sink:
+        for row in rows:
+            sink.write(row)
+    archive = root / "mirta.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(zipfile.ZipInfo(_GDB + "/"), b"")
+        for item in sorted(gdb.rglob("*")):
+            if item.is_file():
+                zf.write(item, item.relative_to(root))
+        zf.writestr("release_notes.pdf", _NOTES)
+    members = {info.filename.split("/", 1)[1] for info in zipfile.ZipFile(archive).infolist()
+               if info.filename.startswith(_GDB + "/") and not info.is_dir()}
+    return archive.read_bytes(), frozenset(members)
 
 
-def _observe(rows, root: Path):
-    """Mirror the module's own extraction to derive the fixture's pin set."""
-    attrs, geoms, fids = [], [], []
-    with fiona.open(str(root / _GDB), layer=_POINTS_LAYER) as src:
-        schema = dict(src.schema["properties"])
-        bounds = list(map(float, src.bounds))
-        for feature in src:
-            fids.append(int(feature["id"]))
-            row = []
-            for name in FIELD_ORDER:
-                value = feature["properties"][name]
-                row.append(None if value is None else str(value))
-            attrs.append(row)
-            x, y = feature["geometry"]["coordinates"]
-            geoms.append([float(x), float(y)])
-    id_position = list(FIELD_ORDER).index("mirtaLocationsIdpk")
-    with zipfile.ZipFile(io.BytesIO((root / "mirta.zip").read_bytes())) as z:
-        infos = [i for i in z.infolist() if not (i.is_dir() or i.filename.endswith("/"))]
-        members = {i.filename.split("/", 1)[1] for i in infos}
-        dates = {i.date_time[:3] for i in infos}
-    return attrs, geoms, fids, {
-        "EXPECTED_ZIP_BYTES": (root / "mirta.zip").stat().st_size,
-        "EXPECTED_ZIP_SHA256": _sha((root / "mirta.zip").read_bytes()),
-        "EXPECTED_GDB_MEMBERS": frozenset(members),
-        "EXPECTED_ZIP_MEMBER_DATE": next(iter(dates)),
-        "EXPECTED_GDB_LAYER_ROSTER": _gdb_layer_roster(root / _GDB),
-        "EXPECTED_FIELDS": schema,
-        "EXPECTED_COUNT": len(rows),
-        "EXPECTED_BOUNDS": bounds,
-        "EXPECTED_FID_FIRST": fids[0],
-        "EXPECTED_FID_LAST": fids[-1],
-        "EXPECTED_CONSTANT_FIELDS": {name: rows[0]["properties"][name]
-                                     for name in ("countryName", "featureDescription", "isCui", "mediaId")},
-        "EXPECTED_IDPK_VALUE": rows[0]["properties"]["mirtaLocationsIdpk"],
-        "EXPECTED_FIRRMA_COUNTS": _counts(rows, "isFirrmaSite"),
-        "EXPECTED_JOINT_BASE_COUNTS": _counts(rows, "isJointBase"),
-        "EXPECTED_STATUS_COUNTS": _counts(rows, "siteOperationalStatus"),
-        "EXPECTED_COMPONENT_COUNTS": _counts(rows, "siteReportingComponent"),
-        "EXPECTED_STATE_SET": {row["properties"]["stateNameCode"] for row in rows},
-        "EXPECTED_SDS_NULL_COUNT": sum(1 for row in rows if row["properties"]["sdsId"] is None),
-        "EXPECTED_SDS_GUID_COUNT": sum(1 for row in rows if row["properties"]["sdsId"] is not None),
-        "RECORD_SHA": _sha(_canonical(attrs)),
-        "GEOMETRY_SHA": _sha(_canonical(geoms)),
-        "FID_SHA": _sha(_canonical(fids)),
-        "ID_SHA": _sha(_canonical([row[id_position] for row in attrs])),
-        "SCHEMA_SHA": _sha(_canonical([["OBJECTID", "int64"],
-                                       *[[name, schema[name]] for name in FIELD_ORDER]])),
-    }
+@contextlib.contextmanager
+def _fixture(rows=None):
+    """Yield the module, a fixture root and the archive bytes with the member pin patched."""
+    rows = _rows() if rows is None else rows
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        body, members = _build_archive(root, rows)
+        with patch.object(src, "EXPECTED_GDB_MEMBERS", members):
+            yield src, root, body
+
+
+def _mock_client(notes: bytes, archive: bytes) -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url == SOURCE_URL:
+            payload = archive
+        elif request.url == RELEASE_NOTES_URL:
+            payload = notes
+        else:
+            raise AssertionError(str(request.url))
+        return httpx.Response(200, stream=httpx.ByteStream(payload),
+                              headers={"Content-Length": str(len(payload))})
+    return httpx.Client(transport=httpx.MockTransport(handler))
 
 
 class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
-    @contextlib.contextmanager
-    def _fixture(self, rows=None, include_boundary=True):
-        import dagster_hifld.sources.mirta_dod_sites_points as src
-        rows = _rows() if rows is None else rows
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            gdb = root / _GDB
-            point_schema = {"geometry": "Point", "properties": {"OBJECTID": "int64",
-                                                                **dict(EXPECTED_FIELDS)}}
-            with fiona.open(str(gdb), "w", driver="OpenFileGDB", layer=_POINTS_LAYER,
-                            crs="EPSG:4326", schema=point_schema) as sink:
-                for row in rows:
-                    sink.write(row)
-            if include_boundary:
-                boundary_schema = {"geometry": "Polygon", "properties": {"siteName": "str:100"}}
-                with fiona.open(str(gdb), "w", driver="OpenFileGDB", layer=_BOUNDARY_LAYER,
-                                crs="EPSG:4326", schema=boundary_schema) as sink:
-                    sink.write({"geometry": {"type": "Polygon",
-                                             "coordinates": [[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0)]]},
-                                "properties": {"siteName": "Fort Example"}})
-            archive = root / "mirta.zip"
-            with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr(zipfile.ZipInfo(_GDB + "/"), b"")
-                for item in sorted(gdb.rglob("*")):
-                    if item.is_file():
-                        zf.write(item, item.relative_to(root))
-            pins = _observe(rows, root)[3]
-            with patch.multiple(src, **pins):
-                yield src, root, archive.read_bytes()
-
     def test_pinned_source_and_complete_native_contract(self):
         self.assertEqual(DATASET_SLUG, "mirta-dod-sites-points")
         self.assertEqual(SOURCE_URL, "https://www.acq.osd.mil/eie/imr/rpid/disdi/Downloads/installations_ranges.zip")
         self.assertEqual(RELEASE_NOTES_URL, "https://www.acq.osd.mil/eie/imr/rpid/disdi/Downloads/release_notes.pdf")
-        self.assertEqual(SOURCE_RELEASE, "FY24")
-        self.assertEqual(EXPECTED_COUNT, 831)
+        self.assertEqual(SOURCE_RELEASE, "FY25 V2")
         self.assertEqual(list(FIELD_ORDER), list(EXPECTED_FIELDS))
         self.assertEqual(EXPECTED_FIELDS["mirtaLocationsIdpk"], "str:40")
         self.assertEqual(EXPECTED_FID_COLUMN, "OBJECTID")
-        self.assertEqual(EXPECTED_FID_FIRST, 764)
-        self.assertEqual(EXPECTED_FID_LAST, 1604)
-        self.assertEqual(ID_SHA, "919641a22c1c507a0bf9e644b75eacf95c0e790551f3789a230867bf2f502505")
-        self.assertEqual(FID_SHA, "38387a209371837d6a52ce4b5dcf2b694cbc4b47f9ae7ec858402d582a300b5b")
-        self.assertEqual(RECORD_SHA, "734ff19e5fc28e447bedae993ce34b82c8b5436fb17afad5f7cd91ab632f1b30")
+        self.assertEqual(src.EXPECTED_GDB_DIR, "FY25_MIRTA_FinalV2.gdb")
+        self.assertEqual(src.EXPECTED_GDB_LAYER_ROSTER, [_BOUNDARY_LAYER, _POINTS_LAYER])
+        self.assertEqual(src.EXPECTED_LAYER, _POINTS_LAYER)
+        self.assertEqual(src.EXPECTED_BOUNDARY_LAYER, _BOUNDARY_LAYER)
+
+    def test_no_module_level_release_or_count_pins(self):
+        for name in ("EXPECTED_COUNT", "EXPECTED_FEATURE_COUNT", "EXPECTED_ZIP_BYTES",
+                     "EXPECTED_ZIP_SHA256", "EXPECTED_RELEASE_NOTES_BYTES",
+                     "EXPECTED_RELEASE_NOTES_SHA256", "EXPECTED_ZIP_MEMBER_DATE",
+                     "EXPECTED_BOUNDS", "EXPECTED_FID_FIRST", "EXPECTED_FID_LAST",
+                     "EXPECTED_CONSTANT_FIELDS", "EXPECTED_IDPK_VALUE",
+                     "EXPECTED_FIRRMA_COUNTS", "EXPECTED_JOINT_BASE_COUNTS",
+                     "EXPECTED_STATUS_COUNTS", "EXPECTED_COMPONENT_COUNTS",
+                     "EXPECTED_STATE_SET", "EXPECTED_SDS_NULL_COUNT",
+                     "EXPECTED_SDS_GUID_COUNT", "RECORD_SHA", "GEOMETRY_SHA", "ID_SHA",
+                     "FID_SHA", "SCHEMA_SHA"):
+            self.assertFalse(hasattr(src, name), name)
 
     def test_refresh_schedule_is_stopped(self):
         self.assertEqual(mirta_dod_sites_points_draft_schedule.default_status.value, "STOPPED")
 
-    def test_pinned_release_validates_with_degenerate_id_preserved(self):
-        with self._fixture() as (src, root, body):
+    def test_release_validates_with_witnesses_and_degenerate_id_preserved(self):
+        with _fixture() as (_src, _root, body):
             with tempfile.TemporaryDirectory() as tmp:
                 attrs, geoms, fids, audit = src._decode(body, Path(tmp))
             self.assertEqual(len(attrs), 2)
             self.assertEqual(fids, [764, 1604])
             self.assertEqual(audit["source_feature_count"], 2)
+            self.assertEqual(audit["source_reported_count"], 2)
+            self.assertTrue(audit["source_population_complete"])
             self.assertEqual(audit["source_id_degenerate"], True)
             self.assertEqual(audit["source_id_unique"], False)
             self.assertEqual(audit["source_fid_column"], "OBJECTID")
-            self.assertEqual(audit["source_fid_unique"], True)
+            self.assertTrue(audit["source_fid_unique"])
             self.assertEqual(audit["source_fid_first"], 764)
             self.assertEqual(audit["source_fid_last"], 1604)
             self.assertEqual(audit["source_id_field"], "mirtaLocationsIdpk")
             self.assertEqual(audit["source_geometry_null_count"], 0)
-            self.assertEqual(audit["source_release_date"], "2025-09-02")
+            self.assertEqual(audit["source_release"], "FY25 V2")
+            self.assertEqual(audit["source_release_date"], "2026-11-16")
             self.assertEqual(audit["source_crs"], "EPSG:4326")
             self.assertEqual(audit["source_null_counts"]["sdsId"], 1)
             self.assertEqual(audit["source_null_counts"]["mirtaLocationsIdpk"], 0)
+            self.assertEqual(audit["source_feature_site_name_divergence_count"], 0)
+            self.assertEqual(audit["source_gdb_lock_files"], [])
 
     def test_noncontiguous_native_fids_survive_roundtrip(self):
-        with self._fixture() as (src, root, body):
+        with _fixture() as (_src, _root, body):
             with tempfile.TemporaryDirectory() as tmp:
-                attrs, geoms, fids, audit = src._decode(body, Path(tmp))
+                attrs, geoms, fids, _audit = src._decode(body, Path(tmp))
             self.assertEqual(fids, [764, 1604])
             self.assertNotEqual(fids[1] - fids[0], 1)
-            self.assertEqual(audit["source_fid_sha256"], _sha(_canonical(fids)))
             payload = _parquet(attrs, geoms, fids)
             table = pq.read_table(io.BytesIO(payload))
             self.assertEqual(table["OBJECTID"].type, pa.int64())
@@ -189,9 +188,9 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
             self.assertEqual(table["mirtaLocationsIdpk"].to_pylist(), [" ", " "])
 
     def test_parquet_roundtrip_preserves_native_values(self):
-        with self._fixture() as (src, root, body):
+        with _fixture() as (_src, _root, body):
             with tempfile.TemporaryDirectory() as tmp:
-                attrs, geoms, fids, _ = src._decode(body, Path(tmp))
+                attrs, geoms, fids, _audit = src._decode(body, Path(tmp))
             payload = _parquet(attrs, geoms, fids)
             table = pq.read_table(io.BytesIO(payload))
             self.assertEqual(table.num_rows, 2)
@@ -201,61 +200,42 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
             geo = json.loads(table.schema.metadata[b"geo"])
             self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4326)
             self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
-            self.assertIn(table["geometry"][0].as_py().hex().startswith("0101"), (True,))
-
-    def test_pinned_archive_byte_drift_rejected(self):
-        with self._fixture() as (src, root, body):
-            with tempfile.TemporaryDirectory() as tmp, patch.object(src, "EXPECTED_ZIP_SHA256", "0" * 64):
-                with self.assertRaisesRegex(ValueError, "pinned_disdi_release_drift"):
-                    src._decode(body, Path(tmp))
-
-    def _rezip(self, root):
-        """Rebuild a zip from the fixture gdb members."""
-        out = Path(tempfile.mkdtemp(dir=root)) / "mutated.zip"
-        with zipfile.ZipFile(root / "mirta.zip") as original, zipfile.ZipFile(out, "w") as zf:
-            for info in original.infolist():
-                zf.writestr(info, original.read(info.filename))
-        return out
 
     def test_zip_member_roster_drift_rejected(self):
-        with self._fixture() as (src, root, body):
-            trimmed = Path(tempfile.mkdtemp(dir=root)) / "trimmed.zip"
-            with zipfile.ZipFile(root / "mirta.zip") as original, zipfile.ZipFile(trimmed, "w") as zf:
+        with _fixture() as (_src, root, _body):
+            out = Path(tempfile.mkdtemp(dir=root)) / "trimmed.zip"
+            with zipfile.ZipFile(root / "mirta.zip") as original, zipfile.ZipFile(out, "w") as zf:
                 for info in original.infolist():
                     if not info.filename.endswith("timestamps"):
                         zf.writestr(info, original.read(info.filename))
-            with tempfile.TemporaryDirectory() as tmp, \
-                    patch.multiple(src, EXPECTED_ZIP_BYTES=trimmed.stat().st_size,
-                                   EXPECTED_ZIP_SHA256=_sha(trimmed.read_bytes())):
+            with tempfile.TemporaryDirectory() as tmp:
                 with self.assertRaisesRegex(ValueError, "source_zip_member_roster_drift"):
-                    src._decode(trimmed.read_bytes(), Path(tmp))
+                    src._decode(out.read_bytes(), Path(tmp))
+
+    def test_zip_layout_drift_rejected(self):
+        with _fixture() as (_src, root, _body):
+            out = Path(tempfile.mkdtemp(dir=root)) / "nolayout.zip"
+            with zipfile.ZipFile(root / "mirta.zip") as original, zipfile.ZipFile(out, "w") as zf:
+                for info in original.infolist():
+                    if info.filename != "release_notes.pdf":
+                        zf.writestr(info, original.read(info.filename))
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaisesRegex(ValueError, "source_zip_layout_drift"):
+                    src._decode(out.read_bytes(), Path(tmp))
 
     def test_zip_member_path_rejection(self):
-        with self._fixture() as (src, root, body):
-            traversal = self._rezip(root)
-            with zipfile.ZipFile(traversal, "a") as zf:
-                zf.writestr("../escape.gdb/evil", b"x")
-            with tempfile.TemporaryDirectory() as tmp, \
-                    patch.multiple(src, EXPECTED_ZIP_BYTES=traversal.stat().st_size,
-                                   EXPECTED_ZIP_SHA256=_sha(traversal.read_bytes())):
-                with self.assertRaisesRegex(ValueError, "source_zip_member_path_rejected"):
-                    src._decode(traversal.read_bytes(), Path(tmp))
-
-    def test_zip_member_timestamp_drift_rejected(self):
-        with self._fixture() as (src, root, body):
-            restamped = Path(tempfile.mkdtemp(dir=root)) / "restamped.zip"
-            with zipfile.ZipFile(root / "mirta.zip") as original, zipfile.ZipFile(restamped, "w") as zf:
+        with _fixture() as (_src, root, _body):
+            out = Path(tempfile.mkdtemp(dir=root)) / "traversal.zip"
+            with zipfile.ZipFile(root / "mirta.zip") as original, zipfile.ZipFile(out, "w") as zf:
                 for info in original.infolist():
-                    info.date_time = (2020, 1, 1, 0, 0, 0)
                     zf.writestr(info, original.read(info.filename))
-            with tempfile.TemporaryDirectory() as tmp, \
-                    patch.multiple(src, EXPECTED_ZIP_BYTES=restamped.stat().st_size,
-                                   EXPECTED_ZIP_SHA256=_sha(restamped.read_bytes())):
-                with self.assertRaisesRegex(ValueError, "source_zip_member_timestamp_drift"):
-                    src._decode(restamped.read_bytes(), Path(tmp))
+                zf.writestr("../escape.gdb/evil", b"x")
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaisesRegex(ValueError, "source_zip_member_path_rejected"):
+                    src._decode(out.read_bytes(), Path(tmp))
 
     def test_zip_crc_integrity_rejected(self):
-        with self._fixture() as (src, root, body):
+        with _fixture() as (_src, root, _body):
             broken = Path(tempfile.mkdtemp(dir=root)) / "broken.zip"
             raw = bytearray((root / "mirta.zip").read_bytes())
             eocd = raw.rindex(b"PK\x05\x06")
@@ -273,22 +253,20 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
                     + int.from_bytes(raw[cursor + 32:cursor + 34], "little")
             self.assertTrue(patched)
             broken.write_bytes(bytes(raw))
-            with tempfile.TemporaryDirectory() as tmp, \
-                    patch.multiple(src, EXPECTED_ZIP_BYTES=len(raw),
-                                   EXPECTED_ZIP_SHA256=_sha(bytes(raw))):
+            with tempfile.TemporaryDirectory() as tmp:
                 with self.assertRaisesRegex(ValueError, "source_zip_crc_invalid"):
                     src._decode(bytes(raw), Path(tmp))
 
     def test_gdb_layer_roster_drift_rejected(self):
-        rows = _rows()
-        with self._fixture(rows=rows, include_boundary=False) as (src, root, body):
+        with _fixture() as (_src, _root, body):
             with tempfile.TemporaryDirectory() as tmp, \
-                    patch.object(src, "EXPECTED_GDB_LAYER_ROSTER", [_POINTS_LAYER, _BOUNDARY_LAYER]):
+                    patch.object(src, "EXPECTED_GDB_LAYER_ROSTER",
+                                 [_POINTS_LAYER, _BOUNDARY_LAYER, "ExtraLayer"]):
                 with self.assertRaisesRegex(ValueError, "source_gdb_layer_roster_drift"):
                     src._decode(body, Path(tmp))
 
     def test_schema_drift_rejected(self):
-        with self._fixture() as (src, root, body):
+        with _fixture() as (_src, _root, body):
             modified = dict(EXPECTED_FIELDS)
             modified["siteName"] = "str:80"
             with tempfile.TemporaryDirectory() as tmp, \
@@ -296,68 +274,33 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "source_schema_drift"):
                     src._decode(body, Path(tmp))
 
-    def test_feature_count_drift_rejected(self):
-        with self._fixture() as (src, root, body):
-            with tempfile.TemporaryDirectory() as tmp, patch.object(src, "EXPECTED_COUNT", 999):
-                with self.assertRaisesRegex(ValueError, "source_feature_count_drift"):
-                    src._decode(body, Path(tmp))
-
-    def test_bounds_drift_rejected(self):
-        with self._fixture() as (src, root, body):
-            with tempfile.TemporaryDirectory() as tmp, \
-                    patch.object(src, "EXPECTED_BOUNDS", [0.0, 0.0, 1.0, 1.0]):
-                with self.assertRaisesRegex(ValueError, "source_bounds_drift"):
-                    src._decode(body, Path(tmp))
-
-    def test_constant_field_drift_rejected(self):
-        with self._fixture() as (src, root, body):
-            with tempfile.TemporaryDirectory() as tmp, \
-                    patch.object(src, "EXPECTED_CONSTANT_FIELDS", {"countryName": "mex"}):
-                with self.assertRaisesRegex(ValueError, "source_constant_field_drift:countryName"):
-                    src._decode(body, Path(tmp))
-
-    def test_degenerate_id_drift_rejected(self):
-        rows = _rows()
-        rows[1] = dict(rows[1], properties=dict(rows[1]["properties"], mirtaLocationsIdpk="X"))
-        with self._fixture(rows=rows) as (src, root, body):
-            with tempfile.TemporaryDirectory() as tmp:
-                with self.assertRaisesRegex(ValueError, "source_id_degenerate_drift"):
-                    src._decode(body, Path(tmp))
-
-    def test_value_population_drift_rejected(self):
-        with self._fixture() as (src, root, body):
-            with tempfile.TemporaryDirectory() as tmp, \
-                    patch.object(src, "EXPECTED_STATUS_COUNTS", {"act": 2, "Excs": 0}):
-                with self.assertRaisesRegex(ValueError, "source_value_population_drift"):
-                    src._decode(body, Path(tmp))
-
-    def test_state_roster_drift_rejected(self):
-        with self._fixture() as (src, root, body):
-            with tempfile.TemporaryDirectory() as tmp, \
-                    patch.object(src, "EXPECTED_STATE_SET", {"nc", "tx"}):
-                with self.assertRaisesRegex(ValueError, "source_state_roster_drift"):
-                    src._decode(body, Path(tmp))
-
     def test_sds_id_format_drift_rejected(self):
         rows = _rows()
         rows[1] = dict(rows[1], properties=dict(rows[1]["properties"], sdsId="not-a-guid"))
-        with self._fixture(rows=rows) as (src, root, body):
+        with _fixture(rows=rows) as (_src, _root, body):
             with tempfile.TemporaryDirectory() as tmp:
                 with self.assertRaisesRegex(ValueError, "source_sds_id_format_drift"):
                     src._decode(body, Path(tmp))
 
-    def test_sds_population_drift_rejected(self):
-        with self._fixture() as (src, root, body):
-            with tempfile.TemporaryDirectory() as tmp, \
-                    patch.object(src, "EXPECTED_SDS_GUID_COUNT", 99):
-                with self.assertRaisesRegex(ValueError, "source_sds_population_drift"):
-                    src._decode(body, Path(tmp))
-
-    def test_content_snapshot_drift_rejected(self):
-        with self._fixture() as (src, root, body):
-            with tempfile.TemporaryDirectory() as tmp, patch.object(src, "RECORD_SHA", "1" * 64):
-                with self.assertRaisesRegex(ValueError, "source_content_snapshot_drift"):
-                    src._decode(body, Path(tmp))
+    def test_embedded_release_notes_copy_drift_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            src_root = root / "src"
+            src_root.mkdir()
+            _body, members = _build_archive(src_root, _rows())
+            out = root / "mutated.zip"
+            with zipfile.ZipFile(src_root / "mirta.zip") as original, \
+                    zipfile.ZipFile(out, "w") as zf:
+                for info in original.infolist():
+                    data = b"different release notes" if info.filename == "release_notes.pdf" \
+                        else original.read(info.filename)
+                    zf.writestr(info, data)
+            storage = StagingStorageResource(local_dir=str(root / "staging"))
+            with patch.object(src, "EXPECTED_GDB_MEMBERS", members), \
+                    patch.object(src.httpx, "Client",
+                                 return_value=_mock_client(_NOTES, out.read_bytes())):
+                with self.assertRaisesRegex(ValueError, "source_release_notes_copy_drift"):
+                    src._capture(root / "capture", storage, "v-test")
 
     def test_replay_receipt_requires_exact_get_origin(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -373,15 +316,72 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
                            "wire_sha256": digest, "url": url, "final_url": url}
                 (root / f"{name}.receipt.json").write_text(json.dumps(receipt))
                 self.assertEqual(_load_capture(name, root)[0], body)
-                for changes in ({"url": "https://example.org/mirror.zip", "final_url": "https://example.org/mirror.zip"},
+                for changes in ({"url": "https://example.org/mirror.zip",
+                                 "final_url": "https://example.org/mirror.zip"},
                                 {"method": "POST"}, {"complete_body": False}):
                     with self.subTest(name=name, changes=changes):
                         (root / f"{name}.receipt.json").write_text(json.dumps({**receipt, **changes}))
                         with self.assertRaisesRegex(ValueError, "capture_receipt_invalid"):
                             _load_capture(name, root)
-                    (root / f"{name}.receipt.json").write_text(json.dumps(receipt))
+                        (root / f"{name}.receipt.json").write_text(json.dumps(receipt))
             with self.assertRaisesRegex(ValueError, "unexpected_source_capture_name"):
                 _load_capture("unknown", root)
+
+    def test_added_site_captures_and_drift_warns(self):
+        drift_check = assets.mirta_dod_sites_points_approved_baseline_drift
+        self.assertIn(drift_check, assets.ASSET_CHECKS)
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            storage = StagingStorageResource(local_dir=str(directory / "staging"))
+            baseline_root = directory / "baseline-src"
+            baseline_root.mkdir()
+            baseline_body, baseline_members = _build_archive(baseline_root, _rows())
+            added_root = directory / "added-src"
+            added_root.mkdir()
+            added_body, added_members = _build_archive(added_root, _added_rows())
+            with patch.object(src, "EXPECTED_GDB_MEMBERS", baseline_members), \
+                    patch.object(src.httpx, "Client",
+                                 return_value=_mock_client(_NOTES, baseline_body)):
+                before = src.capture_mirta_dod_sites_points(
+                    storage, version="v-baseline",
+                    capture_directory=str(directory / "baseline-capture"))
+            with patch.object(src, "EXPECTED_GDB_MEMBERS", added_members), \
+                    patch.object(src.httpx, "Client",
+                                 return_value=_mock_client(_NOTES, added_body)), \
+                    DagsterInstance.ephemeral() as instance:
+                result = materialize(
+                    [assets.mirta_dod_sites_points, *assets.ASSET_CHECKS],
+                    instance=instance, resources={"staging_storage": storage},
+                    run_config={"ops": {assets.mirta_dod_sites_points.op.name: {
+                        "config": {"capture_directory": str(directory / "added-capture")}}}})
+            self.assertTrue(result.success)
+            after = result.output_for_node(assets.mirta_dod_sites_points.op.name)
+            self.assertEqual((before["feature_count"], after["feature_count"]), (2, 3))
+            self.assertTrue(after["source_population_complete"])
+            self.assertEqual(after["source_reported_count"], 3)
+            self.assertNotEqual(before["source_id_sha256"], after["source_id_sha256"])
+            self.assertFalse(after["release_accepted"])
+            prefix = f"mirta-dod-sites-points/mirta-dod-sites-points/{after['version']}"
+            audit = json.loads(storage.read_key(prefix + "/metadata/source_audit.json"))
+            self.assertEqual(audit["source_feature_count"], 3)
+            self.assertEqual(audit["source_release"], "FY25 V2")
+            evaluations = {evaluation.check_name: evaluation
+                           for evaluation in result.get_asset_check_evaluations()}
+            self.assertTrue(evaluations["mirta_dod_sites_points_complete"].passed)
+            warning = evaluations["mirta_dod_sites_points_approved_baseline_drift"]
+            self.assertFalse(warning.passed)
+            self.assertEqual(warning.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(warning.metadata["comparison_status"].value,
+                             "skipped_no_approved_baseline")
+            self.assertIn(build_publish_partition_key("mirta-dod-sites-points",
+                                                      "mirta-dod-sites-points",
+                                                      after["version"]),
+                          instance.get_dynamic_partitions(PUBLISH_PARTITION_NAME))
+            drift = approved_baseline_drift(after, {**before, "release_accepted": True})
+            self.assertFalse(drift.passed)
+            self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+            self.assertEqual(drift.metadata["feature_count_delta"].value, 1)
+            self.assertTrue(drift.metadata["native_id_roster_changed"].value)
 
 
 if __name__ == "__main__":

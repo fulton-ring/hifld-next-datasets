@@ -1,4 +1,4 @@
-"""Pinned draft capture of the DISDI public FY24 MIRTA DoD Sites points release.
+"""Draft capture of the DISDI public FY25 V2 MIRTA DoD Sites points release.
 
 Issue #157. The producer, the Defense Installation Spatial Data Infrastructure
 (DISDI) Program within OASD(EI&E), publishes the Military Installations,
@@ -8,6 +8,32 @@ HIFLD Open FY22 points layer to the credential-gated GII Portal, so this
 producer-side public release is the pipeline input; DataLumos and other
 mirrors are research context only, never inputs. The native FileGDB feature
 ID column OBJECTID is preserved verbatim as the leading integer column.
+
+The 2026-11-16 release (release notes for the point locations and boundary
+datasets, dated November 16, 2026) supersedes the FY24 release: the archive
+is ``FY25_MIRTA_FinalV2.gdb``, the points layer is renamed
+``FY24MirtaLocations`` -> ``FY25MIRTALocations_P``, the boundary layer
+``FY24MirtaLocations_A`` keeps its name but changes Polygon ->
+MultiPolygon, the archive gains a top-level ``release_notes.pdf`` copy, and
+the points population grew from 831 to 837 features. The points field roster
+(13 fields, names, declared widths and order), the EPSG:4326 CRS and the
+native OBJECTID column are unchanged from FY24.
+
+The DISDI landing page does not publish a feature count or ID roster for
+this file, so completeness is established at capture time instead of by a
+code pin: the FileGDB's own driver-reported feature count (the publisher's
+index) must agree with the feature-by-feature row walk, the walked OBJECTID
+roster must be unique and positive, and
+``capture_completeness.validate_capture_witness`` binds the two count
+answers to the captured IDs. The count, the ID roster and the observed
+value populations are recorded in the candidate audit; a change the
+publisher makes upstream (a site added or renamed) changes the witnesses
+and is surfaced by the non-blocking approved-baseline drift check, not by a
+hard count pin. Structural contracts (archive layout, GDB member roster,
+layer roster, schema, CRS, ID uniqueness, per-feature types) remain exact
+gates. Publication stays blocked pending the succession, freshness,
+schema/ID contract, coverage, rights and release decisions; all runtime
+approval flags are false and the draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
@@ -18,6 +44,7 @@ import shutil
 import ssl
 import tempfile
 import zipfile
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -33,6 +60,7 @@ import pyogrio
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -56,6 +84,8 @@ PUBLISHER = ("Defense Installation Spatial Data Infrastructure (DISDI) Program, 
 # (AIA: http://validation.identrust.com/certs/trustidcaO1.p7c). The root,
 # IdenTrust Commercial Root CA 1, already ships in the standard certifi store,
 # so trust is not weakened; only the published intermediate is added.
+# Re-verified 2026-11-21 against the live leaf (issuer C=US, O=IdenTrust,
+# OU=TrustID Server, CN=TrustID Server CA O1).
 _IDENTRUST_TRUSTID_SERVER_O1_PEM = """-----BEGIN CERTIFICATE-----
 MIIGvTCCBKWgAwIBAgIQQAFu+vSEq6LjsbaVYwMsczANBgkqhkiG9w0BAQsFADBKMQswCQYDVQQG
 EwJVUzESMBAGA1UEChMJSWRlblRydXN0MScwJQYDVQQDEx5JZGVuVHJ1c3QgQ29tbWVyY2lhbCBS
@@ -93,20 +123,27 @@ W1QH9sHDoA0CNud3OBtTdpwLiQ==
 _IDENTRUST_TRUSTID_SERVER_O1_PEM_SHA256 = (
     "a46bf9e4a3d3bbfb3cb90a1757512045e014ceecd121f6a31a39cf04239c2fca")
 
-SOURCE_RELEASE = "FY24"
-SOURCE_RELEASE_DATE = "2025-09-02"
-EXPECTED_ZIP_MEMBER_DATE = (2025, 9, 2)
-EXPECTED_ZIP_BYTES = 3723148
-EXPECTED_ZIP_SHA256 = "c8f15d5de307528ec4f7d2648181e5182c89ecd33d337a0e1a128817ce084e83"
-EXPECTED_RELEASE_NOTES_BYTES = 110939
-EXPECTED_RELEASE_NOTES_SHA256 = "132712b7a464158d75eed8f90bfdfe6c7880aa4310e01ab3605b97fdfbe3f638"
-EXPECTED_GDB_DIR = "FY24_MIRTA_Final.gdb"
+SOURCE_RELEASE = "FY25 V2"
+SOURCE_RELEASE_DATE = "2026-11-16"
+EXPECTED_GDB_DIR = "FY25_MIRTA_FinalV2.gdb"
+# The only top-level loose file the archive may carry next to the GDB
+# directory; the copy embedded in the archive must agree byte-for-byte with
+# the separately downloaded release notes (checked at capture time).
+EXPECTED_TOP_LEVEL_FILE = "release_notes.pdf"
+# Structural GDB member roster of the FY25 V2 archive (observed 2026-11-21:
+# 58 members including the transient lock files below). Esri leaves
+# ``*.sr.lock`` workspace-session artifacts in exported geodatabases; their
+# names encode the export workstation's session id and change between exports
+# of an unchanged GDB, so they are tolerated and recorded as observations,
+# never pinned.
 EXPECTED_GDB_MEMBERS = frozenset({
-    "a00000001.TablesByName.atx", "a00000001.gdbindexes", "a00000001.gdbtable", "a00000001.gdbtablx",
-    "a00000002.gdbtable", "a00000002.gdbtablx", "a00000003.gdbindexes", "a00000003.gdbtable",
-    "a00000003.gdbtablx", "a00000004.CatItemsByPhysicalName.atx", "a00000004.CatItemsByType.atx",
-    "a00000004.FDO_UUID.atx", "a00000004.freelist", "a00000004.gdbindexes", "a00000004.gdbtable",
-    "a00000004.gdbtablx", "a00000004.spx", "a00000005.CatItemTypesByName.atx",
+    "a00000001.TablesByName.atx", "a00000001.freelist", "a00000001.gdbindexes",
+    "a00000001.gdbtable", "a00000001.gdbtablx", "a00000002.gdbtable",
+    "a00000002.gdbtablx", "a00000003.gdbindexes", "a00000003.gdbtable",
+    "a00000003.gdbtablx", "a00000004.CatItemsByPhysicalName.atx",
+    "a00000004.CatItemsByType.atx", "a00000004.FDO_UUID.atx", "a00000004.freelist",
+    "a00000004.gdbindexes", "a00000004.gdbtable", "a00000004.gdbtablx",
+    "a00000004.horizon", "a00000005.CatItemTypesByName.atx",
     "a00000005.CatItemTypesByParentTypeID.atx", "a00000005.CatItemTypesByUUID.atx",
     "a00000005.gdbindexes", "a00000005.gdbtable", "a00000005.gdbtablx",
     "a00000006.CatRelsByDestinationID.atx", "a00000006.CatRelsByOriginID.atx",
@@ -115,62 +152,37 @@ EXPECTED_GDB_MEMBERS = frozenset({
     "a00000007.CatRelTypesByDestItemTypeID.atx", "a00000007.CatRelTypesByForwardLabel.atx",
     "a00000007.CatRelTypesByName.atx", "a00000007.CatRelTypesByOriginItemTypeID.atx",
     "a00000007.CatRelTypesByUUID.atx", "a00000007.gdbindexes", "a00000007.gdbtable",
-    "a00000007.gdbtablx", "a00000009.I8featureName.atx", "a00000009.I8siteName.atx",
-    "a00000009.gdbindexes", "a00000009.gdbtable", "a00000009.gdbtablx", "a00000009.spx",
-    "a0000000a.I9featureName.atx", "a0000000a.gdbindexes", "a0000000a.gdbtable",
-    "a0000000a.gdbtablx", "a0000000a.spx", "gdb", "timestamps",
+    "a00000007.gdbtablx", "a00000009.I3featureName.atx", "a00000009.freelist",
+    "a00000009.gdbindexes", "a00000009.gdbtable", "a00000009.gdbtablx",
+    "a00000009.horizon", "a00000009.spx", "a0000000a.freelist", "a0000000a.gdbindexes",
+    "a0000000a.gdbtable", "a0000000a.gdbtablx", "a0000000a.horizon", "a0000000a.spx",
+    "gdb", "timestamps",
 })
-EXPECTED_GDB_LAYER_ROSTER = ["FY24MirtaLocations", "FY24MirtaLocations_A"]
-EXPECTED_LAYER = "FY24MirtaLocations"
-EXPECTED_BOUNDARY_LAYER = "FY24MirtaLocations_A"
-EXPECTED_COUNT = 831
+EXPECTED_GDB_LAYER_ROSTER = ["FY25MirtaLocations_A", "FY25MIRTALocations_P"]
+EXPECTED_LAYER = "FY25MIRTALocations_P"
+EXPECTED_BOUNDARY_LAYER = "FY25MirtaLocations_A"
 FIELD_ORDER = ("countryName", "featureDescription", "featureName", "isCui", "isFirrmaSite",
                "isJointBase", "mediaId", "mirtaLocationsIdpk", "sdsId", "siteName",
                "siteOperationalStatus", "siteReportingComponent", "stateNameCode")
+# Schema contract of the FY25 V2 points layer (verified 2026-11-21 unchanged
+# from FY24: names, declared widths and order).
 EXPECTED_FIELDS = {
     "countryName": "str:25", "featureDescription": "str:2000", "featureName": "str:80",
     "isCui": "str:3", "isFirrmaSite": "str:3", "isJointBase": "str:3", "mediaId": "str:40",
     "mirtaLocationsIdpk": "str:40", "sdsId": "str", "siteName": "str:100",
     "siteOperationalStatus": "str:4", "siteReportingComponent": "str:22", "stateNameCode": "str:5",
 }
-EXPECTED_BOUNDS = [-167.98785503299996, 13.428655045000028, 174.10714007400009, 71.32619497400003]
 # The native FileGDB feature ID column. GDAL's OpenFileGDB driver maps the
 # Esri OBJECTID field to the OGR feature ID (pyogrio.read_info fid_column is
 # "OBJECTID" and the field is not part of the fiona property schema); Fiona
-# exposes each feature's OBJECTID value as feature["id"]. The 831 native IDs
-# are distinct, positive, and noncontiguous (first 764, last 1604, with gaps),
-# so they are the only usable native row identifier and are preserved
-# verbatim, never renumbered.
+# exposes each feature's OBJECTID value as feature["id"]. The native IDs are
+# distinct, positive, and noncontiguous in the FY25 V2 release (837 features
+# numbered 1..838), so they are the usable native row identifier and are
+# preserved verbatim, never renumbered.
 EXPECTED_FID_COLUMN = "OBJECTID"
-EXPECTED_FID_FIRST = 764
-EXPECTED_FID_LAST = 1604
-EXPECTED_CONSTANT_FIELDS = {"countryName": "usa", "featureDescription": "na", "isCui": "no",
-                            "mediaId": "na"}
-EXPECTED_IDPK_VALUE = " "
-EXPECTED_FIRRMA_COUNTS = {"no": 608, "yes": 223}
-EXPECTED_JOINT_BASE_COUNTS = {"no": 816, "yes": 15}
-EXPECTED_STATUS_COUNTS = {"Excs": 1, "act": 792, "care": 18, "clsd": 13, "excs": 3, "semi": 4}
-EXPECTED_COMPONENT_COUNTS = {
-    "afr": 10, "airNationalGuard": 70, "armyNationalGuard": 190, "other": 1, "usa": 131,
-    "usaf": 140, "usmc": 27, "usmcr": 6, "usn": 204, "usnr": 5, "usar": 43, "whs": 4,
-}
-EXPECTED_STATE_SET = {
-    "ak", "al", "ar", "az", "ca", "co", "ct", "dc", "de", "fl", "ga", "gu", "hi", "ia", "id",
-    "il", "in", "ks", "ky", "la", "ma", "md", "me", "mi", "mn", "mo", "ms", "mt", "nc", "nd",
-    "ne", "nh", "nj", "nm", "nv", "ny", "oh", "ok", "or", "pa", "pr", "ri", "sc", "sd", "tn",
-    "tx", "ut", "va", "vi", "vt", "wa", "wi", "wv", "wy",
-}
-EXPECTED_SDS_NULL_COUNT = 790
-EXPECTED_SDS_GUID_COUNT = 41
-RECORD_SHA = "734ff19e5fc28e447bedae993ce34b82c8b5436fb17afad5f7cd91ab632f1b30"
-GEOMETRY_SHA = "b35cada34c097504eb723f5742fa12455b25a463e2957e11dfb6901a4d6df7d4"
-ID_SHA = "919641a22c1c507a0bf9e644b75eacf95c0e790551f3789a230867bf2f502505"
-FID_SHA = "38387a209371837d6a52ce4b5dcf2b694cbc4b47f9ae7ec858402d582a300b5b"
-SCHEMA_SHA = "f6146f5c63181deba69c1510d3e23d657a1f2f7b64ade3d129ef886fc0047b00"
 WGS84 = pyproj.CRS.from_epsg(4326)
 _EXPECTED_URLS = {"release_notes": RELEASE_NOTES_URL, "mirta_zip": SOURCE_URL}
 MAX_CAPTURE_BYTES = 12_000_000
-MAX_TOTAL_CAPTURE_BYTES = 16_000_000
 
 
 def _tls_context() -> ssl.SSLContext:
@@ -187,9 +199,8 @@ def _validate_guid(value: str) -> bool:
             and all(c in "0123456789abcdefABCDEF" for c in "".join(parts)))
 
 
-def _decode(body: bytes, tmp: Path):
-    if len(body) != EXPECTED_ZIP_BYTES or _sha(body) != EXPECTED_ZIP_SHA256:
-        raise ValueError("pinned_disdi_release_drift")
+def _unzip(body: bytes, tmp: Path) -> dict[str, object]:
+    """Validate the archive layout and extract the GDB; return observed layout facts."""
     with zipfile.ZipFile(io.BytesIO(body)) as z:
         infos = z.infolist()
         dir_entries = [i for i in infos if i.is_dir() or i.filename.endswith("/")]
@@ -198,18 +209,28 @@ def _decode(body: bytes, tmp: Path):
         if len(names) != len(set(names)):
             raise ValueError("source_zip_duplicate_members")
         if len(dir_entries) != 1 or dir_entries[0].filename != EXPECTED_GDB_DIR + "/":
-            raise ValueError("source_zip_member_roster_drift")
+            raise ValueError("source_zip_layout_drift")
+        loose = [n for n in names if "/" not in n]
+        if loose != [EXPECTED_TOP_LEVEL_FILE]:
+            raise ValueError("source_zip_layout_drift")
+        lock_files: list[str] = []
+        stable: set[str] = set()
         for i in file_entries:
             mode = (i.external_attr >> 16) & 0o170000
             parts = Path(i.filename).parts
             if not i.filename or i.filename.startswith(("/", "\\")) or "\\" in i.filename \
-                    or ".." in parts or len(parts) != 2 or mode == 0o120000 \
-                    or parts[0] != EXPECTED_GDB_DIR or not parts[1]:
+                    or ".." in parts or mode == 0o120000:
                 raise ValueError("source_zip_member_path_rejected")
-        if set(names) != {f"{EXPECTED_GDB_DIR}/{m}" for m in EXPECTED_GDB_MEMBERS}:
+            if len(parts) == 1:
+                continue
+            if len(parts) != 2 or parts[0] != EXPECTED_GDB_DIR or not parts[1]:
+                raise ValueError("source_zip_member_path_rejected")
+            if parts[1].endswith(".sr.lock"):
+                lock_files.append(parts[1])
+            else:
+                stable.add(parts[1])
+        if stable != EXPECTED_GDB_MEMBERS:
             raise ValueError("source_zip_member_roster_drift")
-        if any(i.date_time[:3] != EXPECTED_ZIP_MEMBER_DATE for i in file_entries):
-            raise ValueError("source_zip_member_timestamp_drift")
         if z.testzip() is not None:
             raise ValueError("source_zip_crc_invalid")
         gdb = tmp / EXPECTED_GDB_DIR
@@ -217,12 +238,25 @@ def _decode(body: bytes, tmp: Path):
         for name in EXPECTED_GDB_MEMBERS:
             with z.open(f"{EXPECTED_GDB_DIR}/{name}") as src, (gdb / name).open("xb") as dst:
                 shutil.copyfileobj(src, dst)
+    return {
+        "source_zip_total_members": len(infos),
+        "source_gdb_member_count": len(stable) + len(lock_files),
+        "source_gdb_lock_files": sorted(lock_files),
+        "source_zip_member_dates": sorted({i.date_time[:3] for i in file_entries}),
+    }
+
+
+def _decode(body: bytes, tmp: Path) -> tuple[list[list], list[list], list[int], dict[str, object]]:
+    layout = _unzip(body, tmp)
     gdb_path = str(tmp / EXPECTED_GDB_DIR)
     if fiona.listlayers(gdb_path) != EXPECTED_GDB_LAYER_ROSTER:
         raise ValueError("source_gdb_layer_roster_drift")
     info = pyogrio.read_info(gdb_path, layer=EXPECTED_LAYER)
     if info.get("fid_column") != EXPECTED_FID_COLUMN:
         raise ValueError("source_fid_column_drift")
+    driver_count = info.get("features")
+    if type(driver_count) is not int or driver_count <= 0:
+        raise ValueError("source_feature_count_disagreement")
     attrs, geoms, fids = [], [], []
     with fiona.open(gdb_path, layer=EXPECTED_LAYER) as src:
         if src.schema["geometry"] != "Point" or list(src.schema["properties"]) != list(FIELD_ORDER) \
@@ -230,8 +264,7 @@ def _decode(body: bytes, tmp: Path):
             raise ValueError("source_schema_drift")
         if not pyproj.CRS.from_user_input(src.crs).equals(WGS84, ignore_axis_order=True):
             raise ValueError("source_crs_drift")
-        if list(map(float, src.bounds)) != EXPECTED_BOUNDS:
-            raise ValueError("source_bounds_drift")
+        bounds = list(map(float, src.bounds))
         for feature in src:
             fid_raw = feature["id"]
             if isinstance(fid_raw, bool) or not isinstance(fid_raw, (int, str)):
@@ -255,96 +288,101 @@ def _decode(body: bytes, tmp: Path):
                 if value is not None and not isinstance(value, str):
                     raise ValueError("source_attribute_type_drift:" + name)
                 row.append(value)
+            sds = row[FIELD_ORDER.index("sdsId")]
+            if sds is not None and not _validate_guid(sds):
+                raise ValueError("source_sds_id_format_drift")
             attrs.append(row)
             fids.append(fid)
             geoms.append([float(x), float(y)])
-    if len(attrs) != EXPECTED_COUNT:
-        raise ValueError("source_feature_count_drift")
-    if fids[0] != EXPECTED_FID_FIRST or fids[-1] != EXPECTED_FID_LAST \
-            or len(set(fids)) != len(fids):
+    if len(attrs) != driver_count:
+        raise ValueError("source_feature_count_disagreement")
+    if len(set(fids)) != len(fids):
         raise ValueError("source_fid_roster_drift")
+    # The driver index count and the row walk are the capture-time witnesses:
+    # both must agree and the walked roster must be exactly the captured set.
+    validate_capture_witness(driver_count, fids, len(attrs), fids, captured_ids=fids)
+    return attrs, geoms, fids, _audit(attrs, geoms, fids, bounds, layout, driver_count)
+
+
+def _audit(attrs: list[list], geoms: list[list], fids: list[int], bounds: list[float],
+           layout: Mapping[str, object], driver_count: int) -> dict[str, object]:
     names = list(FIELD_ORDER)
     index = {name: position for position, name in enumerate(names)}
-    if any(row[index["featureName"]] != row[index["siteName"]] for row in attrs):
-        raise ValueError("source_feature_site_name_divergence")
-    for name, expected in EXPECTED_CONSTANT_FIELDS.items():
-        if any(row[index[name]] != expected for row in attrs):
-            raise ValueError("source_constant_field_drift:" + name)
-    if any(row[index["mirtaLocationsIdpk"]] != EXPECTED_IDPK_VALUE for row in attrs):
-        raise ValueError("source_id_degenerate_drift:mirtaLocationsIdpk")
-    for name, counts in (("isFirrmaSite", EXPECTED_FIRRMA_COUNTS),
-                         ("isJointBase", EXPECTED_JOINT_BASE_COUNTS),
-                         ("siteOperationalStatus", EXPECTED_STATUS_COUNTS),
-                         ("siteReportingComponent", EXPECTED_COMPONENT_COUNTS)):
-        observed: dict[str, int] = {}
-        for row in attrs:
-            value = row[index[name]]
-            if value is None:
-                raise ValueError("source_null_value_drift:" + name)
-            observed[value] = observed.get(value, 0) + 1
-        if observed != counts:
-            raise ValueError("source_value_population_drift:" + name)
-    states = {row[index["stateNameCode"]] for row in attrs}
-    if None in states or states != EXPECTED_STATE_SET:
-        raise ValueError("source_state_roster_drift")
-    sds = [row[index["sdsId"]] for row in attrs]
-    guid_count = 0
-    for value in sds:
-        if value is None:
-            continue
-        if not _validate_guid(value):
-            raise ValueError("source_sds_id_format_drift")
-        guid_count += 1
-    if guid_count != EXPECTED_SDS_GUID_COUNT or len(sds) - guid_count != EXPECTED_SDS_NULL_COUNT:
-        raise ValueError("source_sds_population_drift")
+    idpk_values = {row[index["mirtaLocationsIdpk"]] for row in attrs}
+    degenerate = len(idpk_values) == 1
     record_sha = _sha(_canonical(attrs))
     geometry_sha = _sha(_canonical(geoms))
     id_sha = _sha(_canonical([row[index["mirtaLocationsIdpk"]] for row in attrs]))
     fid_sha = _sha(_canonical(fids))
     schema_sha = _sha(_canonical([[EXPECTED_FID_COLUMN, "int64"],
                                   *[[name, EXPECTED_FIELDS[name]] for name in FIELD_ORDER]]))
-    if record_sha != RECORD_SHA or geometry_sha != GEOMETRY_SHA or id_sha != ID_SHA \
-            or fid_sha != FID_SHA or schema_sha != SCHEMA_SHA:
-        raise ValueError("source_content_snapshot_drift")
-    null_counts = {name: sum(1 for row in attrs if row[index[name]] is None) for name in FIELD_ORDER}
-    audit = {
-        "source_feature_count": len(attrs), "source_population_complete": True,
-        "source_release": SOURCE_RELEASE, "source_release_date": SOURCE_RELEASE_DATE,
-        "source_release_date_evidence": "DISDI release notes PDF dated September 2, 2025 (captured as "
-                                        "release_notes input); every FileGDB ZIP member timestamp is "
-                                        "2025-09-02, agreeing with the release notes.",
-        "source_id_field": "mirtaLocationsIdpk", "source_id_unique": False,
-        "source_id_degenerate": True,
-        "source_id_degenerate_reason": "The property-level key mirtaLocationsIdpk is the single "
-                                       "space character for all 831 features and sdsId GUIDs are "
-                                       "populated for only 41 of 831 features. The native FileGDB "
-                                       "feature ID column OBJECTID is distinct across all 831 "
-                                       "features (first 764, last 1604, noncontiguous) and is "
-                                       "preserved verbatim as the leading integer OBJECTID column, "
-                                       "so a usable native row identifier is published; no "
-                                       "substitute identifiers are generated.",
+    sds = [row[index["sdsId"]] for row in attrs]
+    population = {
+        "isFirrmaSite": dict(Counter(row[index["isFirrmaSite"]] for row in attrs)),
+        "isJointBase": dict(Counter(row[index["isJointBase"]] for row in attrs)),
+        "siteOperationalStatus": dict(Counter(row[index["siteOperationalStatus"]] for row in attrs)),
+        "siteReportingComponent": dict(Counter(row[index["siteReportingComponent"]] for row in attrs)),
+    }
+    return {
+        "source_feature_count": len(attrs), "source_reported_count": driver_count,
+        "source_population_complete": True, "source_release": SOURCE_RELEASE,
+        "source_release_date": SOURCE_RELEASE_DATE,
+        "source_release_date_evidence": "DISDI release notes PDF dated November 16, 2026 (captured as "
+                                        "the release_notes input and embedded byte-identically in the "
+                                        "archive); the FY25 V2 geodatabase directory name and the "
+                                        "release notes' stated FY2025 Real Property Inventory basis "
+                                        "agree on the edition.",
+        "source_id_field": "mirtaLocationsIdpk",
+        "source_id_unique": len({row[index["mirtaLocationsIdpk"]] for row in attrs}) == len(attrs),
+        "source_id_degenerate": degenerate,
+        "source_id_degenerate_reason": "The property-level key mirtaLocationsIdpk is the single space "
+                                       "character for all " + str(len(attrs)) + " features, so it is not "
+                                       "a usable row identifier. The native FileGDB feature ID column "
+                                       "OBJECTID is distinct across all " + str(len(attrs)) + " features "
+                                       "(first " + str(fids[0]) + ", last " + str(fids[-1]) + ") and is "
+                                       "preserved verbatim as the leading integer OBJECTID column, so a "
+                                       "usable native row identifier is published; no substitute "
+                                       "identifiers are generated.",
         "source_fid_column": EXPECTED_FID_COLUMN,
         "source_fid_unique": len(set(fids)) == len(fids),
         "source_fid_first": fids[0], "source_fid_last": fids[-1],
+        "source_fid_min": min(fids), "source_fid_max": max(fids),
         "source_fid_sha256": fid_sha,
         "source_id_sha256": id_sha, "source_record_sha256": record_sha,
         "source_geometry_sha256": geometry_sha, "source_schema_sha256": schema_sha,
         "source_gdb_schema": EXPECTED_FIELDS, "source_crs": "EPSG:4326",
-        "source_geometry_type": "Point", "source_bounds": list(EXPECTED_BOUNDS),
-        "source_null_counts": null_counts, "source_geometry_null_count": 0,
-        "source_geometry_empty_count": 0,
-        "source_coverage_scope": "United States and its Territories (50 states plus DC, PR, GU, VI) "
-                                 "per the FY 2024 Base Structure Report scope criteria in the DISDI "
-                                 "release notes; no sites outside the United States and its "
-                                 "territories are published in this public release.",
+        "source_geometry_type": "Point", "source_bounds": bounds,
+        "source_null_counts": {name: sum(1 for row in attrs if row[index[name]] is None)
+                               for name in FIELD_ORDER},
+        "source_geometry_null_count": 0, "source_geometry_empty_count": 0,
+        "source_sds_null_count": sum(1 for value in sds if value is None),
+        "source_sds_guid_count": sum(1 for value in sds if value is not None),
+        "source_feature_site_name_divergence_count":
+            sum(1 for row in attrs if row[index["featureName"]] != row[index["siteName"]]),
+        "source_constant_field_values":
+            {name: sorted({row[index[name]] for row in attrs})
+             for name in ("countryName", "featureDescription", "isCui", "mediaId")},
+        "source_value_populations": population,
+        "source_state_set": sorted({row[index["stateNameCode"]] for row in attrs}),
+        "source_coverage_scope": "United States, Puerto Rico and Guam per the FY25 release notes "
+                                 "scope criteria (DoW sites in the United States, Puerto Rico, or "
+                                 "Guam from the FY2025 Real Property Inventory or the FIRRMA real "
+                                 "estate map); no sites outside that scope are published in this "
+                                 "public release.",
+        "source_zip_total_members": layout["source_zip_total_members"],
+        "source_gdb_member_count": layout["source_gdb_member_count"],
+        "source_gdb_lock_files": layout["source_gdb_lock_files"],
+        "source_zip_member_dates": [list(d) for d in layout["source_zip_member_dates"]],
         "hifld_inventory_id": "mirta-dod-sites-points",
-        "drift_guard": "Pinned official ZIP checksum and member roster with 2025-09-02 timestamps and "
-                       "CRC integrity, exact GDB layer roster, native OBJECTID feature ID column and "
-                       "per-feature ID digest, field names/types/order, feature "
-                       "count, degenerate-ID and attribute value populations, SDS GUID counts, "
-                       "unique siteName/featureName equality, CRS, native XY and bounds.",
+        "drift_guard": "Official archive layout (single GDB directory plus the top-level release "
+                       "notes copy, which must match the separately downloaded release notes), "
+                       "structural GDB member roster with CRC integrity, exact GDB layer roster, "
+                       "native OBJECTID feature ID column, field names/types/order, CRS, ID "
+                       "uniqueness and per-feature type/geometry contracts; the feature count, ID "
+                       "roster and value populations are capture-time witnesses recorded in the "
+                       "audit, not code pins, and upstream edits are surfaced by the "
+                       "approved-baseline drift check.",
     }
-    return attrs, geoms, fids, audit
 
 
 def _parquet(attrs: list[list], geoms: list[list], fids: list[int]) -> bytes:
@@ -415,9 +453,6 @@ def _capture(root: Path, storage: StagingStorageResource, version: str):
                           headers={"User-Agent": "hifld-next-datasets/mirta-dod-sites-points-draft"}) as client:
             notes_body, notes_receipt = capture_get(client, RELEASE_NOTES_URL, root, "release_notes",
                                                     max_bytes=MAX_CAPTURE_BYTES)
-            if len(notes_body) != EXPECTED_RELEASE_NOTES_BYTES \
-                    or _sha(notes_body) != EXPECTED_RELEASE_NOTES_SHA256:
-                raise ValueError("pinned_release_notes_drift")
             caps["release_notes"] = (notes_body, notes_receipt)
             body, receipt = capture_get(client, SOURCE_URL, root, "mirta_zip", max_bytes=MAX_CAPTURE_BYTES)
             if receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL \
@@ -426,6 +461,12 @@ def _capture(root: Path, storage: StagingStorageResource, version: str):
             caps["mirta_zip"] = (body, receipt)
             with tempfile.TemporaryDirectory(dir=root) as tmp:
                 _decode(body, Path(tmp))
+            with zipfile.ZipFile(io.BytesIO(body)) as z:
+                if EXPECTED_TOP_LEVEL_FILE not in z.namelist():
+                    raise ValueError("source_zip_layout_drift")
+                embedded = z.read(EXPECTED_TOP_LEVEL_FILE)
+            if _sha(embedded) != _sha(notes_body):
+                raise ValueError("source_release_notes_copy_drift")
         mp.write_bytes(_canonical({"complete": True, "captured_at": datetime.now(timezone.utc).isoformat(),
                                    "receipts": {name: caps[name][1] for name in _EXPECTED_URLS}}) + b"\n")
         return {name: (caps[name][0], (root / f"{name}.wire").read_bytes(), caps[name][1])
@@ -448,6 +489,8 @@ def _candidate_result(version: str, audit: Mapping[str, object], prefix: str, *,
     """Return the same quality-check contract for first build and cache reuse."""
     result = {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
               "feature_count": audit["source_feature_count"],
+              "source_reported_count": audit["source_reported_count"],
+              "source_population_complete": audit["source_population_complete"],
               "source_null_geometry_count": audit["source_geometry_null_count"],
               "source_invalid_geometry_count": audit["source_geometry_empty_count"],
               "source_id_sha256": audit["source_id_sha256"],
@@ -518,26 +561,26 @@ def capture_mirta_dod_sites_points(storage: StagingStorageResource, *, version: 
             "license": "unknown_pending_rights_review",
             "attribution": "U.S. Department of Defense, DISDI Program (OASD EI&E) public release of the "
                            "Military Installations, Ranges, and Training Areas dataset; release notes "
-                           "dated September 2, 2025, contact DISDI Helpdesk. Formal downstream rights "
+                           "dated November 16, 2026, contact DISDI Helpdesk. Formal downstream rights "
                            "review remains pending.",
         })
     manifest = {
         "schema_version": 1, "approved": False,
         "title": "Military Installations, Ranges, and Training Areas (MIRTA) DoD Sites - Points "
-                 "(DISDI FY24 public release)",
+                 "(DISDI FY25 V2 public release)",
         "description": "Authoritative point locations of commonly known DoD sites, installations, "
-                       "ranges, and training areas in the United States and its territories, compiled "
-                       "by the DISDI Program from the FY 2024 Base Structure Report and the FIRRMA "
-                       "real-estate map. Unapproved draft candidate; the DHS GII continuation of the "
-                       "former HIFLD Open FY22 layer is credential-gated and inventory equivalence, "
-                       "rights and release acceptance remain unresolved.",
+                       "ranges, and training areas in the United States, Puerto Rico and Guam, "
+                       "compiled by the DISDI Program from the FY2025 Real Property Inventory and "
+                       "the FIRRMA real-estate map. Unapproved draft candidate; the DHS GII "
+                       "continuation of the former HIFLD Open FY22 layer is credential-gated and "
+                       "inventory equivalence, rights and release acceptance remain unresolved.",
         "publisher": PUBLISHER, "agency": "U.S. Department of Defense",
         "source_url": SOURCE_URL, "license": None, "source_modified": SOURCE_RELEASE_DATE,
         "date_issued": SOURCE_RELEASE_DATE, "date_modified": SOURCE_RELEASE_DATE,
         "processor": "HIFLD Next", "code_commit": identity["code_commit"], "inputs": inputs,
         "transformations": [{"operation": "Native FileGDB attributes and EPSG:4326 point layer to GeoParquet",
                              "parameters": {"source_fields": "all native GDB fields preserved in order, "
-                                                            "declared string widths and values",
+                                                             "declared string widths and values",
                                             "source_ids": "native OBJECTID feature IDs retained "
                                                           "verbatim as the leading integer OBJECTID "
                                                           "column; mirtaLocationsIdpk and sdsId "
@@ -549,16 +592,18 @@ def capture_mirta_dod_sites_points(storage: StagingStorageResource, *, version: 
                                             "candidate_status": "unapproved; source, schema/ID contract, "
                                                                 "coverage and rights acceptance pending"}}],
         "lineage": "DISDI Program (OASD EI&E) publishes the MIRTA dataset publicly on www.acq.osd.mil "
-                   "(landing page /eie/imr/rpid/disdi/index.html; release notes PDF documents the "
-                   "September 2, 2025 release, FY 2024 BSR basis, US/PR/GU scope and WGS84 datum). The "
-                   "DHS HIFLD Open FY22 points layer (geoplatform item de61396f603346b8a18784eee07fd767, "
+                   "(landing page /eie/imr/rpid/disdi/index.html; release notes PDF dated November 16, "
+                   "2026 documents the FY25 V2 release, FY2025 Real Property Inventory basis, "
+                   "US/PR/GU scope and WGS84 datum; the archive embeds a byte-identical copy of the "
+                   "release notes). The FY25 V2 archive supersedes the FY24 release (gdb directory "
+                   "FY24_MIRTA_Final.gdb -> FY25_MIRTA_FinalV2.gdb; points layer FY24MirtaLocations -> "
+                   "FY25MIRTALocations_P; boundary layer FY24MirtaLocations_A keeps its name and gains "
+                   "SHAPE_Length/SHAPE_Area with Polygon -> MultiPolygon geometry). The DHS HIFLD Open "
+                   "FY22 points layer (geoplatform item de61396f603346b8a18784eee07fd767, "
                    "services1.arcgis.com FY22_MIRTA_Points_gdb) was migrated to the credential-gated GII "
                    "Portal per the DHS crosswalk; that portal is not anonymously accessible and is not "
                    "used. DataLumos 239602 and other mirrors are identification context only, never "
-                   "inputs. The USACE-hosted MIRTA map viewer (geospatial.sec.usace.army.mil experience "
-                   "8e2a2247222546f084fcae617d3a335e, FeatureServer item fc0f38c5a19a46dbacd92f2fb823ef8c "
-                   "mirroring the same FY24 schema) is the DISDI-delegated display channel, not this "
-                   "pipeline's input.",
+                   "inputs.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "All source fields, native ID values and point coordinates are retained.",
             "objects": [{"path": op, "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
@@ -583,7 +628,7 @@ def capture_mirta_dod_sites_points(storage: StagingStorageResource, *, version: 
         outputs[f"raw/{name}.wire"] = caps[name][1]
         outputs[f"raw/{name}.receipt.json"] = _canonical(caps[name][2]) + b"\n"
     state = f"_construction-state/{DATASET_SLUG}/{cv}.json"
-    fingerprint = _sha(_canonical({"identity": identity, "archive_sha256": EXPECTED_ZIP_SHA256,
+    fingerprint = _sha(_canonical({"identity": identity,
                                    "record_sha256": audit["source_record_sha256"],
                                    "schema_sha256": audit["source_schema_sha256"]}))
     if storage.object_snapshot(state) is not None:
