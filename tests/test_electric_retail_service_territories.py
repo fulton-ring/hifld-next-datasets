@@ -680,7 +680,7 @@ class ElectricRetailTerritoryReplayTests(unittest.TestCase):
             with patch.object(source.httpx, "Client",
                     side_effect=lambda *a, **k: _counting_client(requests)):
                 result = materialize(
-                    assets.electric_retail_service_territories_eia861_candidate,
+                    [assets.electric_retail_service_territories_eia861_candidate],
                     instance=instance, resources={"staging_storage": storage},
                     run_config={"ops": {
                         assets.electric_retail_service_territories_eia861_candidate.op.name: {
