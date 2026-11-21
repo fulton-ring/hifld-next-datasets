@@ -687,10 +687,8 @@ class ElectricRetailTerritoryReplayTests(unittest.TestCase):
                             "config": {"replay_version": first["version"]}}}})
             self.assertTrue(result.success)
             self.assertEqual(requests, [])
-            self.assertEqual(
-                result.output_for_node(
-                    assets.electric_retail_service_territories_eia861_candidate.op.name).mapping,
-                first)
+            self.assertEqual(result.output_for_node(
+                assets.electric_retail_service_territories_eia861_candidate.op.name), first)
 
     def test_tiger_listing_derivation_matches_live_discovery(self):
         from dagster_hifld.sources import census_latest
