@@ -333,16 +333,15 @@ def _audit(attrs: list[list], geoms: list[list], fids: list[int], bounds: list[f
                                         "release notes' stated FY2025 Real Property Inventory basis "
                                         "agree on the edition.",
         "source_id_field": "mirtaLocationsIdpk",
-        "source_id_unique": len({row[index["mirtaLocationsIdpk"]] for row in attrs}) == len(attrs),
+        "source_id_unique": len(idpk_values) == len(attrs),
         "source_id_degenerate": degenerate,
-        "source_id_degenerate_reason": "The property-level key mirtaLocationsIdpk is the single space "
-                                       "character for all " + str(len(attrs)) + " features, so it is not "
-                                       "a usable row identifier. The native FileGDB feature ID column "
-                                       "OBJECTID is distinct across all " + str(len(attrs)) + " features "
-                                       "(first " + str(fids[0]) + ", last " + str(fids[-1]) + ") and is "
-                                       "preserved verbatim as the leading integer OBJECTID column, so a "
-                                       "usable native row identifier is published; no substitute "
-                                       "identifiers are generated.",
+        "source_id_degenerate_reason":
+            f"The property-level key mirtaLocationsIdpk is the single constant value "
+            f"{sorted(idpk_values)!r} for all {len(attrs)} features, so it is not a usable row "
+            f"identifier. The native FileGDB feature ID column OBJECTID is distinct across all "
+            f"{len(attrs)} features (first {fids[0]}, last {fids[-1]}) and is preserved verbatim as "
+            f"the leading integer OBJECTID column, so a usable native row identifier is published; "
+            f"no substitute identifiers are generated.",
         "source_fid_column": EXPECTED_FID_COLUMN,
         "source_fid_unique": len(set(fids)) == len(fids),
         "source_fid_first": fids[0], "source_fid_last": fids[-1],

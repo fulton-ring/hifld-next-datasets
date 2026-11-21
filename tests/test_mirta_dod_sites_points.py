@@ -345,10 +345,13 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
                 before = src.capture_mirta_dod_sites_points(
                     storage, version="v-baseline",
                     capture_directory=str(directory / "baseline-capture"))
+            instance_dir = directory / "dagster"
+            instance_dir.mkdir()
+            (instance_dir / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
             with patch.object(src, "EXPECTED_GDB_MEMBERS", added_members), \
                     patch.object(src.httpx, "Client",
                                  return_value=_mock_client(_NOTES, added_body)), \
-                    DagsterInstance.ephemeral() as instance:
+                    DagsterInstance.from_config(str(instance_dir)) as instance:
                 result = materialize(
                     [assets.mirta_dod_sites_points, *assets.ASSET_CHECKS],
                     instance=instance, resources={"staging_storage": storage},
