@@ -160,6 +160,18 @@ def validate_capture_request_identity(name: str, receipt: Mapping, expected_url:
         raise ValueError("retained_capture_request_identity_mismatch:" + name)
 
 
+def load_checkpoint_receipt_map(
+    capture_root: Path,
+    document_names: tuple[str, ...],
+    state: Mapping,
+    load_receipt: Callable[[Path, str], dict[str, object]],
+) -> dict[str, dict[str, object]]:
+    """Read the expected document and checkpoint-segment receipts without loading bodies."""
+    names = [*document_names, *(str(entry["name"]) for entry in state.get("segments", [])
+                               if isinstance(entry, dict) and entry.get("name"))]
+    return {name: load_receipt(capture_root, name) for name in names}
+
+
 def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
     snapshot = storage.object_snapshot(key)
     if snapshot is None:
