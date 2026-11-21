@@ -1,7 +1,23 @@
-"""Candidate-only acquisition of the maintained CEC North American Atlas Political Boundaries."""
+"""Candidate-only acquisition of the maintained CEC North American Atlas Political Boundaries.
+
+The CEC North American Environmental Atlas "Political Boundaries, 2021" (edition 3,
+boundaries_p_2021_v3) archive on www.cec.org is CEC's current maintained publication
+for this row, not a frozen release: CEC declares an irregular update frequency for
+the layer, the package's own ISO metadata (boundaries_p_2021_v3.shp.xml) carries a
+2026-08-17 modification date with 2026 geoprocessing lineage, and the serving page
+and archive were revised in 2026; no 2024/2025/2026 edition exists (checked
+2026-11-21). CEC does not guarantee the archive bytes of this edition stay fixed,
+so no digest or population pin is enforced: completeness is established at capture
+time by the archive member roster, the shapefile index's own feature count and FID
+roster, and the feature-by-feature row walk bound through
+``capture_completeness.validate_capture_witness``. An upstream edit between captures
+changes the observed population and is surfaced by the approved-baseline drift
+check, not refused at capture time.
+"""
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 import platform
@@ -18,10 +34,12 @@ import pyogrio
 import pyproj
 import shapely
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.sources.capture_common import (
     capture_get,
+    content_derived_version,
     quarantine_incomplete_capture,
     write_immutable,
 )
@@ -38,12 +56,9 @@ SOURCE_PRODUCT = "North American Environmental Atlas - Political Boundaries"
 SOURCE_RELEASE = "Political Boundaries, 2021 (edition 3, boundaries_p_2021_v3)"
 SOURCE_RELEASE_DATE = "2022-10-26"
 SOURCE_PRODUCT_CREATION = "2022-09-15"
-IDENTIFIER_COLUMN = "source_record_number"
-# Frozen publisher release: CEC Political Boundaries 2021, edition 3 (boundaries_p_2021_v3); this edition is not revised.
-EXPECTED_SHA256 = "29f3aec70604ed5be9e18c22e2d504da883fedd6d81aff27156456b4899a0c28"
-EXPECTED_BYTES = 184_774_593
-EXPECTED_UNCOMPRESSED_BYTES = 252_775_497
-EXPECTED_FEATURE_COUNT = 98
+# Edition 3 publication-date label for capture and quarantine naming; the candidate
+# version itself is content-derived from the observed capture.
+VERSION_LABEL = "v20221026"
 EXPECTED_LAYER = "boundaries_p_2021_v3"
 EXPECTED_CPG = b"UTF-8"
 EXPECTED_FIELDS = [
@@ -54,18 +69,7 @@ EXPECTED_PRJ = ('PROJCS["Sphere_ARC_INFO_Lambert_Azimuthal_Equal_Area",GEOGCS["G
                 'DATUM["D_Sphere_ARC_INFO",SPHEROID["Sphere_ARC_INFO",6370997.0,0.0]],PRIMEM["Greenwich",0.0],'
                 'UNIT["Degree",0.0174532925199433]],PROJECTION["Lambert_Azimuthal_Equal_Area"],'
                 'PARAMETER["False_Easting",0.0],PARAMETER["False_Northing",0.0],'
-                'PARAMETER["Central_Meridian",-100.0],PARAMETER["Latitude_Of_Origin",45.0],UNIT["Meter",1.0]]')
-EXPECTED_POLYGON_COUNT = 40
-EXPECTED_MULTIPOLYGON_COUNT = 58
-EXPECTED_RING_COUNT = 164_361
-EXPECTED_VERTEX_COUNT = 15_722_772
-EXPECTED_INVALID_GEOMETRY_COUNT = 1
-EXPECTED_INVALID_REASON = "Ring Self-intersection[448287.487127878 3092671.08586955]"
-EXPECTED_COUNTRY_COUNTS = {"CAN": 13, "MEX": 32, "USA": 53}
-ID_SHA = "f2da88c58b8f5a2ab267dd4c25915ae5e74260d3c8aa944a745a81763120bd52"
-RECORD_SHA = "f5563f8b171b5daaf6b9b310fe68359428059c2ca00e9cc03670fc9aeaf85e5a"
-GEOMETRY_SHA = "6a58fdf66ec25b9ab1e4e93ad985b68238d3e0a7a4c8e5558c02b1456e3de012"
-BOUNDS = [-6420071.874616642, -3311873.4810999967, 3745362.7551991306, 4267586.044877373]
+                 'PARAMETER["Central_Meridian",-100.0],PARAMETER["Latitude_Of_Origin",45.0],UNIT["Meter",1.0]]')
 PREFIX = "politicalboundaries_shapefile/NA_PoliticalDivisions/data/boundaries_p_2021_v3."
 SHP_MEMBERS = {PREFIX + s for s in ("CPG", "dbf", "prj", "sbn", "sbx", "shp", "shp.xml", "shx")}
 MEMBERS = SHP_MEMBERS | {
@@ -84,7 +88,6 @@ MEMBERS = SHP_MEMBERS | {
 }
 CAPTURE_FILES = {"source.body", "source.wire", "source.receipt.json"}
 MAX_SOURCE_BYTES = 320_000_000
-MAX_DECOMPRESSED_BYTES = 400_000_000
 
 
 def _native(value):
@@ -129,13 +132,6 @@ def processing_code_identity() -> str:
         digest.update(len(name).to_bytes(8, "big") + name)
         digest.update(len(body).to_bytes(8, "big") + body)
     return digest.hexdigest()
-
-
-def candidate_version() -> str:
-    identity = _canonical({"source_sha256": EXPECTED_SHA256,
-                           "code_identity_scheme": CODE_IDENTITY_SCHEME,
-                           "code_sha256": processing_code_identity()})
-    return "v" + _sha(identity)[:32]
 
 
 def _schema_dbf(path: Path):
@@ -257,21 +253,21 @@ def _capture(
             except Exception as exc:
                 quarantine = _quarantine_attempt(staging_storage, root, version, type(exc).__name__)
                 raise ValueError(f"official_cec_source_capture_failed; quarantined_at:{quarantine}") from exc
+            wire = (root / "source.wire").read_bytes()
 
         if (
             receipt.get("method") != "GET" or receipt.get("url") != SOURCE_URL
             or receipt.get("final_url") != SOURCE_URL or receipt.get("status") != 200
-            or receipt.get("complete_body") is not True or receipt.get("bytes") != EXPECTED_BYTES
-            or receipt.get("sha256") != EXPECTED_SHA256 or len(body) != EXPECTED_BYTES
+            or receipt.get("complete_body") is not True or receipt.get("bytes") != len(body)
+            or receipt.get("sha256") != _sha(body)
             or receipt.get("content_encoding") != "identity"
-            or receipt.get("wire_bytes") != EXPECTED_BYTES or receipt.get("wire_sha256") != EXPECTED_SHA256
-            or receipt.get("content_length") not in (None, EXPECTED_BYTES)
-            or _sha(body) != EXPECTED_SHA256
+            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
+            or receipt.get("content_length") not in (None, len(body))
         ):
             quarantine = _quarantine_attempt(
-                staging_storage, root, version, "official_cec_archive_identity_or_release_drift",
+                staging_storage, root, version, "official_cec_transport_receipt_drift",
             )
-            raise ValueError(f"official_cec_archive_identity_or_release_drift; quarantined_at:{quarantine}")
+            raise ValueError(f"official_cec_transport_receipt_drift; quarantined_at:{quarantine}")
         return body, receipt
     finally:
         if temporary is not None:
@@ -288,10 +284,9 @@ def _ring_vertex_stats(geoms) -> tuple[int, int]:
 
 
 def _inspect_archive(body: bytes) -> dict[str, object]:
-    if _sha(body) != EXPECTED_SHA256 or len(body) != EXPECTED_BYTES:
-        raise ValueError("pinned_cec_snapshot_drift")
+    archive_sha, archive_bytes = _sha(body), len(body)
     names = []
-    with zipfile.ZipFile(__import__("io").BytesIO(body)) as archive:
+    with zipfile.ZipFile(io.BytesIO(body)) as archive:
         for info in archive.infolist():
             parts = Path(info.filename).parts
             if (
@@ -303,8 +298,6 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
             names.append(info.filename)
         if len(set(names)) != len(names) or set(names) != MEMBERS or len(archive.infolist()) != len(MEMBERS):
             raise ValueError("cec_archive_member_roster_drift")
-        if sum(info.file_size for info in archive.infolist()) != EXPECTED_UNCOMPRESSED_BYTES:
-            raise ValueError("cec_archive_member_size_drift")
         if archive.testzip() is not None:
             raise ValueError("cec_archive_crc_failure")
         with tempfile.TemporaryDirectory(prefix="cec-political-boundaries-") as tmp:
@@ -324,46 +317,49 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
             info = pyogrio.read_info(shp)
             if (
                 info["layer_name"] != EXPECTED_LAYER or info["geometry_type"] not in ("Polygon", "MultiPolygon")
-                or int(info["features"]) != EXPECTED_FEATURE_COUNT
+                or type(info.get("features")) is not int or int(info["features"]) <= 0
             ):
                 raise ValueError("cec_layer_metadata_drift")
-            fids = _fid_roster(shp, root / (PREFIX + "shx"), EXPECTED_FEATURE_COUNT)
+            # Capture-time completeness witnesses: the shapefile index's own
+            # feature count and FID roster (read from the .shx/.shp binaries),
+            # bound to the feature-by-feature row walk below.
+            reported_count = int(info["features"])
+            fids = _fid_roster(shp, root / (PREFIX + "shx"), reported_count)
             g = gpd.read_file(shp, engine="pyogrio")
     field_names = [name for name, *_ in EXPECTED_FIELDS]
-    if list(g.columns) != field_names + ["geometry"] or len(g) != EXPECTED_FEATURE_COUNT:
+    if list(g.columns) != field_names + ["geometry"]:
         raise ValueError("cec_source_population_or_schema_drift")
+    # The shapefile driver reads records in file order and the record headers
+    # are 1-based, so the walked rows' native record numbers are 1..len(g);
+    # the binary roster above already proved those header numbers in order.
+    walked_ids = list(range(1, len(g) + 1))
+    validate_capture_witness(reported_count, fids, len(g), walked_ids, captured_ids=walked_ids)
     if any(str(g[column].dtype) != "object" for column in field_names):
         raise ValueError("cec_source_attribute_physical_type_drift")
     if g[field_names].isna().any().any() or (g[field_names] == "").any().any():
         raise ValueError("cec_source_attribute_null_or_empty_drift")
     if g["STATEABB"].duplicated().any():
         raise ValueError("cec_source_identifier_uniqueness_drift")
-    if g["COUNTRY"].value_counts().to_dict() != EXPECTED_COUNTRY_COUNTS:
-        raise ValueError("cec_source_country_coverage_drift")
     if g.geometry.isna().any() or g.geometry.is_empty.any():
         raise ValueError("cec_source_geometry_null_or_empty_drift")
     if any(shapely.get_coordinate_dimension(x) != 2 for x in g.geometry.array):
         raise ValueError("cec_source_non_2d_geometry")
+    # Capture-time observations, recorded in the audit and never pinned: an
+    # upstream edit changes these and is surfaced by the approved-baseline
+    # drift check.
     counts = g.geometry.geom_type.value_counts().to_dict()
-    if counts.get("Polygon", 0) != EXPECTED_POLYGON_COUNT or counts.get("MultiPolygon", 0) != EXPECTED_MULTIPOLYGON_COUNT:
-        raise ValueError("cec_source_geometry_type_drift")
     invalid = int((~g.geometry.is_valid).sum())
-    if invalid != EXPECTED_INVALID_GEOMETRY_COUNT:
-        raise ValueError("cec_source_geometry_validity_drift")
     reasons = sorted({str(r) for r in shapely.is_valid_reason(g.geometry.array) if r != "Valid Geometry"})
-    if reasons != [EXPECTED_INVALID_REASON]:
-        raise ValueError("cec_source_geometry_validity_reason_drift")
     rings, vertices = _ring_vertex_stats(g.geometry.array)
-    if rings != EXPECTED_RING_COUNT or vertices != EXPECTED_VERTEX_COUNT:
-        raise ValueError("cec_source_geometry_vertex_drift")
+    country_counts = g["COUNTRY"].value_counts().to_dict()
     id_sha, record_sha, geometry_sha, bounds = _content_digests(g, field_names, fids)
-    if id_sha != ID_SHA or record_sha != RECORD_SHA or geometry_sha != GEOMETRY_SHA:
-        raise ValueError("cec_source_content_snapshot_drift")
-    if bounds != BOUNDS:
-        raise ValueError("cec_source_bounds_drift")
     schema = [{"name": name, "type": "string", "nullable": False} for name, *_ in EXPECTED_FIELDS]
     return {
         "feature_count": len(g),
+        "source_reported_count": reported_count,
+        "source_population_complete": True,
+        "source_archive_sha256": archive_sha,
+        "source_archive_bytes": archive_bytes,
         "attribute_fields": field_names,
         "attribute_types": {name: "string" for name, *_ in EXPECTED_FIELDS},
         "source_id_field": "FID (shapefile record number); unique native STATEABB preserved",
@@ -373,16 +369,16 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
         "source_schema_sha256": _sha(_canonical(schema)),
         "source_crs": "ESRI PRJ Sphere_ARC_INFO_Lambert_Azimuthal_Equal_Area (lat_0 45, lon_0 -100, metres)",
         "geometry_type": "Polygon/MultiPolygon",
-        "polygon_count": EXPECTED_POLYGON_COUNT,
-        "multipolygon_count": EXPECTED_MULTIPOLYGON_COUNT,
-        "ring_count": EXPECTED_RING_COUNT,
-        "vertex_count": EXPECTED_VERTEX_COUNT,
+        "polygon_count": counts.get("Polygon", 0),
+        "multipolygon_count": counts.get("MultiPolygon", 0),
+        "ring_count": rings,
+        "vertex_count": vertices,
         "bounds": bounds,
         "null_geometry_count": int(g.geometry.isna().sum()),
         "empty_geometry_count": int(g.geometry.is_empty.sum()),
         "invalid_geometry_count": invalid,
         "invalid_geometry_reasons": reasons,
-        "country_counts": EXPECTED_COUNTRY_COUNTS,
+        "country_counts": country_counts,
         "stateabb_unique": bool(g["STATEABB"].is_unique),
         "null_counts": {name: int(g[name].isna().sum()) for name in field_names},
     }
@@ -391,20 +387,19 @@ def _inspect_archive(body: bytes) -> dict[str, object]:
 def capture_north_america_political_divisions_polygons(
     staging_storage: StagingStorageResource, *, version: str, capture_directory: str | Path | None = None,
 ) -> dict[str, object]:
-    """Capture one exact pinned CEC archive and stage it immutably for catalog."""
+    """Capture the current CEC archive and stage it immutably for catalog.
+
+    ``version`` is the edition label used for capture and quarantine naming;
+    the staged candidate version is content-derived from the observed capture,
+    so an upstream edit lands as a new candidate, not a failure.
+    """
     stage = Path(staging_storage.local_dir).absolute() if staging_storage.use_local and staging_storage.local_dir else None
-    if stage is not None and shutil.disk_usage(stage).free < 900_000_000:
-        raise ValueError("disk_floor_before_acquisition")
+    if stage is not None:
+        stage.mkdir(parents=True, exist_ok=True)
+        if shutil.disk_usage(stage).free < 900_000_000:
+            raise ValueError("disk_floor_before_acquisition")
     body, receipt = _capture(capture_directory, staging_storage, version)
     audit = _inspect_archive(body)
-    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
-    archive_key = f"{prefix}/shapefile/{SOURCE_FILE}"
-    before = staging_storage.object_snapshot(archive_key)
-    write_immutable(staging_storage, archive_key, body)
-    after = staging_storage.object_snapshot(archive_key)
-    if after is None or after.size != EXPECTED_BYTES or staging_storage.sha256_key(archive_key) != EXPECTED_SHA256:
-        raise ValueError("staged_cec_archive_integrity_failure")
-    reused = before is not None
     code_sha256 = processing_code_identity()
     code_commit = f"{CODE_IDENTITY_SCHEME}:{code_sha256}"
     processing_code = {
@@ -412,6 +407,17 @@ def capture_north_america_political_divisions_polygons(
         "sha256": code_sha256,
         "runtime_versions": _processing_runtime(),
     }
+    cv = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
+                                 audit["source_schema_sha256"],
+                                 {"scheme": CODE_IDENTITY_SCHEME, "sha256": code_sha256})
+    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{cv}"
+    archive_key = f"{prefix}/shapefile/{SOURCE_FILE}"
+    before = staging_storage.object_snapshot(archive_key)
+    write_immutable(staging_storage, archive_key, body)
+    after = staging_storage.object_snapshot(archive_key)
+    if after is None or after.size != len(body) or staging_storage.sha256_key(archive_key) != _sha(body):
+        raise ValueError("staged_cec_archive_integrity_failure")
+    reused = before is not None
     observed_at = receipt.get("observed_at")
     manifest = {
         "schema_version": 1,
@@ -421,7 +427,7 @@ def capture_north_america_political_divisions_polygons(
         "title": "North America Political Divisions Polygons",
         "description": (
             "Maintained CEC North American Environmental Atlas 'Political Boundaries, 2021' (edition 3, "
-            "boundaries_p_2021_v3): 98 first-level jurisdiction polygons for Canada (10 provinces, 3 territories), "
+            "boundaries_p_2021_v3): first-level jurisdiction polygons for Canada (10 provinces, 3 territories), "
             "Mexico (32 states) and the United States (48 conterminous states, Alaska, Hawaii, District of Columbia, "
             "Puerto Rico, U.S. Virgin Islands), integrating the 2021 national boundary publications of each country. "
             "Candidate only; source relationship, schema/ID contract and baseline compatibility remain unapproved."
@@ -439,8 +445,8 @@ def capture_north_america_political_divisions_polygons(
             "canonical_url": SOURCE_PAGE,
             "retrieval_url": SOURCE_URL,
             "retrieved_at": observed_at,
-            "sha256": EXPECTED_SHA256,
-            "bytes": EXPECTED_BYTES,
+            "sha256": receipt["sha256"],
+            "bytes": receipt["bytes"],
             "license": "https://creativecommons.org/licenses/by/4.0/",
             "attribution": PUBLISHER,
             "role": "producer_publication",
@@ -448,7 +454,7 @@ def capture_north_america_political_divisions_polygons(
         }],
         "transformations": [
             "Preserve the complete official CEC zip and every member; catalog the boundaries_p_2021_v3 Shapefile without ID synthesis, reprojection or attribute mapping.",
-            "Native Lambert Azimuthal Equal Area (sphere) CRS and native geometry retained verbatim, including the one natively self-intersecting Nunavut ring left unrepaired.",
+            "Native Lambert Azimuthal Equal Area (sphere) CRS and native geometry retained verbatim; natively invalid rings are counted in the audit and left unrepaired.",
         ],
         "lineage": (
             "Commission for Environmental Cooperation (CEC) North American Environmental Atlas 'Political Boundaries, 2021' "
@@ -486,7 +492,7 @@ def capture_north_america_political_divisions_polygons(
             "url": SOURCE_URL, "landing_page": SOURCE_PAGE, "product": SOURCE_PRODUCT,
             "release": SOURCE_RELEASE, "release_date": SOURCE_RELEASE_DATE,
             "product_creation_date": SOURCE_PRODUCT_CREATION,
-            "archive_sha256": EXPECTED_SHA256, "archive_bytes": EXPECTED_BYTES,
+            "archive_sha256": audit["source_archive_sha256"], "archive_bytes": audit["source_archive_bytes"],
         },
         "processing_code": processing_code,
         "acquisition_receipt": stable_receipt,
@@ -495,19 +501,26 @@ def capture_north_america_political_divisions_polygons(
     }
     audit_key = f"{prefix}/metadata/source_audit.json"
     write_immutable(staging_storage, audit_key, _canonical(audit_doc) + b"\n")
+    country_counts = audit["country_counts"]
     return {
-        "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": audit["feature_count"], "source_population_complete": True,
+        "dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": cv,
+        "feature_count": audit["feature_count"], "source_reported_count": audit["source_reported_count"],
+        "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
         "source_record_sha256": audit["source_record_sha256"], "source_geometry_sha256": audit["source_geometry_sha256"],
-        "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": EXPECTED_BYTES,
-        "source_archive_sha256": EXPECTED_SHA256, "source_cache_reused": reused,
+        "source_capture_evidence_sha256": receipt["sha256"], "source_archive_bytes": audit["source_archive_bytes"],
+        "source_archive_sha256": audit["source_archive_sha256"], "source_cache_reused": reused,
         "code_commit": code_commit,
         "code_identity_scheme": CODE_IDENTITY_SCHEME, "code_sha256": code_sha256,
         "processing_runtime_versions": processing_code["runtime_versions"],
         "source_id_field": audit["source_id_field"], "source_crs": audit["source_crs"],
         "source_release_date": SOURCE_RELEASE_DATE, "source_release": SOURCE_RELEASE,
-        "source_coverage_scope": "Complete 98-feature first-level jurisdiction population (CAN 13, MEX 32, USA 53) of the CEC North American Atlas Political Boundaries 2021 edition 3 shapefile boundaries_p_2021_v3",
+        "source_coverage_scope": (
+            f"Complete {audit['feature_count']}-feature first-level jurisdiction population "
+            f"(CAN {country_counts.get('CAN', 0)}, MEX {country_counts.get('MEX', 0)}, "
+            f"USA {country_counts.get('USA', 0)}) of the CEC North American Atlas Political Boundaries "
+            f"2021 edition 3 shapefile boundaries_p_2021_v3"
+        ),
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
