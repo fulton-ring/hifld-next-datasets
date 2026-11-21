@@ -17,7 +17,9 @@ import pyproj
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.capture_common import processing_identity, write_immutable
+from dagster_hifld.sources.capture_common import (
+    processing_identity, safe_candidate_version, write_immutable,
+)
 from dagster_hifld.sources.esri_common import sha as _sha
 
 DATASET_SLUG = "docks-usace-bts"
@@ -33,19 +35,13 @@ def _canonical(value: object) -> bytes:
                        allow_nan=False) + "\n").encode("utf-8")
 
 
-def _safe_version(value: str) -> bool:
-    return (isinstance(value, str) and 1 <= len(value) <= 128
-            and all(ch.isascii() and (ch.isalnum() or ch in "._-") for ch in value)
-            and value not in {".", ".."})
-
-
 def _reserve_target(staging, version):
     if (not isinstance(staging, StagingStorageResource)
             or isinstance(staging, PublishedStorageResource)
             or not staging.use_local or staging.bucket or staging.prefix
             or not staging.local_dir):
         raise ValueError("docks_requires_explicit_unprefixed_local_staging")
-    if not _safe_version(version):
+    if not safe_candidate_version(version):
         raise ValueError("unsafe_docks_target_version")
     if staging.list_keys(DATASET_SLUG, FILE_SLUG, version):
         raise ValueError("docks_target_version_not_empty")
@@ -247,7 +243,7 @@ def _parquet(fields, features):
 
 def capture(staging, version, client=None, replay_version=None):
     """Capture the entire observed layer; retain exact pages, wire bodies, and receipts."""
-    if replay_version is not None and not _safe_version(replay_version):
+    if replay_version is not None and not safe_candidate_version(replay_version):
         raise ValueError("unsafe_docks_replay_version")
     _reserve_target(staging, version)
     replay_prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{replay_version}" if replay_version else None
