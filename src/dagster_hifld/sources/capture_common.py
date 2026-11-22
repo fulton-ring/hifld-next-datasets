@@ -680,3 +680,9 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
     _validate_cached_catalog_sidecars(storage, prefix, actual_keys)
     validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"], identity=identity)
     return {"version": version, "reused": True}
+
+
+def existing_filesystem_path(path: str | Path) -> Path:
+    """Find the configured path's filesystem without creating directories."""
+    root = Path(path).absolute()
+    return next(parent for parent in (root, *root.parents) if parent.exists())

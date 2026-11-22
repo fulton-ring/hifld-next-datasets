@@ -30,6 +30,7 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.capture_common import existing_filesystem_path
 from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
 SLUG='tsunami-capable-tide-stations'
 LAYER='NOAA_Tsunami_Capable_Tide_Stations'
@@ -73,12 +74,13 @@ def strict_json(body):
 
 
 def local_only(storage):
-    if shutil.disk_usage(Path(storage.local_dir) if storage.local_dir and Path(storage.local_dir).exists() else Path('/workspace')).free<300_000_000: raise TideStationQuarantineError('local_space_guard')
     if isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
         raise TideStationQuarantineError('draft_requires_explicit_isolated_local_staging')
     root=Path(storage.local_dir)
     if any(path.is_symlink() for path in [root,*root.parents]):
         raise TideStationQuarantineError('staging_path_symlink_refused')
+    if shutil.disk_usage(existing_filesystem_path(root)).free < 300_000_000:
+        raise TideStationQuarantineError('local_space_guard')
     if root.exists() and any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):
         raise TideStationQuarantineError('staging_alias_refused')
 

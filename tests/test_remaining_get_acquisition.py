@@ -2,13 +2,14 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import parse_qs
 
 import httpx
 
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import current_dart, ems_stations, ferry_routes
+from dagster_hifld.sources import current_dart, ems_stations, ferry_routes, tsunami_tide_stations
 
 
 class RemainingGetAcquisitionTests(unittest.TestCase):
@@ -61,11 +62,15 @@ class RemainingGetAcquisitionTests(unittest.TestCase):
             self.assertTrue(any((Path(temporary) / 'stage').rglob('*.json')))
 
     def test_missing_local_staging_checks_its_existing_parent_without_a_mount_default(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).resolve()
-            staging = root / 'missing' / 'stage'
-            storage = StagingStorageResource(local_dir=str(staging))
-            with patch.object(ferry_routes.shutil, 'disk_usage', wraps=ferry_routes.shutil.disk_usage) as usage:
-                ferry_routes.local_only(storage)
-            usage.assert_called_once_with(root)
-            self.assertFalse(staging.exists())
+        for source in (ferry_routes, tsunami_tide_stations):
+            with self.subTest(source=source.__name__), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                staging = root / 'missing' / 'stage'
+                storage = StagingStorageResource(local_dir=str(staging))
+                with patch.object(source.shutil, 'disk_usage', wraps=source.shutil.disk_usage) as usage:
+                    source.local_only(storage)
+                usage.assert_called_once_with(root)
+                self.assertFalse(staging.exists())
+                with patch.object(source.shutil, 'disk_usage', return_value=SimpleNamespace(free=299_999_999)):
+                    with self.assertRaisesRegex(ValueError, 'local_space_guard'):
+                        source.local_only(storage)
