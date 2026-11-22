@@ -1,3 +1,4 @@
+from dagster_hifld.sources import arcgis_layer as retry_owner
 """Focused tests for the USGS PAD-US Manager Name draft pipeline."""
 import io
 import gzip
@@ -751,7 +752,7 @@ class PadUsManagerNameTests(unittest.TestCase):
                 src.fetch_pad_us_manager_name_pages(root)
                 name = src._load_state(root)["segments"][0]["name"]
                 (root / f"{name}.wire").unlink()
-                original = src._capture_with_retry
+                original = src.capture_with_retry
                 calls = []
 
                 def interrupted(client, url, capture_root, capture_name, **kwargs):
@@ -761,7 +762,7 @@ class PadUsManagerNameTests(unittest.TestCase):
                         raise ValueError("interrupted_closing")
                     return original(client, url, capture_root, capture_name, **kwargs)
 
-                with patch.object(src, "_capture_with_retry", side_effect=interrupted):
+                with patch.object(src, "capture_with_retry", side_effect=interrupted):
                     with self.assertRaisesRegex(src.PadUsManagerNameError, "source_capture_failed"):
                         src.fetch_pad_us_manager_name_pages(root)
                 self.assertFalse(src._load_state(root)["complete"])
@@ -774,7 +775,7 @@ class PadUsManagerNameTests(unittest.TestCase):
                     self.assertFalse(src._load_state(root)["complete"])
                     return original(client, url, capture_root, capture_name, **kwargs)
 
-                with patch.object(src, "_capture_with_retry", side_effect=observed):
+                with patch.object(src, "capture_with_retry", side_effect=observed):
                     src.fetch_pad_us_manager_name_pages(root)
                 self.assertEqual(calls, list(src.AFTER_NAMES))
                 self.assertTrue(src._load_state(root)["complete"])

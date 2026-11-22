@@ -55,7 +55,6 @@ import hashlib
 import json
 import math
 import shutil
-import time
 from array import array
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime, timezone
@@ -76,14 +75,13 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import (
+    capture_with_retry, producer_error_doc as _producer_error_doc,
+)
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix,
-    capture_get,
-    content_derived_version,
-    processing_identity,
-    quarantine_incomplete_capture,
-    verify_cached_candidate,
-    write_immutable,
+    candidate_prefix, content_derived_version,
+    processing_identity, quarantine_incomplete_capture,
+    verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
     reuse_sealed_candidate,
     stage_candidate_objects,
@@ -94,7 +92,6 @@ from dagster_hifld.sources.arcgis_layer import (
     esri_polygon_wkb as _esri_polygon_wkb, load_replay,
 )
 from dagster_hifld.sources.wbd_hu_family import (
-    producer_error_document as _producer_error_envelope,
     query_url as _layer_query_url, validate_esri_value as _validate_field_value,
 )
 from dagster_hifld.validation import sha256_file
@@ -242,58 +239,6 @@ def _capture_urls(population_count: int) -> dict[str, str]:
         count = min(PAGE_SIZE, population_count - offset)
         urls[_segment_name(offset, count)] = _segment_url(offset, count)
     return urls
-
-
-def _budget_ok(capture_root: Path) -> bool:
-    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire")
-                   for path in capture_root.glob(suffix) if path.is_file())
-    return retained + 2 * MAX_BODY_BYTES <= MAX_CAPTURE_BYTES
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    return _producer_error_envelope(body, max_bytes=65536, require_int_code=False)
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    while any((capture_root / f"{name}.attempt-{attempt:02d}{suffix}").exists()
-              for suffix in (".body", ".wire", ".receipt.json")):
-        attempt += 1
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.replace(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str) \
-        -> tuple[bytes, dict[str, object]]:
-    """Capture one request, retrying the producer's transient error envelopes.
-
-    A persistent producer error envelope is returned to the caller (with its
-    receipt) so an offset-paged segment fetch can bisect the refused window;
-    document captures treat a returned envelope as fatal.
-    """
-    if not _budget_ok(capture_root):
-        raise WbdHu8SubbasinError("source_capture_budget_exceeded_before_request")
-    for attempt in range(1, CAPTURE_ATTEMPTS + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name,
-                                        max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            if not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            if attempt >= CAPTURE_ATTEMPTS:
-                raise
-            time.sleep(CAPTURE_RETRY_BASE_DELAY_SECONDS * 3 ** (attempt - 1))
-            continue
-        if _producer_error_doc(body):
-            if attempt < CAPTURE_ATTEMPTS:
-                _preserve_failed_attempt(capture_root, name, attempt)
-                time.sleep(CAPTURE_RETRY_BASE_DELAY_SECONDS * 3 ** (attempt - 1))
-                continue
-            return body, receipt
-        return body, receipt
-    raise WbdHu8SubbasinError("source_capture_persistent_error_envelope:" + name)
 
 
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
@@ -888,7 +833,13 @@ def _fetch_doc_group(client: httpx.Client, urls: list[tuple[str, str]], capture_
         if (capture_root / f"{name}.body").exists():
             validate_capture_request_identity(name, _read_capture(capture_root, name)[1], url)
             continue
-        body, _receipt = _capture_with_retry(client, url, capture_root, name)
+        body, _receipt = capture_with_retry(client, url, capture_root, name,
+            max_bytes=MAX_BODY_BYTES,
+            attempts=CAPTURE_ATTEMPTS,
+            base_delay=CAPTURE_RETRY_BASE_DELAY_SECONDS,
+            max_total_bytes=MAX_CAPTURE_BYTES,
+            budget_error=WbdHu8SubbasinError,
+            preserve_final_failure=True)
         if _producer_error_doc(body):
             raise WbdHu8SubbasinError("source_document_error_envelope:" + name)
 
@@ -940,8 +891,13 @@ def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
             offset, count = work.pop(0)
             if any(start <= offset and offset + count <= end for start, end in spans):
                 continue
-            body, _receipt = _capture_with_retry(client, _segment_url(offset, count),
-                                                 capture_root, name := _segment_name(offset, count))
+            body, _receipt = capture_with_retry(client, _segment_url(offset, count), capture_root, name := _segment_name(offset, count),
+                max_bytes=MAX_BODY_BYTES,
+                attempts=CAPTURE_ATTEMPTS,
+                base_delay=CAPTURE_RETRY_BASE_DELAY_SECONDS,
+                max_total_bytes=MAX_CAPTURE_BYTES,
+                budget_error=WbdHu8SubbasinError,
+                preserve_final_failure=True)
             if _producer_error_doc(body):
                 if count > 1:
                     half = count // 2
@@ -984,8 +940,6 @@ def _parquet_descriptor(storage: StagingStorageResource, key: str) -> dict[str, 
     if not isinstance(size, int) or not isinstance(digest, str) or len(digest) != 64:
         raise WbdHu8SubbasinError("candidate_parquet_readback_failed")
     return {"bytes": size, "sha256": digest}
-
-
 
 
 class _RetainedCaptureViews(Mapping):

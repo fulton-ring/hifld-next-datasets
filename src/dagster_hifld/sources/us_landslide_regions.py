@@ -68,7 +68,6 @@ import json
 import re
 import shutil
 import stat
-import time
 from array import array
 from collections import deque
 from datetime import datetime, timezone
@@ -94,6 +93,9 @@ from dagster_hifld.sources.arcgis_layer import (
     _validate_offset_replay_refusal, load_replay, save_state as _save_state,
 )
 from dagster_hifld.sources.esri_geometry import to_wkb
+from dagster_hifld.sources.arcgis_layer import (
+    capture_with_retry, producer_error_doc as _producer_error_doc,
+)
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
@@ -671,55 +673,10 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
             return _read_capture(capture_root, name)
         except UsLandslideRegionsError:
             _witness_aside(capture_root, name)
-    return _capture_with_retry(client, url, capture_root, name,
-                               attempts=DOC_CAPTURE_ATTEMPTS,
-                               base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(document, dict) and "error" in document
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents
-    and incomplete transport captures (connection resets, truncation); failed
-    attempts are preserved on disk under ``<name>.attempt-NN`` evidence names
-    and never enter the capture roster. The final attempt's body is always
-    returned as captured, so a persistent producer failure surfaces to the
-    caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name,
-                                        max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
+    return capture_with_retry(client, url, capture_root, name,
+        attempts=DOC_CAPTURE_ATTEMPTS,
+        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+        max_bytes=MAX_BODY_BYTES)
 
 
 def _plan_page_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
@@ -816,11 +773,11 @@ def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
             continue
         url = _segment_query(offset, count)
         try:
-            body, receipt = _capture_with_retry(
-                client, url, capture_root, name,
+            body, receipt = capture_with_retry(client, url, capture_root, name,
                 attempts=PAGE_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
                 base_delay=PAGE_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS)
+                else DOC_CAPTURE_BASE_DELAY_SECONDS,
+                max_bytes=MAX_BODY_BYTES)
         except ValueError as exc:
             if count > 1 and str(exc).startswith("incomplete_source_capture:"):
                 middle = count // 2

@@ -506,9 +506,10 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
             return _read_capture(capture_root, name)
         except GnisHistoricalPhysicalPointsError:
             _witness_aside(capture_root, name)
-    return _capture_with_retry(client, url, capture_root, name,
-                               attempts=DOC_CAPTURE_ATTEMPTS,
-                               base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+    return capture_with_retry(client, url, capture_root, name,
+        attempts=DOC_CAPTURE_ATTEMPTS,
+        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+        max_bytes=MAX_BODY_BYTES)
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
@@ -517,12 +518,6 @@ def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, objec
 
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
     return load_receipt(capture_root, name, GnisHistoricalPhysicalPointsError)
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    return capture_with_retry(client, url, capture_root, name, attempts=attempts,
-                              base_delay=base_delay, max_bytes=MAX_BODY_BYTES)
 
 
 _witness_aside = witness_aside
@@ -625,11 +620,11 @@ def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
             continue
         url = _page_url(roster[offset:offset + count])
         try:
-            body, receipt = _capture_with_retry(
-                client, url, capture_root, name,
+            body, receipt = capture_with_retry(client, url, capture_root, name,
                 attempts=PAGE_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
                 base_delay=PAGE_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS)
+                else DOC_CAPTURE_BASE_DELAY_SECONDS,
+                max_bytes=MAX_BODY_BYTES)
         except ValueError as exc:
             # The producer cap can also manifest as truncation/connection reset
             # instead of a clean error document; a multi-record page whose

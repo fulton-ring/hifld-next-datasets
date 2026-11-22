@@ -6,7 +6,6 @@ from functools import partial
 import json
 import math
 import shutil
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -24,8 +23,9 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_with_retry
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
@@ -100,69 +100,6 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
         service_format="json", layer_format="json",
         page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"},
     )
-
-
-def _retry_budget(attempt: int) -> float:
-    return (1.5, 3.0, 5.0, 8.0, 12.0)[min(attempt, 4)]
-
-
-def _retained_bytes(root: Path) -> int:
-    return sum(path.stat().st_size for suffix in ("*.body", "*.wire")
-               for path in root.glob(suffix) if path.is_file())
-
-
-def _discard_partial(root: Path, name: str) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        (root / f"{name}{suffix}").unlink(missing_ok=True)
-
-
-def _capture_with_retry(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    """Capture one GET with bounded retries for the ENCDirect flaky backend.
-
-    The ENCDirect service intermittently answers HTTP 500 with a "Could not
-    find service" body (observed roughly one request in three on 2026-11-12).
-    Failed attempts leave partial evidence via capture_get; that evidence is
-    discarded before each retry so the sealed roster contains only the exact
-    retained response. Permanent client errors and redirects fail closed.
-    """
-    for attempt in range(6):
-        if _retained_bytes(root) + 2 * PAGE_MAX_BYTES > MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded_before_request")
-        try:
-            body, receipt = capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
-        except ValueError as exc:
-            if not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            receipt_path = root / f"{name}.receipt.json"
-            status = None
-            if receipt_path.is_file():
-                try:
-                    status = json.loads(receipt_path.read_bytes()).get("status")
-                except (OSError, ValueError):
-                    status = None
-            if status is not None and status not in RETRYABLE_HTTP_STATUS:
-                # Permanent client-side failure: retain the error evidence and
-                # fail closed; the quarantine path keeps it out of the roster.
-                raise
-            _discard_partial(root, name)
-            time.sleep(_retry_budget(attempt))
-            continue
-        try:
-            doc = json.loads(body)
-        except ValueError:
-            if name == "inport_item":
-                return body, receipt
-            raise
-        if isinstance(doc, dict) and "error" in doc:
-            code = (doc.get("error") or {}).get("code")
-            if code in RETRYABLE_HTTP_STATUS or code is None:
-                _discard_partial(root, name)
-                time.sleep(_retry_budget(attempt))
-                continue
-            # Transport-200 ArcGIS error: retain the error evidence and fail closed.
-            raise ValueError(f"source_endpoint_error:{name}:{code}")
-        return body, receipt
-    raise ValueError("source_endpoint_retries_exhausted:" + name)
 
 
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
@@ -379,9 +316,15 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(60, connect=15),
                               headers={"User-Agent": "hifld-next-datasets/noaa-ocs-draft"}) as client:
-                ids_body, ids_receipt = _capture_with_retry(
-                    client, LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                    root, "ids_before")
+                ids_body, ids_receipt = capture_with_retry(client, LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before",
+                    max_bytes=PAGE_MAX_BYTES,
+                    max_total_bytes=MAX_CAPTURE_BYTES,
+                    attempts=6,
+                    base_delay=0,
+                    schedule=(1.5, 3.0, 5.0, 8.0, 12.0),
+                    retryable_statuses=RETRYABLE_HTTP_STATUS,
+                    require_json=True,
+                    return_final_error=False)
                 seed = json.loads(ids_body).get("objectIds")
                 if (not isinstance(seed, list) or not seed
                         or any(type(oid) is not int or oid <= 0 for oid in seed)
@@ -391,7 +334,15 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
                 for name, url in _capture_roster(seed):
                     if name == "ids_before":
                         continue
-                    captures[name] = _capture_with_retry(client, url, root, name)
+                    captures[name] = capture_with_retry(client, url, root, name,
+                        max_bytes=PAGE_MAX_BYTES,
+                        max_total_bytes=MAX_CAPTURE_BYTES,
+                        attempts=6,
+                        base_delay=0,
+                        schedule=(1.5, 3.0, 5.0, 8.0, 12.0),
+                        retryable_statuses=RETRYABLE_HTTP_STATUS,
+                        require_json=name != "inport_item",
+                        return_final_error=False)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}

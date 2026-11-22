@@ -38,6 +38,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources import arcgis_layer as shared
 from dagster_hifld.sources.esri_geometry import to_wkb
+from dagster_hifld.sources.arcgis_layer import capture_with_retry
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     content_derived_version,
@@ -429,24 +430,16 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
             raise
         except PadUsManagerNameError:
             _witness_aside(capture_root, name)
-    return _capture_with_retry(client, url, capture_root, name,
-                               attempts=DOC_CAPTURE_ATTEMPTS,
-                               base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+    return capture_with_retry(client, url, capture_root, name,
+        attempts=DOC_CAPTURE_ATTEMPTS,
+        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+        max_bytes=MAX_BODY_BYTES,
+        max_total_bytes=MAX_CAPTURE_BYTES,
+        budget_error=PadUsManagerNameError,
+        reserve_all_attempts=True)
 
 
 _producer_error_doc = shared.producer_error_doc
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    retained_bytes = sum(path.stat().st_size for path in capture_root.iterdir()
-                         if path.name.endswith((".body", ".wire", ".receipt.json")))
-    remaining = MAX_CAPTURE_BYTES - retained_bytes - attempts * 65536
-    if remaining < 2 * attempts:
-        raise PadUsManagerNameError("source_capture_exceeds_scratch_budget")
-    return shared.capture_with_retry(client, url, capture_root, name,
-                                     attempts=attempts, base_delay=base_delay,
-                                     max_bytes=min(MAX_BODY_BYTES, remaining // (2 * attempts)))
 
 
 def _plan_segment_gaps(capture_root: Path, roster: list[int],
@@ -545,11 +538,14 @@ def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
         if name in accepted and (capture_root / f"{name}.body").exists():
             continue
         try:
-            body, receipt = _capture_with_retry(
-                client, _segment_query(offset, count), capture_root, name,
+            body, receipt = capture_with_retry(client, _segment_query(offset, count), capture_root, name,
                 attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
                 base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS)
+                else DOC_CAPTURE_BASE_DELAY_SECONDS,
+                max_bytes=MAX_BODY_BYTES,
+                max_total_bytes=MAX_CAPTURE_BYTES,
+                budget_error=PadUsManagerNameError,
+                reserve_all_attempts=True)
         except ValueError as exc:
             if count > 1 and str(exc).startswith("incomplete_source_capture:"):
                 middle = count // 2

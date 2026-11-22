@@ -1,3 +1,4 @@
+from dagster_hifld.sources import arcgis_layer as retry_owner
 import io
 import json
 import struct
@@ -249,30 +250,32 @@ class ShippingFairwaysTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             with self._mock_client(responses) as client, \
-                    unittest.mock.patch.object(source, "_retry_budget", lambda attempt: 0):
-                body, receipt = source._capture_with_retry(client, source.LAYER_URL, root, "count_before")
+                    unittest.mock.patch.object(retry_owner.time, "sleep"):
+                body, receipt = source.capture_with_retry(client, source.LAYER_URL, root, "count_before", max_bytes=source.PAGE_MAX_BYTES, max_total_bytes=source.MAX_CAPTURE_BYTES, attempts=6, base_delay=0, schedule=(), retryable_statuses=source.RETRYABLE_HTTP_STATUS, require_json=True, return_final_error=False)
             self.assertEqual(json.loads(body), {"count": 346})
             self.assertEqual(receipt["status"], 200)
             self.assertEqual(sorted(path.name for path in root.iterdir()),
-                             ["count_before.body", "count_before.receipt.json", "count_before.wire"])
+                             sorted([f"count_before{attempt}.{suffix}"
+                              for attempt in ("", ".attempt-01", ".attempt-02")
+                              for suffix in ("body", "receipt.json", "wire")]))
             final_receipt = json.loads((root / "count_before.receipt.json").read_bytes())
             self.assertEqual(final_receipt["sha256"], final_receipt["sha256"] and source._sha(body))
         bad = [(400, json.dumps({"error": {"code": 400, "message": "Failed to execute query.",
                                            "details": []}}).encode())]
         with tempfile.TemporaryDirectory() as tmp:
             with self._mock_client(bad) as client, \
-                    unittest.mock.patch.object(source, "_retry_budget", lambda attempt: 0):
+                    unittest.mock.patch.object(retry_owner.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "incomplete_source_capture:count_before"):
-                    source._capture_with_retry(client, source.LAYER_URL, Path(tmp), "count_before")
+                    source.capture_with_retry(client, source.LAYER_URL, Path(tmp), "count_before", max_bytes=source.PAGE_MAX_BYTES, max_total_bytes=source.MAX_CAPTURE_BYTES, attempts=6, base_delay=0, schedule=(), retryable_statuses=source.RETRYABLE_HTTP_STATUS, require_json=True, return_final_error=False)
             retained = json.loads((Path(tmp) / "count_before.receipt.json").read_bytes())
             self.assertEqual(retained["status"], 400)
         inner_error = [(200, json.dumps({"error": {"code": 400, "message": "Failed to execute query.",
                                                    "details": []}}).encode())]
         with tempfile.TemporaryDirectory() as tmp:
             with self._mock_client(inner_error) as client, \
-                    unittest.mock.patch.object(source, "_retry_budget", lambda attempt: 0):
+                    unittest.mock.patch.object(retry_owner.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_endpoint_error:count_before:400"):
-                    source._capture_with_retry(client, source.LAYER_URL, Path(tmp), "count_before")
+                    source.capture_with_retry(client, source.LAYER_URL, Path(tmp), "count_before", max_bytes=source.PAGE_MAX_BYTES, max_total_bytes=source.MAX_CAPTURE_BYTES, attempts=6, base_delay=0, schedule=(), retryable_statuses=source.RETRYABLE_HTTP_STATUS, require_json=True, return_final_error=False)
             self.assertTrue((Path(tmp) / "count_before.body").is_file())
 
     def test_candidate_parquet_roundtrip_preserves_native_types_and_crs(self):

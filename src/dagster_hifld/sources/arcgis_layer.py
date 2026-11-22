@@ -677,38 +677,85 @@ def producer_error_doc(body: bytes) -> bool:
 
 
 def preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
+    suffixes = (".body", ".wire", ".receipt.json")
+    while any((capture_root / f"{name}.attempt-{attempt:02d}{suffix}").exists()
+              for suffix in suffixes):
+        attempt += 1
+    for suffix in suffixes:
         path = capture_root / f"{name}{suffix}"
         if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
+            path.replace(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
 
 
 def capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                       attempts: int, base_delay: float,
-                       max_bytes: int) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
+                       attempts: int, base_delay: float, max_bytes: int,
+                       max_total_bytes: int | None = None,
+                       budget_error: type[ValueError] = ValueError,
+                       reserve_all_attempts: bool = False,
+                       preserve_final_failure: bool = False,
+                       retryable_statuses: tuple[int, ...] | None = None,
+                       require_json: bool = False,
+                       return_final_error: bool = True,
+                       schedule: tuple[float, ...] = ()) -> tuple[bytes, dict[str, object]]:
+    """Own bounded producer retries and retain all failed response evidence.
 
-    Retries cover the producer's transient complete-200 Esri error documents
-    and incomplete transport captures (connection resets, truncation); failed
-    attempts are preserved on disk under ``<name>.attempt-NN`` evidence names
-    and never enter the capture roster. The final attempt's body is always
-    returned as captured, so a persistent producer failure surfaces to the
-    caller unchanged.
+    Family policy controls reservation, status refusal and final error return.
+    Returning the final complete error body lets windowed families bisect it.
+    Attempt names never overwrite evidence retained by a previous session.
     """
+    if reserve_all_attempts and max_total_bytes is not None:
+        retained = sum(p.stat().st_size for p in capture_root.iterdir()
+                       if p.is_file() and p.name.endswith((".body", ".wire", ".receipt.json")))
+        remaining = max_total_bytes - retained - attempts * 65536
+        if remaining < 2 * attempts:
+            raise budget_error("source_capture_exceeds_scratch_budget")
+        max_bytes = min(max_bytes, remaining // (2 * attempts))
     for attempt in range(1, attempts + 1):
+        if max_total_bytes is not None and not reserve_all_attempts:
+            retained = sum(p.stat().st_size for p in capture_root.iterdir()
+                           if p.is_file() and p.name.endswith((".body", ".wire")))
+            if retained + 2 * max_bytes > max_total_bytes:
+                raise budget_error("source_capture_budget_exceeded_before_request")
         try:
             body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
         except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
+            if not str(exc).startswith("incomplete_source_capture:"):
                 raise
-            preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if producer_error_doc(body) and attempt < attempts:
-            preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
+            if retryable_statuses is not None:
+                try:
+                    status = json.loads((capture_root / f"{name}.receipt.json").read_bytes()).get("status")
+                except (OSError, ValueError):
+                    status = None
+                if status is not None and status not in retryable_statuses:
+                    raise
+            if attempt >= attempts:
+                if preserve_final_failure:
+                    preserve_failed_attempt(capture_root, name, attempt)
+                if return_final_error:
+                    raise
+                raise ValueError("source_endpoint_retries_exhausted:" + name) from exc
+        else:
+            if require_json:
+                document = json.loads(body)
+                is_error = isinstance(document, dict) and "error" in document
+            else:
+                is_error = producer_error_doc(body)
+                document = json.loads(body) if is_error else None
+            if not is_error:
+                return body, receipt
+            if retryable_statuses is not None:
+                envelope = document.get("error")
+                code = envelope.get("code") if isinstance(envelope, dict) else None
+                if code is not None and code not in retryable_statuses:
+                    raise ValueError(f"source_endpoint_error:{name}:{code}")
+            if attempt >= attempts and return_final_error:
+                return body, receipt
+        preserve_failed_attempt(capture_root, name, attempt)
+        if attempt >= attempts:
+            raise ValueError("source_endpoint_retries_exhausted:" + name)
+        wait = schedule[attempt - 1] if attempt <= len(schedule) else base_delay * 3 ** (attempt - 1)
+        if wait:
+            time.sleep(wait)
     raise AssertionError("unreachable_retry_state")
 
 

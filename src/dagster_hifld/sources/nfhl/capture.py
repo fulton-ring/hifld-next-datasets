@@ -38,7 +38,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from dagster_hifld.sources.capture_common import capture_get
+from dagster_hifld.sources.arcgis_layer import capture_with_retry, producer_error_doc, preserve_failed_attempt
 from dagster_hifld.sources.esri_common import canonical, sha
 
 SERVICE_URL = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer"
@@ -105,49 +105,6 @@ class CaptureSettings:
     def client(self) -> httpx.Client:
         return httpx.Client(follow_redirects=False, timeout=self.timeout, transport=self.transport,
                             headers={"User-Agent": "hifld-next-datasets/nfhl"})
-
-
-def producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in _EVIDENCE_SUFFIXES:
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                       max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents and
-    incomplete transport captures; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names. The final attempt's body is always
-    returned as captured, so a persistent producer failure surfaces unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if producer_error_doc(body) and attempt < attempts:
-            preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
 
 
 def query_url(layer_url: str, params: dict[str, object]) -> str:
@@ -307,8 +264,10 @@ class LayerCapture:
         self.log = CaptureLog()
 
     def raw(self, name: str, url: str) -> bytes:
-        body, _ = capture_with_retry(self.client, url, self.evidence.root, name, max_bytes=DOC_MAX_BYTES,
-                                     attempts=self.settings.doc_attempts, base_delay=self.settings.doc_delay)
+        body, _ = capture_with_retry(self.client, url, self.evidence.root, name,
+            max_bytes=DOC_MAX_BYTES,
+            attempts=self.settings.doc_attempts,
+            base_delay=self.settings.doc_delay)
         self.log.accepted.append(name)
         return body
 
@@ -373,8 +332,9 @@ class LayerCapture:
         elif body is None:
             try:
                 body, _ = capture_with_retry(self.client, url, self.evidence.root, name,
-                                             max_bytes=self.max_page_bytes, attempts=self.settings.page_attempts,
-                                             base_delay=self.settings.page_delay)
+                    max_bytes=self.max_page_bytes,
+                    attempts=self.settings.page_attempts,
+                    base_delay=self.settings.page_delay)
             except ValueError as exc:
                 if not str(exc).startswith("incomplete_source_capture:"):
                     raise
