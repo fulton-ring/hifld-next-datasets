@@ -5,13 +5,18 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
+from test_national_transit_map_routes import _fixture_factory
+from test_national_transit_map_stops import (
+    _capture_patches,
+    _fake_capture_get,
+    _metadata_bodies,
+    _stop_row,
+    _tiny_layer,
+)
+
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import national_transit_map_routes as routes
 from dagster_hifld.sources import national_transit_map_stops as stops
-from test_national_transit_map_routes import _fixture_factory
-from test_national_transit_map_stops import (
-    _capture_patches, _fake_capture_get, _metadata_bodies, _stop_row, _tiny_layer,
-)
 
 
 class ClosingWitnessFailureTests(unittest.TestCase):
