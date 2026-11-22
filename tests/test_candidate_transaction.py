@@ -2,6 +2,7 @@
 import tempfile
 import unittest
 import os
+import io
 import fcntl
 from unittest.mock import patch
 from pathlib import Path
@@ -10,6 +11,22 @@ from dagster_hifld.sources import candidate_transaction as transaction
 
 
 class PrivateCandidateTransactionTests(unittest.TestCase):
+    def test_native_buffered_candidate_locks_refuse_fifo_before_flock(self):
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources import cbrs_map_panels, generalized_units
+        for source in (cbrs_map_panels, generalized_units):
+            with self.subTest(source=source.__name__), tempfile.TemporaryDirectory() as directory:
+                storage = StagingStorageResource(local_dir=directory, use_local=True)
+                prefix = f'{source.SLUG}/{source.SLUG}/v1'
+                target = source.local_candidate_path(storage, prefix)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                lock = target.parent / ('.' + target.name + '.lock')
+                os.mkfifo(lock)
+                with self.assertRaises(io.UnsupportedOperation):
+                    with source.candidate_lock(storage, prefix):
+                        self.fail('non-seekable lock must never be held')
+                self.assertFalse(target.exists())
+
     def test_checked_short_write_never_reaches_anchor_or_public_target(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory); private = base / 'private'; private.mkdir()

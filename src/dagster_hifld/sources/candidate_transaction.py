@@ -16,19 +16,34 @@ from pathlib import Path
 from dagster_hifld.construction_state import load_first_construction, seal_first_construction
 
 
+def _acquire_lock(handle, *, error_type: type[ValueError], unsafe_code: str,
+                  require_regular: bool) -> None:
+    descriptor = handle if isinstance(handle, int) else handle.fileno()
+    info = os.fstat(descriptor)
+    if info.st_nlink != 1 or (require_regular and not stat.S_ISREG(info.st_mode)):
+        raise error_type(unsafe_code)
+    fcntl.flock(handle, fcntl.LOCK_EX)
+
+
 @contextmanager
 def lock_path(path: Path, *, error_type: type[ValueError], unsafe_code: str,
-              require_regular: bool = True):
-    """Hold the existing lock inode until private custody completes; never unlink it."""
+              require_regular: bool = True, buffered: bool = False):
+    """Hold the native lock handle and inode until custody completes; never unlink it."""
     descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    try:
-        info = os.fstat(descriptor)
-        if info.st_nlink != 1 or (require_regular and not stat.S_ISREG(info.st_mode)):
-            raise error_type(unsafe_code)
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        yield
-    finally:
-        os.close(descriptor)
+    if buffered:
+        # These native transactions require fdopen's seekability check before
+        # inode validation or flock; descriptor-only locks have a different contract.
+        with os.fdopen(descriptor, 'r+b') as held:
+            _acquire_lock(held, error_type=error_type, unsafe_code=unsafe_code,
+                          require_regular=require_regular)
+            yield
+    else:
+        try:
+            _acquire_lock(descriptor, error_type=error_type, unsafe_code=unsafe_code,
+                          require_regular=require_regular)
+            yield
+        finally:
+            os.close(descriptor)
 
 
 def write_private_bytes(root: Path, name: str, body: bytes) -> None:

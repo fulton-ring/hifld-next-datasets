@@ -350,7 +350,7 @@ def stage_epa_regions_common(storage,*,capture_dir=None,dataset=REGIONS_IDENTITY
     base=Path(storage.local_dir).absolute();prefix=f'{dataset.slug}/{dataset.slug}/{version}';root=base/prefix;locks=base/'_locks';locks.mkdir(exist_ok=True)
     with candidate_transaction.lock_path(
             locks / (dataset.slug + '.lock'), error_type=EpaRegions2023Error,
-            unsafe_code='linked_lock', require_regular=False):
+            unsafe_code='linked_lock', require_regular=False, buffered=True):
         refuse_observed_loss(storage, version, dataset)
         # A private deterministic output provides the pin before any trust seal.
         build=base/'_building'/dataset.slug;build.mkdir(parents=True,exist_ok=True)

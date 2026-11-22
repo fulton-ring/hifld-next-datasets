@@ -490,7 +490,7 @@ def candidate_lock(storage: StagingStorageResource, prefix: str):
     target.parent.mkdir(parents=True, exist_ok=True)
     with candidate_transaction.lock_path(
             target.parent / ('.' + target.name + '.lock'), error_type=CBRSQuarantineError,
-            unsafe_code='linked_candidate_lock', require_regular=False):
+            unsafe_code='linked_candidate_lock', require_regular=False, buffered=True):
         yield target
 
 
