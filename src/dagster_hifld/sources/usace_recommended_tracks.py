@@ -22,6 +22,7 @@ import pyproj
 from shapely.geometry import LineString, MultiLineString
 from shapely import to_wkb
 
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
@@ -327,7 +328,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     if root.exists() and any(root.iterdir()):
         raise ValueError("capture_directory_not_empty")
     root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures = RetainedCaptureView(root)
     budget = [0]
     owned_client = client is None
     client = client or httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),

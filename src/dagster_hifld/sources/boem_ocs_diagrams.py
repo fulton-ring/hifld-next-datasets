@@ -25,6 +25,7 @@ import pyproj
 import shapely
 import geopandas as gpd
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -112,10 +113,9 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
     summary = json.loads((root / "capture-summary.json").read_bytes())
     if summary.get("complete") is not True:
         raise ValueError("offline_native_capture_incomplete")
-    captures = {}
-    for receipt_path in sorted(root.glob("*.receipt.json")):
-        receipt = json.loads(receipt_path.read_bytes())
-        name = receipt_path.name.removesuffix(".receipt.json")
+    names = [path.name.removesuffix(".receipt.json") for path in sorted(root.glob("*.receipt.json"))]
+    def load(root, name):
+        receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
         body = (root / f"{name}.body").read_bytes()
         if (receipt.get("complete") is not True or receipt.get("status") != 200
                 or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
@@ -124,8 +124,12 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
         # reconstruct the shared receipt shape without changing observation time.
         receipt.update({"complete_body": True, "wire_bytes": len(body), "wire_sha256": _sha(body),
                        "content_encoding": "identity", "error_code": None})
-        captures[name] = (body, receipt)
-    return captures
+        return body, receipt
+    receipts = {name: load(root, name)[1] for name in names}
+    return validated_capture_view(root, receipts=receipts,
+        expected_urls=dict.fromkeys(names, ""), load_capture=load,
+        capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
 
 
 def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[bytes, dict[str, object]]]:

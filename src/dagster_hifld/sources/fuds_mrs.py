@@ -134,7 +134,7 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
         raise ValueError("explicit_local_staging_resource_required")
     root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "98", "captures"))) / version
     root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: dict[str, tuple[bytes, dict]] = RetainedCaptureView(root)
     feature_srs: dict[int, dict] = {}
     first_page_sr: dict | None = None
 

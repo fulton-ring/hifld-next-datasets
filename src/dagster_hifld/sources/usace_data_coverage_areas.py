@@ -21,6 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
@@ -287,12 +288,6 @@ def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     expected_urls = dict(_capture_urls(before, layer["maxRecordCount"]))
     if set(captures) != set(expected_urls):
         raise ValueError("source_capture_endpoint_roster_drift")
-    for name, (_body, receipt) in captures.items():
-        if (receipt.get("method") != "GET" or receipt.get("status") != 200
-                or receipt.get("complete_body") is not True
-                or receipt.get("url") != expected_urls[name]
-                or receipt.get("final_url") != expected_urls[name]):
-            raise ValueError("source_capture_receipt_url_or_status_invalid:" + name)
     record_sha = _sha(_canonical([feature["attributes"] for feature in features]))
     geometry_sha = _sha(_canonical([[feature["attributes"]["OBJECTID"], feature["geometry"]]
                                     for feature in features]))
@@ -341,13 +336,15 @@ def _replay_capture(root: Path):
     validate_capture_roster(root, set(roster) | {"capture-manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture-manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    captures = {name: _load_replay(root, name) for name in manifest["receipts"]}
+    captures = validated_capture_view(root,
+                receipts={name: manifest["receipts"][name] for name in manifest['receipts']},
+                expected_urls=dict.fromkeys(manifest['receipts'], ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_receipt_manifest_mismatch:" + name)
     if set(captures) != set(roster_name.removesuffix(".body") for roster_name in roster
                              if roster_name.endswith(".body")):
         raise ValueError("retained_capture_receipt_roster_mismatch")
-    for name, (_body, receipt) in captures.items():
-        if receipt != manifest["receipts"][name]:
-            raise ValueError("retained_capture_receipt_manifest_mismatch:" + name)
     return captures, manifest
 
 
@@ -561,9 +558,6 @@ def capture_usace_data_coverage_areas(
             raise ValueError("cached_candidate_original_receipts_missing")
         if set(payload["capture_receipts"]) != set(captures):
             raise ValueError("cached_candidate_capture_roster_changed")
-        for name, (body, _receipt) in captures.items():
-            if storage.read_key(f"{prefix}/raw/{name}.body") != body:
-                raise ValueError("cached_source_bytes_changed:" + name)
         verify_cached_candidate(
             storage, Path(__file__).parents[3], state_key, prefix, version,
             fingerprint, identity, audit["source_record_sha256"],

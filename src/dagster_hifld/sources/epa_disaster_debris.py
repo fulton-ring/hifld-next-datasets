@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -267,8 +268,8 @@ def replay_epa_disaster_debris(storage: StagingStorageResource, *, version: str,
     manifest=json.loads((root/"capture_manifest.json").read_bytes())
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"),dict):
         raise ValueError("replay_capture_not_complete")
-    captures={}
-    for name,receipt in manifest["receipts"].items():
+    def load(root, name):
+        receipt = manifest["receipts"][name]
         body=(root/f"{name}.body").read_bytes(); wire=(root/f"{name}.wire").read_bytes()
         if (receipt.get("complete_body") is not True or receipt.get("status") != 200
                 or receipt.get("final_url") != receipt.get("url")
@@ -277,7 +278,11 @@ def replay_epa_disaster_debris(storage: StagingStorageResource, *, version: str,
             raise ValueError("replay_capture_receipt_mismatch:"+name)
         if (root/f"{name}.receipt.json").read_bytes() != _canonical(receipt)+b"\n":
             raise ValueError("replay_capture_receipt_file_mismatch:"+name)
-        captures[name]=(body,receipt)
+        return body, receipt
+    captures = validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls={name: receipt["url"] for name, receipt in manifest["receipts"].items()},
+        load_capture=load, capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
     try:
         fields,features,audit=_validate(captures)
     except Exception as exc:

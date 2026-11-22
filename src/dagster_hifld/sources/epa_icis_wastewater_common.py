@@ -17,6 +17,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.sources.epa_capture import OffsetCaptureSpec, capture_offset_pages
 from dagster_hifld.sources.capture_common import (
@@ -207,9 +208,8 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
             max_size = (MAX_CAPTURE_RECEIPT_BYTES if kind == "receipt" else
                         min(MAX_RESPONSE_BYTES, manifest["response_budget_bytes"]))
             _read_bounded_capture_file(root / artifact["file"], max_size, expected_bytes=artifact["bytes"])
-    captures: dict[str, tuple[bytes, dict]] = {}
-    total = 0
-    for name, descriptor in descriptors.items():
+    def load(root, name):
+        descriptor = descriptors[name]
         artifacts = {kind: _read_bounded_capture_file(
                          root / descriptor[kind]["file"],
                          MAX_CAPTURE_RECEIPT_BYTES if kind == "receipt" else min(MAX_RESPONSE_BYTES, manifest["response_budget_bytes"]),
@@ -231,8 +231,13 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
                 or receipt.get("wire_sha256") != _sha(wire)
                 or receipt.get("error_code") is not None or receipt.get("error_type") is not None):
             raise ValueError("retained_capture_receipt_invalid:" + name)
-        captures[name] = (body, receipt)
-        total += len(body) + len(wire)
+        return body, receipt
+    receipts = {name: load(root, name)[1] for name in descriptors}
+    total = sum(receipt["bytes"] + receipt["wire_bytes"] for receipt in receipts.values())
+    captures = validated_capture_view(root, receipts=receipts,
+        expected_urls={name: descriptor["request_url"] for name, descriptor in descriptors.items()},
+        load_capture=load, capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
     if total != manifest["capture_retained_wire_plus_decoded_bytes"]:
         raise ValueError("retained_capture_budget_total_mismatch")
     return manifest, captures, _sha(encoded)

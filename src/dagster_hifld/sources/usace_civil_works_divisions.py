@@ -59,6 +59,7 @@ false and the draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.sources.arcgis_layer import (
     capture_document_retry, bracket_document_complete as _document_complete,
 )
@@ -254,12 +255,9 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
     summary = json.loads((root / "capture-summary.json").read_bytes())
     if summary.get("complete") is not True:
         raise ValueError("offline_native_capture_incomplete")
-    captures = {}
-    for receipt_path in sorted(root.glob("*.receipt.json")):
-        name = receipt_path.name.removesuffix(".receipt.json")
-        if ".error-" in name:
-            continue
-        receipt = json.loads(receipt_path.read_bytes())
+    names = [path.name.removesuffix(".receipt.json") for path in sorted(root.glob("*.receipt.json")) if ".error-" not in path.name]
+    def load(root, name):
+        receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
         body = (root / f"{name}.body").read_bytes()
         if (receipt.get("complete_body") is not True or receipt.get("status") != 200
                 or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
@@ -269,8 +267,12 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
                         "wire_sha256": receipt.get("wire_sha256", _sha(body)),
                         "content_encoding": receipt.get("content_encoding", "identity"),
                         "error_code": receipt.get("error_code")})
-        captures[name] = (body, receipt)
-    return captures
+        return body, receipt
+    receipts = {name: load(root, name)[1] for name in names}
+    return validated_capture_view(root, receipts=receipts,
+        expected_urls=dict.fromkeys(names, ""), load_capture=load,
+        capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
 
 
 def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[bytes, dict[str, object]]]:

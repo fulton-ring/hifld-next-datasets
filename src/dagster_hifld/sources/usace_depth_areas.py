@@ -22,6 +22,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -333,7 +334,7 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)
-    captures={}
+    captures=RetainedCaptureView(root)
     try:
         if replay:
             retained_manifest=json.loads((root/"capture_manifest.json").read_bytes())
@@ -353,9 +354,12 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
             names=[name for name,_url in _capture_roster(ids)]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures={name:_load_replay(root,name) for name in names}
-            if any(receipt!=retained_manifest["receipts"][name] for name,(_body,receipt) in captures.items()):
-                raise ValueError("retained_capture_manifest_receipt_mismatch")
+            captures=validated_capture_view(root,
+                receipts={name: retained_manifest["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_manifest_receipt_mismatch")
             expected_urls = dict(_capture_roster(ids))
             for name,(_body,receipt) in captures.items():
                 if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]

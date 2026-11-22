@@ -198,19 +198,22 @@ class RetainedReplayView(Mapping):
     """
     def __init__(self, root, *, receipts, expected_urls, load_capture,
                  validate_request_identity,
-                 receipt_error="retained_capture_manifest_receipt_mismatch"):
+                 receipt_error="retained_capture_manifest_receipt_mismatch",
+                 capture_value=lambda value: (value[0], value[2]), preserve_order=False):
         self._root = root
-        self._receipts = copy.deepcopy(dict(sorted(receipts.items())))
+        self._receipts = copy.deepcopy(dict(receipts if preserve_order else sorted(receipts.items())))
         self._urls = dict(expected_urls)
         self._load = load_capture
         self._validate_identity = validate_request_identity
         self._receipt_error = receipt_error
+        self._capture_value = capture_value
 
     def __getitem__(self, name):
         expected = self._receipts[name]
-        body, _wire, receipt = self._load(self._root, name)
+        body, receipt = self._capture_value(self._load(self._root, name))
         if receipt != expected:
-            raise ValueError(self._receipt_error + ":" + name)
+            raise ValueError(self._receipt_error(name) if callable(self._receipt_error)
+                             else self._receipt_error + ":" + name)
         self._validate_identity(name, receipt, self._urls[name])
         return body, receipt
 
@@ -225,7 +228,8 @@ def validated_capture_view(root: Path, *, receipts: Mapping[str, dict],
                            expected_urls: Mapping[str, str],
                            load_capture: Callable[[Path, str], tuple[bytes, bytes, dict]],
                            validate_request_identity: Callable[[str, Mapping[str, object], str], None],
-                           receipt_error: str = "retained_capture_manifest_receipt_mismatch",
+                           receipt_error: str | Callable[[str], str] = "retained_capture_manifest_receipt_mismatch",
+                           capture_value=lambda value: (value[0], value[2]), preserve_order=False,
                            ) -> Mapping[str, tuple[bytes, dict]]:
     """Check every sealed receipt before exposing a disk-backed replay view.
 
@@ -234,8 +238,8 @@ def validated_capture_view(root: Path, *, receipts: Mapping[str, dict],
     """
     view = RetainedReplayView(root, receipts=receipts, expected_urls=expected_urls,
         load_capture=load_capture, validate_request_identity=validate_request_identity,
-        receipt_error=receipt_error)
-    for name in sorted(view):
+        receipt_error=receipt_error, capture_value=capture_value, preserve_order=preserve_order)
+    for name in view:
         view[name]
     return view
 

@@ -566,7 +566,7 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
             (capture_root / "capture_manifest.json").write_bytes(
                 _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                             "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-            retained = dict(captures)
+            retained = RetainedCaptureView(capture_root, captures)
             for receipt_path in capture_root.glob("*.receipt.json"):
                 name = receipt_path.name.removesuffix(".receipt.json")
                 if name in retained:

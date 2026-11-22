@@ -23,6 +23,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -283,7 +284,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)
-    captures={}
+    captures=RetainedCaptureView(root)
     try:
         if replay:
             retained_manifest=json.loads((root/"capture_manifest.json").read_bytes())
@@ -301,9 +302,12 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             names=["ids_seed","bts_item","service_directory","service_before","layer_before","count_before","ids_before",*[f"page_{i:03d}" for i in range((len(ids)+PAGE_SIZE-1)//PAGE_SIZE)],"layer_after","count_after","ids_after","service_after"]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures={name:_load_replay(root,name) for name in names}
-            if any(receipt!=retained_manifest["receipts"][name] for name,(_body,receipt) in captures.items()):
-                raise ValueError("retained_capture_manifest_receipt_mismatch")
+            captures=validated_capture_view(root,
+                receipts={name: retained_manifest["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_manifest_receipt_mismatch")
             attempt_map=retained_manifest.get("attempts",{})
             if not isinstance(attempt_map,dict): raise ValueError("retained_capture_attempt_manifest_invalid")
             for name,receipt in attempt_map.items():
@@ -331,7 +335,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             actual_names = {path.name.removesuffix(".receipt.json") for path in root.glob("*.receipt.json")}
             if actual_names != expected_names:
                 raise ValueError("retained_unsealed_capture_roster_mismatch")
-            captures = {}
+            captures = RetainedCaptureView(root)
             for name, expected_url in names_urls:
                 body, receipt = _load_replay(root, name)
                 if receipt.get("url") != expected_url or receipt.get("final_url") != expected_url:

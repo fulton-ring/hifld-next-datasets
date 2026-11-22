@@ -22,6 +22,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, zero_area_rings
 
@@ -327,7 +328,7 @@ def capture_fuds_property_boundaries(storage: StagingStorageResource, *, version
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures: dict[str, tuple[bytes, dict[str, object]]] = RetainedCaptureView(capture_root)
     try:
         with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/fuds-property-boundaries-draft"}) as client:
             seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")

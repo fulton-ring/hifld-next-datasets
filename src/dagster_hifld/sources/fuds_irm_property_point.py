@@ -22,6 +22,8 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -219,7 +221,7 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
     replay = capture_directory is not None and (caproot / "service_before.body").is_file()
     if not replay:
         caproot = (caproot / f"{version}-{uuid4().hex}").absolute(); caproot.mkdir(parents=True, exist_ok=False)
-    captures = {}
+    captures = RetainedCaptureView(caproot)
     def get(client, name, url):
         def reserve(progress):
             retained_prior = sum(
@@ -233,12 +235,17 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
         return capture_get(client, url, caproot, name, max_bytes=MAX_CAPTURE_BYTES, reserve=reserve)
     try:
         if replay:
-            for receipt_path in sorted(caproot.glob("*.receipt.json")):
-                name=receipt_path.name.removesuffix(".receipt.json")
-                receipt=json.loads(receipt_path.read_bytes()); body=(caproot/f"{name}.body").read_bytes()
+            names = [path.name.removesuffix(".receipt.json") for path in sorted(caproot.glob("*.receipt.json"))]
+            def load(root, name):
+                receipt=json.loads((root/f"{name}.receipt.json").read_bytes()); body=(root/f"{name}.body").read_bytes()
                 if receipt.get("complete_body") is not True or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body):
                     raise ValueError("replayed_capture_receipt_mismatch:"+name)
-                captures[name]=(body,receipt)
+                return body, receipt
+            receipts = {name: load(caproot, name)[1] for name in names}
+            captures = validated_capture_view(caproot, receipts=receipts,
+                expected_urls=dict.fromkeys(names, ""), load_capture=load,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None)
         else:
           with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/irm-property-point-draft"}) as client:
             def request_steps():
@@ -271,7 +278,7 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
     manifest = {"schema_version":1,"approved":False,"title":LAYER_NAME,
         "description":"Official USACE Military/FUDS_Data MapServer layer 6 IRM Property Point in IRM group layer 5. Complete attributes and IDs are retained; native geometry is retained in source_geometry and projected to GeoParquet WKB. Release date, freshness, public schema contract, and rights remain unresolved.",
         "publisher":PUBLISHER,"agency":"U.S. Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-        "inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":SERVICE_URL if n.startswith("service_") else LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"unknown_pending_rights_review","attribution":"USACE MapServer copyrightText is US Army Corps of Engineers; formal downstream attribution review remains pending.","release_date":None,"release_date_unknown_reason":audit["source_release_date_unknown_reason"]} for n,(b,r) in sorted(captures.items())],
+        "inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":SERVICE_URL if n.startswith("service_") else LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"unknown_pending_rights_review","attribution":"USACE MapServer copyrightText is US Army Corps of Engineers; formal downstream attribution review remains pending.","release_date":None,"release_date_unknown_reason":audit["source_release_date_unknown_reason"]} for n,(b,r) in ((name, captures[name]) for name in sorted(captures))],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"layer_id":LAYER_ID,"source_fields":"all source attributes retained in producer order and declared physical types","source_ids":"source OBJECTID and all values preserved","geometry":"all returned point ordinates and per-feature native Esri geometry/SRS preserved in source_geometry; GeoParquet geometry is standards-compliant XY/XYZ WKB, without coordinate transform or repair","candidate_status":"unapproved; freshness, schema/ID contract, rights and release approval pending"}}],
         "lineage":"USACE Military/FUDS_Data MapServer layer 6, IRM Property Point, child of group layer 5 Interim Risk Management (IRM). Layers 7 IRM Project Boundary and 8 IRM Property Boundary are distinct source products.",
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Faithful complete source capture; approvals unresolved.","objects":[{"path":rel,**source_objects[rel]}]}}},"unsupported_output_formats":{"geopackage":"No accepted public schema mapping.","pmtiles":"No approved display/generalization mapping."}}
@@ -281,7 +288,7 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
     outputs={rel:body,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n","metadata/candidate_ready.json":_canonical({"approved":False,"version":version,"objects":source_objects,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"release_accepted":False})+b"\n"}
     for name,(raw,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=raw; outputs[f"raw/{name}.wire"]=(caproot/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
-    (caproot/"capture_manifest.json").write_bytes(_canonical({"complete":True,"source_feature_count":audit["source_feature_count"],"receipts":{n:r for n,(b,r) in sorted(captures.items())}})+b"\n")
+    (caproot/"capture_manifest.json").write_bytes(_canonical({"complete":True,"source_feature_count":audit["source_feature_count"],"receipts":{n:r for n,(b,r) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     fingerprint=_sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
         bundle=json.loads(load_first_construction(storage,state_key,version,fingerprint)); payload=bundle.get("payload")

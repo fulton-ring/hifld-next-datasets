@@ -18,6 +18,7 @@ import pyarrow.parquet as pq
 import pyproj
 import httpx
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_common import (
@@ -261,9 +262,12 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
                  *(f"page_{i:03d}" for i in range((len(ids)+PAGE_SIZE-1)//PAGE_SIZE)),
                  "layer_after", "count_after", "ids_after"]
         if set(receipts) != set(names): raise ValueError("retained_capture_roster_changed")
-        captures = {name: _load_replay(root, name) for name in names}
-        if any(receipt != receipts[name] for name, (_body, receipt) in captures.items()):
-            raise ValueError("retained_capture_receipt_changed")
+        captures = validated_capture_view(root,
+                receipts={name: receipts[name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_receipt_changed")
     else:
         if any(root.glob("*.body")) or any(root.glob("*.wire")) or any(root.glob("*.receipt.json")):
             raise ValueError("explicit_capture_directory_contains_unsealed_attempt")

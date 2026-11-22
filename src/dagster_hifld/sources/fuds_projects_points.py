@@ -247,7 +247,7 @@ def capture_fuds_projects_points(storage: StagingStorageResource, *, version: st
             try: receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
             except (ValueError, OSError): receipts[path.name] = {"receipt_readback_failed":True}
         (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__,"receipts":receipts})+b"\n")
-        retained = dict(captures)
+        retained = RetainedCaptureView(capture_root, captures)
         for receipt_path in capture_root.glob("*.receipt.json"):
             name = receipt_path.name.removesuffix(".receipt.json")
             if name in retained:

@@ -12,6 +12,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon, Polygon
 
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups, ring_is_ccw
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -112,7 +113,7 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
         raise ValueError("explicit_local_staging_resource_required")
     root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "95", "captures"))) / version
     root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: dict[str, tuple[bytes, dict]] = RetainedCaptureView(root)
     def get(client, name, url, params=None):
         target = url + ("?" + urlencode(params) if params else "")
         body, receipt = capture_get(client, target, root, name, max_bytes=MAX_RESPONSE_BYTES)

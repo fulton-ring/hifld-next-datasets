@@ -25,6 +25,7 @@ import pyproj
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -285,29 +286,36 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures: dict[str, tuple[bytes, dict[str, object]]] = RetainedCaptureView(capture_root)
     replay_root: Path | None = None
     try:
         if replay_capture_directory:
             replay_root = Path(replay_capture_directory).absolute()
             if ".." in replay_root.parts or any(parent.is_symlink() for parent in (replay_root, *replay_root.parents)):
                 raise ValueError("unsafe_replay_capture_directory")
-            for receipt_path in sorted(replay_root.glob("*.receipt.json")):
-                name = receipt_path.name.removesuffix(".receipt.json")
-                receipt_body = receipt_path.read_bytes()
+            def load(root, name):
+                receipt_body = (root / f"{name}.receipt.json").read_bytes()
                 receipt = json.loads(receipt_body)
-                body = (replay_root / f"{name}.body").read_bytes()
-                wire = (replay_root / f"{name}.wire").read_bytes()
+                body = (root / f"{name}.body").read_bytes()
+                wire = (root / f"{name}.wire").read_bytes()
                 if (receipt_body != _canonical(receipt) + b"\n" or receipt.get("method") != "GET"
                         or receipt.get("complete_body") is not True or receipt.get("status") != 200
                         or receipt.get("url") != receipt.get("final_url")
                         or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
                         or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
                     raise ValueError("replay_capture_receipt_or_body_invalid:" + name)
-                captures[name] = (body, receipt)
+                return body, wire, receipt_body, receipt
+            for receipt_path in sorted(replay_root.glob("*.receipt.json")):
+                name = receipt_path.name.removesuffix(".receipt.json")
+                body, wire, receipt_body, receipt = load(replay_root, name)
+                captures[name] = (replay_root / f"{name}.body", receipt)
                 (capture_root / f"{name}.body").write_bytes(body)
                 (capture_root / f"{name}.wire").write_bytes(wire)
                 (capture_root / f"{name}.receipt.json").write_bytes(receipt_body)
+            captures = validated_capture_view(capture_root, receipts=captures.receipts,
+                expected_urls={name: receipt["url"] for name, receipt in captures.receipts.items()},
+                load_capture=load, capture_value=lambda value: (value[0], value[3]),
+                preserve_order=True, validate_request_identity=lambda name, receipt, url: None)
             seed = json.loads(captures.get("ids_seed", (b"{}", {}))[0]).get("objectIds")
             if (not isinstance(seed, list) or not seed
                     or any(type(oid) is not int or oid <= 0 for oid in seed)

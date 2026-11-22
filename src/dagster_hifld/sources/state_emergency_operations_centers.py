@@ -19,6 +19,7 @@ import pyarrow.parquet as pq
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import capture_http_response
@@ -435,7 +436,7 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
         raise EOCSourceError("incomplete_existing_candidate_requires_review")
     run_capture = capture / version
     run_capture.mkdir(mode=0o700, exist_ok=False)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: dict[str, tuple[bytes, dict]] = RetainedCaptureView(run_capture)
     def get(client, name, url):
         body, receipt = _capture(client, url, run_capture, name)
         captures[name] = (body, receipt)

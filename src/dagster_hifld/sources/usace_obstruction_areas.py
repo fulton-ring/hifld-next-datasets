@@ -20,6 +20,7 @@ import httpx
 import shapely
 from shapely import from_wkb
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -242,9 +243,12 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
                      "layer_after", "count_after", "ids_after", "service_after"]
             if set(retained.get("receipts", {})) != set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures = {name: _load_replay(root, name) for name in names}
-            if any(receipt != retained["receipts"][name] for name, (_body, receipt) in captures.items()):
-                raise ValueError("retained_capture_receipt_changed")
+            captures = validated_capture_view(root,
+                receipts={name: retained["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_receipt_changed")
         else:
             existing_bytes = sum(p.stat().st_size for p in (requested or root.parent).rglob("*")
                                  if p.is_file() and p.suffix in {".body", ".wire"})

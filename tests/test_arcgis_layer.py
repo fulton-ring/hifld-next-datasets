@@ -252,9 +252,19 @@ class ArcgisLayerTests(unittest.TestCase):
         self.assertEqual([name for name, _url in roster][-4:],
                          ["layer_after", "service_after", "count_after", "ids_after"])
 
+    @property
+    def capture_root(self):
+        if not hasattr(self, "_roster_root"):
+            temporary = tempfile.TemporaryDirectory()
+            self.addCleanup(temporary.cleanup)
+            self._roster_root = Path(temporary.name)
+        return self._roster_root
+
     def _witness_fetch(self, bodies):
         def fetch(_client, _url, _root, name):
-            return json.dumps(bodies[name]).encode(), {}
+            body = json.dumps(bodies[name]).encode()
+            (_root / f"{name}.body").write_bytes(body)
+            return body, {}
         return fetch
 
     def test_layer_capture_roster_completeness_uses_source_witnesses(self):
@@ -269,7 +279,7 @@ class ArcgisLayerTests(unittest.TestCase):
             "ids_after": {"objectIds": [1, 2, 3, 4]},
         })
         captures = common.capture_layer_roster(
-            object(), Path("/tmp"), roster, self._witness_fetch(bodies),
+            object(), self.capture_root, roster, self._witness_fetch(bodies),
             captured_ids=[1, 2, 3, 4])
         self.assertEqual(set(captures), {name for name, _url in roster})
 
@@ -277,13 +287,13 @@ class ArcgisLayerTests(unittest.TestCase):
         bodies["ids_after"] = {"objectIds": [1, 2, 3, 4, 5]}
         with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
             common.capture_layer_roster(
-                object(), Path("/tmp"), roster, self._witness_fetch(bodies))
+                object(), self.capture_root, roster, self._witness_fetch(bodies))
 
         bodies["count_after"] = {"count": 4}
         bodies["ids_after"] = {"objectIds": [1, 2, 3, 4]}
         with self.assertRaisesRegex(ValueError, "source_captured_id_roster_incomplete"):
             common.capture_layer_roster(
-                object(), Path("/tmp"), roster, self._witness_fetch(bodies),
+                object(), self.capture_root, roster, self._witness_fetch(bodies),
                 captured_ids=[1, 2, 3])
 
     def test_offset_layer_capture_roster_completeness_uses_source_witnesses(self):
@@ -298,7 +308,7 @@ class ArcgisLayerTests(unittest.TestCase):
             "ids_after": {"objectIds": [4, 3, 2, 1]},
         })
         captures = common.capture_layer_roster(
-            object(), Path("/tmp"), roster, self._witness_fetch(bodies),
+            object(), self.capture_root, roster, self._witness_fetch(bodies),
             captured_ids=[1, 2, 3, 4])
         self.assertIn("page_001", captures)
 
@@ -312,10 +322,10 @@ class ArcgisLayerTests(unittest.TestCase):
         without_after = [(name, url) for name, url in roster if name != "ids_after"]
         with self.assertRaisesRegex(ValueError, "source_capture_witness_missing:ids_after"):
             common.capture_layer_roster(
-                object(), Path("/tmp"), without_after, self._witness_fetch(bodies))
+                object(), self.capture_root, without_after, self._witness_fetch(bodies))
         with self.assertRaisesRegex(ValueError, "capture_roster_name_duplicate"):
             common.capture_layer_roster(
-                object(), Path("/tmp"), [("page", "a"), ("page", "b")],
+                object(), self.capture_root, [("page", "a"), ("page", "b")],
                 self._witness_fetch({}))
 
     def test_private_aliases_bind_the_public_implementations(self):

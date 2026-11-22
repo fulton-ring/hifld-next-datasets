@@ -28,6 +28,7 @@ import pyarrow.parquet as pq
 import pyogrio
 import pyproj
 import shapely
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
@@ -149,16 +150,16 @@ def source_ids(document):
     return sorted(ids)
 
 def acquire(storage,capture_dir=None):
-    local_only(storage);captures={};total=0
+    local_only(storage);captures=RetainedCaptureView(Path(storage.local_dir));total=0
     def read(name,url):
         nonlocal total
         if capture_dir is None:
             try:body,receipt=fetch_one(url)
             except TsunamiFetchError as exc:
-                captures[name]=(exc.body,exc.receipt);raise
+                captures[name]=(Path(storage.local_dir) / f"_raw-captures/{SLUG}/{digest(exc.body)}/{name}.body",exc.receipt);raise
         else:
             path=Path(capture_dir);body=(path/(name+'.body')).read_bytes();receipt=strict_json((path/(name+'.receipt.json')).read_bytes())
-        captures[name]=(body,receipt);total+=len(body)
+        captures[name]=(Path(storage.local_dir) / f"_raw-captures/{SLUG}/{digest(body)}/{name}.body",receipt);total+=len(body)
         if total>MAX_CAPTURE_BYTES:raise TsunamiQuarantineError('cumulative_complete_capture_budget_exceeded')
         validate_capture(name,body,receipt,url)
     try:
@@ -318,12 +319,12 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
         retained=load_first_construction(storage,key,version,fingerprint)
     bundle=strict_json(retained)['payload']
     if set(bundle)!={'manifest','captures'} or set(bundle['captures'])!=set(captures):raise TsunamiQuarantineError('original_binding_capture_roster_drift')
-    original={}
+    original=RetainedCaptureView(Path(storage.local_dir))
     for name,item in bundle['captures'].items():
         if set(item)!={'body_key','receipt'} or item['body_key']!=f"_raw-captures/{SLUG}/{item['receipt'].get('sha256')}/{name}.body":raise TsunamiQuarantineError('original_capture_body_key_drift')
         body=storage.read_key(item['body_key'])
         if body!=captures[name][0]:raise TsunamiQuarantineError('original_capture_bytes_differ')
-        original[name]=(body,item['receipt'])
+        original[name]=(Path(storage.local_dir) / item['body_key'],item['receipt'])
     pin=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
     expected=manifest_for(original,identity,{k:pin[k] for k in ('sha256','bytes')});actual=bundle['manifest']
     validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files'])

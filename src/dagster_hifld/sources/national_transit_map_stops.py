@@ -22,6 +22,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -205,8 +206,8 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
     if total != manifest["retained_bytes"] or total > manifest["capture_budget_bytes"] or receipt_total > MAX_CAPTURE_RECEIPT_TOTAL_BYTES:
         raise ValueError("retained_capture_budget_invalid")
     validate_capture_roster(root, expected)
-    captures = {}
-    for name, desc in manifest["captures"].items():
+    def load(root, name):
+        desc = manifest["captures"][name]
         response_cap = MAX_ID_ROSTER_RESPONSE_BYTES if name in {"ids_before", "ids_after"} else MAX_RESPONSE_BYTES
         contents = {}
         for kind in ("body", "wire", "receipt"):
@@ -224,7 +225,12 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
                 or receipt.get("sha256") != _sha(body) or receipt.get("wire_bytes") != len(wire)
                 or receipt.get("wire_sha256") != _sha(wire) or receipt.get("error_code") is not None):
             raise ValueError("retained_capture_receipt_invalid:" + name)
-        captures[name] = (body, receipt)
+        return body, receipt
+    receipts = {name: load(root, name)[1] for name in manifest["captures"]}
+    captures = validated_capture_view(root, receipts=receipts,
+        expected_urls={name: desc["request_url"] for name, desc in manifest["captures"].items()},
+        load_capture=load, capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
     return manifest, captures, _sha(encoded)
 
 
@@ -342,7 +348,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
     retained = 0
     if retained_capture_directory:
         offline, retained_captures, manifest_sha = _load_retained_capture(root)
-        captures.update(retained_captures)
+        captures = retained_captures
         if manifest_sha != retained_capture_manifest_sha256:
             raise ValueError("retained_capture_manifest_digest_mismatch")
         if (offline["capture_budget_bytes"] != max_capture_bytes

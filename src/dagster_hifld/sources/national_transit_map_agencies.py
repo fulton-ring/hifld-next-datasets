@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -226,10 +227,11 @@ def _load_retained_capture(directory: Path, destination: Path) -> dict[str, tupl
     urls = dict(_capture_roster(seed))
     if set(receipts) != set(urls) or len(seed) != source_count:
         raise ValueError("retained_capture_receipt_roster_changed")
-    captures = {"ids_seed": seed_capture}
-    for name, url in urls.items():
-        if name != "ids_seed":
-            captures[name] = load(name, url)
+    ordered_receipts = {name: receipts[name] for name in ("ids_seed", *[name for name in urls if name != "ids_seed"])}
+    captures = validated_capture_view(root, receipts=ordered_receipts, expected_urls=urls,
+        load_capture=lambda _root, name: load(name, urls[name]),
+        capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
     validate_captures(captures)
     for name in captures:
         for suffix in ("body", "wire", "receipt.json"):
@@ -283,7 +285,7 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
         fields,features=validate_captures(captures)
     except Exception as exc:
         _admit_capture_directory(root)
-        retained=dict(captures)
+        retained=RetainedCaptureView(root, captures)
         # Preserve a response whose stream failed before _fetch could return it.
         for receipt_path in root.glob("*.receipt.json"):
             name=receipt_path.name.removesuffix(".receipt.json")

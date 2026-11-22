@@ -7,6 +7,7 @@ from __future__ import annotations
 import collections
 import shutil
 from dataclasses import asdict
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.http_capture import capture_http_response
 import io
 import fcntl
@@ -181,7 +182,7 @@ def source_ids(document):
 
 
 def acquire(storage,capture_dir=None):
-    local_only(storage);captures={};attempted={};total=0
+    local_only(storage);captures=RetainedCaptureView(Path(storage.local_dir));attempted={};total=0
     root=Path(capture_dir).absolute() if capture_dir else None
     if root is not None and ('..' in root.parts or not root.is_dir() or any(p.is_symlink() for p in [root,*root.parents])):raise NaturalGasCrossingsQuarantineError('unsafe_capture_root')
     def retain(name,body):
@@ -193,7 +194,7 @@ def acquire(storage,capture_dir=None):
         if root is None:
             try:body,receipt=fetch_one(storage,url)
             except NaturalGasCrossingsFetchError as exc:
-                retain(name,exc.body);captures[name]=(exc.body,exc.receipt);raise
+                retain(name,exc.body);captures[name]=(Path(storage.local_dir) / f"_raw-captures/{SLUG}/{digest(exc.body)}/{name}.body",exc.receipt);raise
             retain(name,body);raw_receipt=encode(receipt)
         else:
             body=bounded_input(root/(name+'.body'),MAX_BODY)
@@ -202,7 +203,7 @@ def acquire(storage,capture_dir=None):
         receipt_key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.raw-receipt-{digest(raw_receipt)}.body'
         immutable(storage,receipt_key,raw_receipt)
         attempted[name].update(raw_receipt_read=True,raw_receipt_key=receipt_key,raw_receipt_sha256=digest(raw_receipt),raw_receipt_bytes=len(raw_receipt))
-        receipt=strict_json(raw_receipt);captures[name]=(body,receipt);total+=len(body)
+        receipt=strict_json(raw_receipt);captures[name]=(Path(storage.local_dir) / f"_raw-captures/{SLUG}/{digest(body)}/{name}.body",receipt);total+=len(body)
         if total>MAX_CAPTURE_BYTES:raise NaturalGasCrossingsQuarantineError('cumulative_capture_budget_exceeded')
         validate_capture(name,body,receipt,url)
         if name in PINS and (len(body)!=PINS[name]['bytes'] or digest(body)!=PINS[name]['sha256']):raise NaturalGasCrossingsQuarantineError('pinned_baseline_candidate_changed:'+name)
@@ -371,13 +372,13 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
         retained=load_first_construction(storage,key,version,fingerprint)
     bundle=strict_json(retained)['payload']
     if set(bundle)!={'manifest','captures'} or set(bundle['captures'])!=set(captures):raise NaturalGasCrossingsQuarantineError('original_binding_capture_roster_drift')
-    original={}
+    original=RetainedCaptureView(Path(storage.local_dir))
     for name,item in bundle['captures'].items():
         if set(item)!={'body_key','receipt'} or item['body_key']!=f"_raw-captures/{SLUG}/{item['receipt'].get('sha256')}/{name}.body":raise NaturalGasCrossingsQuarantineError('original_capture_body_key_drift')
         body=storage.read_key(item['body_key'])
         if name not in ('metadata_before','metadata_after') and body!=captures[name][0]:raise NaturalGasCrossingsQuarantineError('original_capture_bytes_differ')
         if name in ('metadata_before','metadata_after') and encode(semantic_metadata(strict_json(body)))!=encode(semantic_metadata(strict_json(captures[name][0]))):raise NaturalGasCrossingsQuarantineError('original_source_semantics_changed')
-        original[name]=(body,item['receipt'])
+        original[name]=(Path(storage.local_dir) / item['body_key'],item['receipt'])
     original_table,original_audit=inspect_captures(original)
     current_table,current_audit=inspect_captures(captures)
     if not original_table.equals(current_table,check_metadata=True) or encode(original_audit)!=encode(current_audit):raise NaturalGasCrossingsQuarantineError('original_source_values_or_semantics_changed')

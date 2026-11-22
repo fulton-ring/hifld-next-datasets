@@ -230,7 +230,9 @@ def capture_layer_roster(client: httpx.Client, root: Path,
     names = [name for name, _url in roster]
     if len(set(names)) != len(names):
         raise ValueError("capture_roster_name_duplicate")
-    captures = {name: fetch(client, url, root, name) for name, url in roster}
+    captures = RetainedCaptureView(root)
+    for name, url in roster:
+        captures[name] = fetch(client, url, root, name)
     capture_witness(captures, captured_ids=captured_ids)
     return captures
 

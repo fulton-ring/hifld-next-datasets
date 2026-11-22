@@ -25,6 +25,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -644,7 +645,7 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
         if any(p.is_symlink() for p in (root, *root.parents)):
             raise ValueError("trails_unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
-        captures = {}
+        captures = RetainedCaptureView(root)
         retained = 0
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(120, connect=20),

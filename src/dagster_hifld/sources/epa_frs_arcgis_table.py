@@ -14,6 +14,9 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.sources.arcgis_layer import read_capture
+from dagster_hifld.sources.capture_common import validate_capture_request_identity
 from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.sources.epa_capture import OffsetCaptureSpec, capture_offset_pages
 from dagster_hifld.sources.capture_common import capture_get
@@ -302,4 +305,9 @@ def capture_table(
         "source_ids_equal_before_after": True, "fields": list(fields),
         "response_receipts": {name: receipt for name, (_body, receipt) in captures.items()},
     }
-    return rows, manifest, dict(captures)
+    return rows, manifest, validated_capture_view(capture_root,
+        receipts=captures.receipts,
+        expected_urls={name: receipt["url"] for name, receipt in captures.receipts.items()},
+        load_capture=lambda root, name: read_capture(root, name, ArcGISTableCaptureError),
+        capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=validate_capture_request_identity)

@@ -29,6 +29,9 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.sources.arcgis_layer import read_capture
+from dagster_hifld.sources.capture_common import validate_capture_request_identity
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -204,7 +207,12 @@ def _capture_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict]
         "fields": list(fields),
         "response_receipts": {name: receipt for name, (_body, receipt) in captures.items()},
     }
-    return rows, manifest, dict(captures)
+    return rows, manifest, validated_capture_view(capture_root,
+        receipts=captures.receipts,
+        expected_urls={name: receipt["url"] for name, receipt in captures.receipts.items()},
+        load_capture=lambda root, name: read_capture(root, name, EpaFrsSicCaptureError),
+        capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=validate_capture_request_identity)
 
 
 def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
@@ -251,7 +259,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures = RetainedCaptureView(capture_root)
     current_capture_url = TABLE_URL + "/query?where=1%3D1&returnCountOnly=true&f=json"
     try:
         with httpx.Client(follow_redirects=False, timeout=180,

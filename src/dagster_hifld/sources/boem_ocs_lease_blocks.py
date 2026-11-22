@@ -24,6 +24,7 @@ pending.
 """
 from __future__ import annotations
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.sources.arcgis_layer import (
     capture_document_retry, bracket_document_complete as _document_complete,
 )
@@ -189,8 +190,9 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
     optional.update(path.name for path in root.iterdir()
                     if re.fullmatch(rf'(?:{names})\.error-\d+\.(?:body|wire|receipt\.json)', path.name))
     validate_capture_roster(root, required | {'capture-summary.json'} | ({p.name for p in root.iterdir()} & optional))
-    captures = {}
-    for name, url in roster:
+    urls = dict(roster)
+    def load(root, name):
+        url = urls[name]
         for suffix in ('body', 'wire', 'receipt.json'):
             if (root / f'{name}.{suffix}').stat().st_size > (65536 if suffix == 'receipt.json' else MAX_BODY_BYTES):
                 raise ValueError('offline_capture_size_limit')
@@ -204,7 +206,11 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
                 or sorted(parse_qsl(observed.query, keep_blank_values=True))
                 != sorted(parse_qsl(expected.query, keep_blank_values=True))):
             raise ValueError('offline_capture_request_mismatch:' + name)
-        captures[name] = (body, receipt)
+        return body, receipt
+    receipts = {name: load(root, name)[1] for name in urls}
+    captures = validated_capture_view(root, receipts=receipts,
+        expected_urls=urls, load_capture=load, capture_value=lambda value: value,
+        preserve_order=True, validate_request_identity=lambda name, receipt, url: None)
     capture_witness(captures)
     return captures
 
