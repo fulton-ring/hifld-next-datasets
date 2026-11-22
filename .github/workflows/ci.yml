@@ -77,7 +77,7 @@ jobs:
         # PYTHONPATH=tests matches `unittest discover tests` imports.
         run: |
           modules=$(ls tests/test_*.py | sort | awk -v shard="$SHARD" '(NR - 1) % 4 == shard' | xargs -n1 basename | sed 's/\.py$//')
-          PYTHONPATH=tests uv run --locked python -m unittest $modules
+          PYTHONPATH=tests uv run --locked python -m unittest --durations 25 $modules
 
   # The factory requires this single check name.
   test:
