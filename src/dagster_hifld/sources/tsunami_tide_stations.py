@@ -135,7 +135,10 @@ def acquire(storage,capture_dir=None):
             else:
                 url=URLS[name]
                 limit=3_000_000
+                # Retry only a refusal whose evidence was retained successfully.
+                retained_refusal = [None]
                 def capture_attempt(attempt_number):
+                    retained_refusal[0] = None
                     attempt = attempt_number - 1
                     body=bytearray();receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                     try:
@@ -159,11 +162,12 @@ def acquire(storage,capture_dir=None):
                     except (httpx.HTTPError,OSError,ValueError) as exc:
                         receipt.update(bytes=len(body),sha256=digest(body),complete_body=False)
                         quarantine(storage,{name:(bytes(body),receipt)},str(exc))
+                        retained_refusal[0] = exc
                         if attempt==2: raise TideStationQuarantineError('bounded_fetch_exhausted:'+str(exc)) from exc
                         raise
                 body, receipt = retry_capture_request(
                     capture_attempt, attempts=3, schedule=(),
-                    retryable=lambda exc, attempt: isinstance(exc, (httpx.HTTPError, OSError, ValueError)),
+                    retryable=lambda exc, attempt: exc is retained_refusal[0],
                     preserve_failed=lambda exc, attempt: None)
         capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
         return captures

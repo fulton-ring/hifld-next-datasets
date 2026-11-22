@@ -138,7 +138,10 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                 immutable(storage,f'{location}/original-receipt.body',receipt_body)
                 raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc
         else:
+            # Retry only a refusal whose evidence was retained successfully.
+            retained_refusal = [None]
             def capture_attempt(attempt_number):
+                retained_refusal[0] = None
                 attempt = attempt_number - 1
                 response=None
                 body=b'';receipt={'requested_url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
@@ -160,11 +163,12 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                     receipt.update(byte_length=len(body),sha256=sha(body),partial=True)
                     if response is not None:receipt['wire_byte_length']=response.num_bytes_downloaded
                     location=quarantine(storage,body,receipt,str(exc))
+                    retained_refusal[0] = exc
                     if attempt==2: raise CBRSQuarantineError(f'bounded_fetch_exhausted:{exc}; retained:{location}') from exc
                     raise
             body, receipt = retry_capture_request(
                 capture_attempt, attempts=3, schedule=(),
-                retryable=lambda exc, attempt: isinstance(exc, (httpx.HTTPError, OSError, ValueError, TypeError)),
+                retryable=lambda exc, attempt: exc is retained_refusal[0],
                 preserve_failed=lambda exc, attempt: None)
         captures[name]=(body,receipt)
         immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',body)

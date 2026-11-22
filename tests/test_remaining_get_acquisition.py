@@ -37,19 +37,22 @@ class RemainingGetAcquisitionTests(unittest.TestCase):
         self.assertEqual(urls, [ems_stations._url(name)
                                 for name in ('layer', 'count_before', 'ids_before')])
 
-    def test_dart_terminal_refusals_preserve_each_native_attempt_and_stop_sequence(self):
-        urls = []
+    @staticmethod
+    def dart_refusal_client(urls):
+        client_class = httpx.Client
 
         def respond(request):
             urls.append(str(request.url))
             return httpx.Response(503, content=b'refused native response')
 
-        client_class = httpx.Client
+        return lambda **kwargs: client_class(transport=httpx.MockTransport(respond), **kwargs)
+
+    def test_dart_terminal_refusals_preserve_each_native_attempt_and_stop_sequence(self):
+        urls = []
         with tempfile.TemporaryDirectory() as temporary:
             storage = StagingStorageResource(local_dir=str(Path(temporary) / 'stage'))
             with patch.object(current_dart.httpx, 'Client',
-                              side_effect=lambda **kwargs: client_class(
-                                  transport=httpx.MockTransport(respond), **kwargs)), \
+                              side_effect=self.dart_refusal_client(urls)), \
                     patch.object(current_dart, 'quarantine', wraps=current_dart.quarantine) as quarantined:
                 with self.assertRaisesRegex(current_dart.DartQuarantineError, 'bounded_fetch_exhausted'):
                     current_dart.acquire(storage, None)
@@ -60,6 +63,27 @@ class RemainingGetAcquisitionTests(unittest.TestCase):
                                 and call.args[2]['partial'] is True
                                 for call in quarantined.call_args_list))
             self.assertTrue(any((Path(temporary) / 'stage').rglob('*.json')))
+
+    def test_dart_custody_failure_aborts_without_requesting_a_retry(self):
+        for failure_attempt in (1, 2):
+            with self.subTest(failure_attempt=failure_attempt), tempfile.TemporaryDirectory() as temporary:
+                urls = []
+                storage = StagingStorageResource(local_dir=str(Path(temporary) / 'stage'))
+                original_quarantine = current_dart.quarantine
+                attempts = []
+
+                def custody(*args):
+                    attempts.append(args)
+                    if len(attempts) == failure_attempt:
+                        raise OSError('custody unavailable')
+                    return original_quarantine(*args)
+
+                with patch.object(current_dart.httpx, 'Client', side_effect=self.dart_refusal_client(urls)), \
+                        patch.object(current_dart, 'quarantine', side_effect=custody):
+                    with self.assertRaisesRegex(OSError, 'custody unavailable'):
+                        current_dart.acquire(storage, None)
+                self.assertEqual(urls, [next(iter(current_dart.URLS.values()))] * failure_attempt)
+                self.assertEqual(len(attempts), failure_attempt)
 
     def test_missing_local_staging_checks_its_existing_parent_without_a_mount_default(self):
         for source in (ferry_routes, tsunami_tide_stations):

@@ -234,7 +234,10 @@ def acquire(storage: StagingStorageResource, capture_dir: Path|None) -> dict[str
                         with httpx.Client(timeout=60,follow_redirects=True,headers={'Accept-Encoding':'identity'}) as client:
                             def fetch_one(n, url):
                                 nonlocal cumulative
+                                # Retry only a refusal whose evidence was retained successfully.
+                                retained_refusal = [None]
                                 def capture_attempt(attempt_number):
+                                    retained_refusal[0] = None
                                     nonlocal cumulative
                                     attempt = attempt_number - 1
                                     raw=b'';receipt={'url':url,'fetched_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
@@ -255,11 +258,12 @@ def acquire(storage: StagingStorageResource, capture_dir: Path|None) -> dict[str
                                     except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
                                         receipt.update(bytes=len(raw),sha256=sha(raw),partial=True)
                                         quarantine(storage,raw,receipt,str(exc))
+                                        retained_refusal[0] = exc
                                         if attempt==2:raise ObservationQuarantineError(f'bounded_original_http_retry_exhausted:{n}:{exc}') from exc
                                         raise
                                 raw, receipt = retry_capture_request(
                                     capture_attempt, attempts=3, schedule=(),
-                                    retryable=lambda exc, attempt: isinstance(exc, (httpx.HTTPError, OSError, ValueError, TypeError)),
+                                    retryable=lambda exc, attempt: exc is retained_refusal[0],
                                     preserve_failed=lambda exc, attempt: None)
                                 z.writestr(n+'.body',raw);z.writestr(n+'.receipt.json',encode(receipt))
                                 if n in ('count_before','count_after') and strict_json(raw).get('count')!=FEATURE_COUNT:
