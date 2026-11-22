@@ -280,8 +280,9 @@ def capture_page_window(spec: WbdHuSpec, client: httpx.Client, roster: list[int]
             refuse_evidence_collision=True),
         window_url=lambda ids, idx, path: page_part_url(spec, ids, idx, f"page_{idx:04d}" + path),
         capture=capture, is_refusal=is_refusal, at_floor=at_floor)
-    return {name: ((root / (name + ".body")).read_bytes(), receipt)
-            for name, receipt in receipts.items()}, refusals
+    parts = RetainedCaptureView(root, (
+        (name, (root / (name + ".body"), receipt)) for name, receipt in receipts.items()))
+    return parts, refusals
 
 
 def _effective_page_count(spec: WbdHuSpec, page_count: int | None) -> int:
