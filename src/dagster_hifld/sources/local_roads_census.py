@@ -25,7 +25,6 @@ import hashlib
 import json
 import math
 import shutil
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -43,9 +42,11 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources import arcgis_layer as capture_shared
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 from dagster_hifld.sources.arcgis_layer import _arrow_type, _esri_polyline_wkb, _load_capture
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity, seal_ready_candidate,
+    candidate_prefix, processing_identity, seal_ready_candidate,
     validate_capture_request_identity as _validate_capture_request_identity,
     verify_cached_candidate, write_immutable,
 )
@@ -232,25 +233,11 @@ def _assembled_roster(root: Path, phase: str, count: int) -> list[int]:
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str, *, max_bytes: int) -> tuple[bytes, dict]:
-    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire") for path in root.glob(suffix)
-                   if path.is_file())
-    if retained + 2 * max_bytes > MAX_CAPTURE_BYTES:
-        raise ValueError("source_capture_budget_exceeded_before_request")
-    for attempt, extra_delay in enumerate((0.0, *_TRANSIENT_RETRY_DELAYS)):
-        if attempt:
-            for suffix in (".body", ".wire", ".receipt.json"):
-                path = root / f"{name}{suffix}"
-                if path.exists():
-                    path.unlink()
-            if extra_delay:
-                time.sleep(extra_delay)
-        try:
-            return capture_get(client, url, root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if (attempt == len(_TRANSIENT_RETRY_DELAYS)
-                    or not str(exc).startswith(f"incomplete_source_capture:{name}")):
-                raise
-    raise ValueError(f"incomplete_source_capture:{name}")
+    return capture_shared.capture_with_retry(client, url, root, name, max_bytes=max_bytes,
+                                            max_total_bytes=MAX_CAPTURE_BYTES,
+                                            attempts=len(_TRANSIENT_RETRY_DELAYS) + 1,
+                                            base_delay=0, schedule=_TRANSIENT_RETRY_DELAYS,
+                                            error_document=None)
 
 
 def _manifest_path(root: Path) -> Path:
@@ -802,30 +789,38 @@ def _capture_attempt(root: Path) -> dict[str, dict]:
                 receipts[name] = retained[name]
     with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(240, connect=15),
                       headers={"User-Agent": "hifld-next-datasets/census-tigerweb-draft"}) as client:
-        fixed = _fixed_urls()
-        for name in ("folder", "service_before", "layer_before", "count_before"):
-            if name in receipts:
-                continue
-            _body, receipts[name] = _capture(client, fixed[name], root, name, max_bytes=MAX_PAGE_BYTES)
-            _write_progress(root, receipts)
-        if count is None:
-            count = _count_from_body(_load_capture(root, "count_before")[0])
-        urls = _capture_urls(count)
-        for name in _roster_names("before", count):
-            if name in receipts:
-                continue
-            _body, receipts[name] = _capture(client, urls[name], root, name, max_bytes=MAX_PAGE_BYTES)
-            _write_progress(root, receipts)
-        for index in range(page_count(count)):
-            name = f"page_{index:04d}"
-            if name in receipts:
-                continue
+        def steps():
+            nonlocal count
+            fixed = _fixed_urls()
+            for name in ("folder", "service_before", "layer_before", "count_before"):
+                if name in receipts:
+                    continue
+                _body, receipts[name] = yield name, fixed[name], False
+                _write_progress(root, receipts)
+            if count is None:
+                count = _count_from_body(_load_capture(root, "count_before")[0])
+            urls = _capture_urls(count)
+            for name in _roster_names("before", count):
+                if name in receipts:
+                    continue
+                _body, receipts[name] = yield name, urls[name], False
+                _write_progress(root, receipts)
+            for index in range(page_count(count)):
+                name = f"page_{index:04d}"
+                if name in receipts:
+                    continue
+                _body, receipts[name] = yield name, urls[name], True
+                _write_progress(root, receipts)
+            for name in _after_names(count):
+                _body, receipts[name] = yield name, urls[name], False
+            return receipts
+
+        def fetch(name, url, page):
             try:
-                _body, receipts[name] = _capture(client, urls[name], root, name, max_bytes=MAX_PAGE_BYTES)
+                return _capture(client, url, root, name, max_bytes=MAX_PAGE_BYTES)
             except Exception as exc:
-                _write_progress(root, receipts, error_code=type(exc).__name__)
+                if page:
+                    _write_progress(root, receipts, error_code=type(exc).__name__)
                 raise
-            _write_progress(root, receipts)
-        for name in _after_names(count):
-            _body, receipts[name] = _capture(client, urls[name], root, name, max_bytes=MAX_PAGE_BYTES)
-    return receipts
+
+        return capture_request_steps(steps(), fetch, capture_root=root, byte_budget=MAX_CAPTURE_BYTES)

@@ -14,6 +14,7 @@ from dagster_hifld.assets.local_roads_census import (
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.sources import local_roads_census as source
+from dagster_hifld.sources import arcgis_layer as capture_shared
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
@@ -303,7 +304,7 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
             storage = self._storage(tmp)
             capture_dir = Path(tmp) / "capture"
             capture_dir.mkdir()
-            with patch.object(source, "capture_get", self._fake_capture_get("page_0002")):
+            with patch.object(capture_shared, "capture_get", self._fake_capture_get("page_0002")):
                 with self.assertRaisesRegex(ValueError, "incomplete_source_capture:page_0002"):
                     source.capture_local_roads_census(storage, version="regression",
                                                       capture_directory=str(capture_dir))
@@ -313,7 +314,7 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
             self.assertEqual(set(progress["receipts"]),
                              set(source._before_names(COUNT)) | {"page_0000", "page_0001"})
             self.assertEqual(storage.list_prefix(""), [])
-            with patch.object(source, "capture_get", self._fake_capture_get(None)):
+            with patch.object(capture_shared, "capture_get", self._fake_capture_get(None)):
                 result = source.capture_local_roads_census(storage, version="regression",
                                                            capture_directory=str(capture_dir))
             self.assertFalse(result["reused"])
@@ -350,7 +351,7 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
             storage = self._storage(tmp)
             capture_dir = Path(tmp) / "capture"
             capture_dir.mkdir()
-            with patch.object(source, "capture_get", self._fake_capture_get(None)):
+            with patch.object(capture_shared, "capture_get", self._fake_capture_get(None)):
                 first = source.capture_local_roads_census(storage, version="regression",
                                                           capture_directory=str(capture_dir))
             manifest = json.loads((capture_dir / "capture_manifest.json").read_bytes())
@@ -373,7 +374,7 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
             storage = self._storage(tmp)
             capture_dir = Path(tmp) / "capture"
             capture_dir.mkdir()
-            with patch.object(source, "capture_get", self._fake_capture_get(None, docs=docs7)):
+            with patch.object(capture_shared, "capture_get", self._fake_capture_get(None, docs=docs7)):
                 candidate = source.capture_local_roads_census(storage, version="regression",
                                                               capture_directory=str(capture_dir))
         self.assertEqual(candidate["feature_count"], 7)
@@ -393,7 +394,7 @@ class LocalRoadsCaptureFlowTests(unittest.TestCase):
             capture_dir.mkdir()
             drifted = ("page_0000",
                        lambda doc: doc["features"][0]["geometry"]["paths"][0][0].__setitem__(0, -20_100_000.0))
-            with patch.object(source, "capture_get", self._fake_capture_get(None, drifted)):
+            with patch.object(capture_shared, "capture_get", self._fake_capture_get(None, drifted)):
                 with self.assertRaisesRegex(ValueError, "local_roads_capture_failed; quarantined_at:"):
                     source.capture_local_roads_census(storage, version="regression",
                                                       capture_directory=str(capture_dir))
