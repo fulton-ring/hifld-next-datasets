@@ -175,14 +175,21 @@ def copy_capture_slots(capture_root: Path, source: str, target: str, budget: lis
     """Copy accepted bytes only after reserving both body and wire destinations."""
     retained = sum(path.stat().st_size for path in capture_root.iterdir()
                    if path.is_file() and path.name.endswith((".body", ".wire")))
-    copied = sum((capture_root / f"{source}.{suffix}").stat().st_size for suffix in ("body", "wire"))
-    replaced = sum(path.stat().st_size for suffix in ("body", "wire")
-                   if (path := capture_root / f"{target}.{suffix}").exists())
+    sizes = {suffix: (capture_root / f"{source}.{suffix}").stat().st_size
+             for suffix in ("body", "wire")}
+    targets = {suffix: capture_root / f"{target}.{suffix}" for suffix in sizes}
+    previous = {suffix: path.stat().st_size if path.exists() else 0
+                for suffix, path in targets.items()}
+    copied = sum(sizes.values())
+    replaced = sum(previous.values())
     budget[0] = retained
     check_budget([retained - replaced + copied])
     reserve_capture_retention(capture_root, copied, replaced_bytes=replaced)
+    # Shrink existing slots before growing others so every intermediate
+    # retained state fits whenever the initial and final states fit.
+    copy_order = sorted(sizes, key=lambda suffix: sizes[suffix] - previous[suffix])
     try:
-        for suffix in ("body", "wire", "receipt.json"):
+        for suffix in (*copy_order, "receipt.json"):
             (capture_root / f"{target}.{suffix}").write_bytes(
                 (capture_root / f"{source}.{suffix}").read_bytes())
     finally:

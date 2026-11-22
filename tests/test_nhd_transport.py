@@ -70,6 +70,43 @@ class NhdTransportTests(unittest.TestCase):
                 check_budget=lambda current: nhd_transport.budget_check(current, expected, TransportError))
             self.assertEqual(budget, [expected])
 
+    def test_replacement_copy_keeps_every_intermediate_write_within_cap(self):
+        import gzip
+        import random
+        from dagster_hifld.http_capture import capture_retention_budget
+        dense = b"x" * 2000
+        sparse = random.Random(1).randbytes(1000)
+        for new_body, old_body in ((dense, sparse), (sparse, dense)):
+            with self.subTest(new_size=len(new_body)), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                new_wire = gzip.compress(new_body, mtime=0)
+                old_wire = gzip.compress(old_body, mtime=0)
+                for name, body, wire in (("source", new_body, new_wire), ("target", old_body, old_wire)):
+                    (root / f"{name}.body").write_bytes(body)
+                    (root / f"{name}.wire").write_bytes(wire)
+                    (root / f"{name}.receipt.json").write_bytes(b'{"content_encoding":"gzip"}')
+                retained = lambda: sum(path.stat().st_size for path in root.iterdir()
+                                       if path.name.endswith((".body", ".wire")))
+                expected = 2 * (len(new_body) + len(new_wire))
+                cap = max(retained(), expected)
+                observed = []
+                write_bytes = Path.write_bytes
+                def write(path, data):
+                    result = write_bytes(path, data)
+                    observed.append(retained())
+                    return result
+                budget = [0]
+                with capture_retention_budget(root, cap), patch.object(Path, "write_bytes", write):
+                    nhd_transport.copy_capture_slots(
+                        root, "source", "target", budget,
+                        check_budget=lambda current: nhd_transport.budget_check(current, cap, TransportError))
+                self.assertTrue(observed)
+                self.assertLessEqual(max(observed), cap)
+                self.assertEqual(retained(), expected)
+                self.assertEqual(budget, [expected])
+                self.assertEqual((root / "target.body").read_bytes(), new_body)
+                self.assertEqual(gzip.decompress((root / "target.wire").read_bytes()), new_body)
+
     def test_rescue_copy_honors_stricter_enclosing_retention_scope(self):
         from dagster_hifld.http_capture import capture_retention_budget
         body = b'{"features":[{"attributes":{"OBJECTID":7}}]}'
