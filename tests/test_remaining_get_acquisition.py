@@ -8,7 +8,7 @@ from urllib.parse import parse_qs
 import httpx
 
 from dagster_hifld.resources import StagingStorageResource
-from dagster_hifld.sources import current_dart, ems_stations
+from dagster_hifld.sources import current_dart, ems_stations, ferry_routes
 
 
 class RemainingGetAcquisitionTests(unittest.TestCase):
@@ -59,3 +59,13 @@ class RemainingGetAcquisitionTests(unittest.TestCase):
                                 and call.args[2]['partial'] is True
                                 for call in quarantined.call_args_list))
             self.assertTrue(any((Path(temporary) / 'stage').rglob('*.json')))
+
+    def test_missing_local_staging_checks_its_existing_parent_without_a_mount_default(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            staging = root / 'missing' / 'stage'
+            storage = StagingStorageResource(local_dir=str(staging))
+            with patch.object(ferry_routes.shutil, 'disk_usage', wraps=ferry_routes.shutil.disk_usage) as usage:
+                ferry_routes.local_only(storage)
+            usage.assert_called_once_with(root)
+            self.assertFalse(staging.exists())

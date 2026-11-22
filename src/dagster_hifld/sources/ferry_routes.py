@@ -87,12 +87,16 @@ def strict_json(body):
 
 
 def local_only(storage):
-    if shutil.disk_usage(Path(storage.local_dir) if storage.local_dir and Path(storage.local_dir).exists() else Path('/workspace')).free<300_000_000: raise FerryRouteQuarantineError('local_space_guard')
     if isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
         raise FerryRouteQuarantineError('draft_requires_explicit_isolated_local_staging')
     root=Path(storage.local_dir).absolute()
     if any(path.is_symlink() for path in [root,*root.parents]):
         raise FerryRouteQuarantineError('staging_path_symlink_refused')
+    existing = root
+    while not existing.exists():
+        existing = existing.parent
+    if shutil.disk_usage(existing).free < 300_000_000:
+        raise FerryRouteQuarantineError('local_space_guard')
     if root.exists():
         for path in root.rglob('*'):
             info=path.lstat()
