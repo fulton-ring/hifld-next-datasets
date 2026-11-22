@@ -54,7 +54,6 @@ import re
 import shutil
 import struct
 from array import array
-from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping
@@ -72,6 +71,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.gnis_capture import GnisCaptureSpec, capture_gnis_layer
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     content_derived_version,
@@ -495,19 +495,6 @@ def _load_state(capture_root: Path) -> dict[str, object]:
     return state
 
 
-def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
-                       url: str) -> tuple[bytes, dict[str, object]]:
-    if (capture_root / f"{name}.body").exists():
-        try:
-            return _read_capture(capture_root, name)
-        except IncorporatedPlacesCivilError:
-            _witness_aside(capture_root, name)
-    return capture_with_retry(client, url, capture_root, name,
-        attempts=DOC_CAPTURE_ATTEMPTS,
-        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
-        max_bytes=MAX_BODY_BYTES)
-
-
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
     return read_capture(capture_root, name, IncorporatedPlacesCivilError)
 
@@ -519,60 +506,6 @@ def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
 _witness_aside = witness_aside
 _producer_error_doc = producer_error_doc
 _preserve_failed_attempt = preserve_failed_attempt
-
-
-def _plan_page_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
-    """Plan the roster gaps that still need a capture this session.
-
-    A retained page counts as accepted only when its receipt and body verify,
-    its body is not a producer error document, and it already sits in the
-    capture state; anything else is witnessed aside and refetched.
-    """
-    state = _load_state(capture_root)
-    accepted_names = {entry.get("name") for entry in state["pages"]
-                      if isinstance(entry, dict)}
-    retained: list[tuple[int, int]] = []
-    for path in sorted(capture_root.glob("page_*.body")):
-        name = path.name.removesuffix(".body")
-        if _PAGE_NAME_PATTERN.fullmatch(name) is None:
-            # Witnessed refusal evidence (page_*.error-*.body) and other
-            # non-canonical names are not roster pages; skip them.
-            continue
-        try:
-            body, _receipt = _read_capture(capture_root, name)
-        except IncorporatedPlacesCivilError:
-            _witness_aside(capture_root, name)
-            continue
-        if body.lstrip().startswith(b'{"error"') or name not in accepted_names:
-            _witness_aside(capture_root, name)
-            continue
-        offset, count = _parse_page_name(name)
-        if offset + count > len(roster):
-            _witness_aside(capture_root, name)
-            continue
-        retained.append((offset, count))
-    gaps: list[tuple[int, int]] = []
-    covered = bytearray(len(roster))
-    for offset, count in sorted(retained):
-        if offset < 0 or count < 1 or offset + count > len(roster) \
-                or any(covered[offset:offset + count]):
-            _witness_aside(capture_root, _page_name(offset, count))
-            continue
-        covered[offset:offset + count] = b"\x01" * count
-    cursor = 0
-    while cursor < len(roster):
-        if covered[cursor]:
-            cursor += 1
-            continue
-        start = cursor
-        while cursor < len(roster) and not covered[cursor]:
-            cursor += 1
-        chunk_start = start
-        while chunk_start < cursor:
-            count_chunk = min(PAGE_START_RECORDS, cursor - chunk_start)
-            gaps.append((chunk_start, count_chunk))
-            chunk_start += count_chunk
-    return gaps
 
 
 def _page_matches_slice(body: bytes, offset: int, count: int,
@@ -593,65 +526,23 @@ def _page_matches_slice(body: bytes, offset: int, count: int,
     return actual == expected
 
 
-def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
-                 state: dict[str, object]) -> None:
-    """Capture the complete layer as adaptively bisected roster pages.
-
-    Pages start at PAGE_START_RECORDS. A page the producer keeps refusing is
-    bisected until the producer serves both halves, whether the refusal is a
-    persistent error document or a persistent incomplete transport capture;
-    the refused page's final body and receipts stay on disk as evidence under
-    witnessed names. A single-record page that still fails ends the capture
-    explicitly.
-    """
-    pages = state.setdefault("pages", [])
-    accepted = {entry.get("name") for entry in pages if isinstance(entry, dict)}
-    todo: deque[tuple[int, int]] = deque(_plan_page_gaps(capture_root, roster))
-    while todo:
-        offset, count = todo.popleft()
-        name = _page_name(offset, count)
-        if name in accepted and (capture_root / f"{name}.body").exists() \
-                and not (capture_root / f"{name}.body").read_bytes().lstrip().startswith(
-                    b'{"error"'):
-            continue
-        url = _page_url(roster[offset:offset + count])
-        try:
-            body, receipt = capture_with_retry(client, url, capture_root, name,
-                attempts=PAGE_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                base_delay=PAGE_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS,
-                max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            # The producer cap can also manifest as truncation/connection reset
-            # instead of a clean error document; a multi-record page whose
-            # attempts were still incomplete is bisected like an error
-            # document, while a single-record page keeps failing explicitly.
-            if count > 1 and str(exc).startswith("incomplete_source_capture:"):
-                middle = count // 2
-                todo.appendleft((offset + middle, count - middle))
-                todo.appendleft((offset, middle))
-                continue
-            raise IncorporatedPlacesCivilError(
-                "source_capture_failed:" + type(exc).__name__) from exc
-        if _producer_error_doc(body):
-            _witness_aside(capture_root, name)
-            if count == 1:
-                raise IncorporatedPlacesCivilError(
-                    "source_single_feature_unservable")
-            middle = count // 2
-            todo.appendleft((offset + middle, count - middle))
-            todo.appendleft((offset, middle))
-            continue
-        if not _page_matches_slice(body, offset, count, roster):
-            _witness_aside(capture_root, name)
-            raise IncorporatedPlacesCivilError(
-                "source_page_id_slice_incomplete_or_reordered")
-        if name not in accepted:
-            pages.append({"name": name, "offset": offset, "count": count,
-                          "features": count, "captured_at": receipt["observed_at"],
-                          "body_sha256": _sha(body)})
-            accepted.add(name)
-            _save_state(capture_root, state)
+def _capture_spec() -> GnisCaptureSpec:
+    return GnisCaptureSpec(
+        service_url=SERVICE_URL, layer_url=LAYER_URL,
+        count_url=_count_url(), ids_url=_ids_url(),
+        metadata_names=tuple(METADATA_NAMES), after_names=tuple(AFTER_NAMES),
+        page_size=PAGE_START_RECORDS, page_pattern=_PAGE_NAME_PATTERN,
+        page_name=_page_name, parse_page_name=_parse_page_name,
+        page_url=lambda roster, offset, count: _page_url(roster[offset:offset + count]),
+        page_matches=_page_matches_slice, validate_roster=_validate_roster,
+        load_state=_load_state, save_state=_save_state,
+        read_capture=_read_capture, witness_aside=witness_aside,
+        capture=partial(capture_with_retry, max_bytes=MAX_BODY_BYTES), producer_error=producer_error_doc,
+        default_client=_default_client, error=IncorporatedPlacesCivilError,
+        page_attempts=PAGE_PROBE_ATTEMPTS, page_delay=PAGE_PROBE_BASE_DELAY_SECONDS,
+        doc_attempts=DOC_CAPTURE_ATTEMPTS, doc_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+        reconcile_invalidated_pages=False,
+    )
 
 
 def fetch_incorporated_places_civil_gnis_pages(
@@ -662,71 +553,11 @@ def fetch_incorporated_places_civil_gnis_pages(
     Pure-local when the capture directory already holds every required page
     and document.
     """
-    capture_root = Path(capture_root).absolute()
-    capture_root.mkdir(parents=True, exist_ok=True)
-    state = _load_state(capture_root)
-    owner = client is None
-    active = client or _default_client()
-    pages: list[dict[str, object]] = list(state.get("pages", []))
-    first_captured_at = (pages[0]["captured_at"] if pages
-                         else datetime.now(timezone.utc).isoformat())
-    try:
-        for name in METADATA_NAMES:
-            url = {"service_before": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url(),
-                   "ids_seed": _ids_url(),
-                   "ids_before": _ids_url()}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            if _producer_error_doc(body):
-                raise IncorporatedPlacesCivilError(
-                    "source_page_error:" + name)
-        seed = json.loads(_read_capture(capture_root, "ids_seed")[0]).get("objectIds")
-        ids = _validate_roster(seed, "ids_seed")
-        before = json.loads(_read_capture(capture_root, "ids_before")[0])
-        if before.get("objectIdFieldName") != "OBJECTID":
-            raise IncorporatedPlacesCivilError("source_id_field_changed")
-        roster = _validate_roster(before.get("objectIds"), "ids_before")
-        if roster != ids:
-            raise IncorporatedPlacesCivilError(
-                "source_id_population_drift:ids_seed_vs_before")
-        count_before = json.loads(_read_capture(capture_root, "count_before")[0])
-        if count_before.get("count") != len(roster):
-            raise IncorporatedPlacesCivilError("source_count_drift")
-        _fetch_pages(active, capture_root, roster, state)
-        pages = list(state["pages"])
-        for name in AFTER_NAMES:
-            url = {"layer_after": LAYER_URL + "?f=pjson",
-                   "service_after": SERVICE_URL + "?f=pjson",
-                   "count_after": _count_url(),
-                   "ids_after": _ids_url()}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            if _producer_error_doc(body):
-                raise IncorporatedPlacesCivilError(
-                    "source_page_error:" + name)
-        count_after = json.loads(_read_capture(capture_root, "count_after")[0])
-        if count_after.get("count") != len(roster):
-            raise IncorporatedPlacesCivilError(
-                "source_metadata_or_count_changed_during_capture")
-        after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
-        if after_ids.get("objectIdFieldName") != "OBJECTID" \
-                or _validate_roster(after_ids.get("objectIds"), "ids_after") != roster:
-            raise IncorporatedPlacesCivilError(
-                "source_id_population_drift:ids_after")
-    except IncorporatedPlacesCivilError:
-        if owner:
-            active.close()
-        raise
-    except Exception as exc:
-        if owner:
-            active.close()
-        raise IncorporatedPlacesCivilError(
-            "source_capture_failed:" + type(exc).__name__) from exc
-    if owner:
-        active.close()
-    _save_state(capture_root, {"pages": pages, "complete": True})
-    last_captured_at = max((str(entry.get("captured_at", "")) for entry in pages),
-                           default=first_captured_at)
+    acquisition = capture_gnis_layer(_capture_spec(), capture_root, client=client)
+    capture_root = acquisition.root
+    roster, pages = acquisition.roster, acquisition.pages
+    first_captured_at = acquisition.first_captured_at
+    last_captured_at = acquisition.last_captured_at
     extracted = _stream_validate(capture_root, parquet_sink=None)
     (capture_root / "computed_baseline.json").write_bytes(_canonical({
         "source_record_sha256": extracted["record_sha"],
