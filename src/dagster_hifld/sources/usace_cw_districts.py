@@ -16,6 +16,7 @@ from shapely.geometry import MultiPolygon
 
 from dagster_hifld.sources.arcgis_raw_capture import (
     RawCapturePolicy, request_raw, capture_exact_id_population, population_snapshot,
+    validate_population_snapshot,
 )
 
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups
@@ -506,9 +507,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             service_after = _request(client, {"f": "json"}, staging, version_key, "service_after", budget)
             if service_after != service_before:
                 raise ValueError("official_usace_cw_districts_service_changed_during_capture")
-        fetched_ids = [feature["attributes"]["OBJECTID"] for feature in features]
-        if count_before != count_after or before != after or fetched_ids != before or len(features) != len(before):
-            raise ValueError("source_population_changed_during_capture")
+        validate_population_snapshot(count_before, before, count_after, after, features)
         rows = [{"attributes": f["attributes"], "geometry": {"rings": grouped}} for f, grouped in zip(features, grouped_geometries)]
         row_digest = _digest(_json_bytes(rows))
         ids_digest = _digest(_json_bytes(before))

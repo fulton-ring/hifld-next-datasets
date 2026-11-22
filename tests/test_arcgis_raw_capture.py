@@ -201,3 +201,9 @@ class RawCaptureTests(unittest.TestCase):
         self.assertEqual(objects['raw/page.json'], b'')
         self.assertEqual(receipt['decoded_bytes_produced'], len(decoded))
         self.assertEqual(receipt['bytes'], 0)
+
+    def test_closing_population_drift_is_refused(self):
+        from dagster_hifld.sources.arcgis_raw_capture import validate_population_snapshot
+        with self.assertRaisesRegex(ValueError, 'source_population_changed_during_capture'):
+            validate_population_snapshot(2, [1, 4], 2, [1, 9],
+                [{'attributes': {'OBJECTID': 1}}, {'attributes': {'OBJECTID': 4}}])

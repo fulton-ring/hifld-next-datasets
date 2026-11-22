@@ -194,3 +194,10 @@ def population_snapshot(count, ids, *, ids_first=False):
         return count(), roster
     value = count()
     return value, ids()
+
+
+def validate_population_snapshot(count_before, before, count_after, after, features):
+    """Require the captured native IDs to equal both population witnesses."""
+    fetched_ids = [feature['attributes']['OBJECTID'] for feature in features]
+    if count_before != count_after or before != after or fetched_ids != before or len(features) != len(before):
+        raise ValueError('source_population_changed_during_capture')

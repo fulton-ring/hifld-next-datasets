@@ -16,6 +16,7 @@ import pyproj
 from shapely import wkb
 from dagster_hifld.sources.arcgis_raw_capture import (
     RawCapturePolicy, request_raw, capture_exact_id_population, population_snapshot,
+    validate_population_snapshot,
 )
 
 from dagster_hifld.sources.arcgis_layer import validate_crs as _validate_crs, validate_dimensions as _validate_dimensions
@@ -243,9 +244,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
         features, pages, (count_after, after) = capture_exact_id_population(
             before, PAGE_SIZE, fetch_page=fetch_page, validate_page=validate_page,
             close_witnesses=close_witnesses)
-        fetched_ids = [feature["attributes"]["OBJECTID"] for feature in features]
-        if count_before != count_after or before != after or fetched_ids != before or len(features) != len(before):
-            raise ValueError("source_population_changed_during_capture")
+        validate_population_snapshot(count_before, before, count_after, after, features)
         rows = [{"attributes": f["attributes"], "geometry": f["geometry"]} for f in features]
         row_digest = _digest(_json_bytes(rows))
         ids_digest = _digest(_json_bytes(before))
