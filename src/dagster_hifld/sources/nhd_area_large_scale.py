@@ -51,6 +51,9 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_geometry import to_wkb
+from dagster_hifld.sources.arcgis_layer import (
+    producer_error_doc as _producer_error_doc, preserve_failed_attempt as _preserve_failed_attempt,
+)
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -184,40 +187,7 @@ def _validate_page_spatial_reference(value: object, label: str) -> None:
         raise ValueError(label + "_crs_missing")
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
 _ATTEMPT_SUFFIXES = (".body", ".wire", ".receipt.json")
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    """Preserve one failed attempt's body/wire/receipt under a collision-free name.
-
-    Bisection reuses the first-OBJECTID page name for a parent window and its
-    first child, and every window restarts attempt numbering, so a fixed
-    ``attempt-NN`` target would let a child's ``Path.rename`` replace the
-    parent's retained response (POSIX rename overwrites existing files). The
-    preserved index is therefore the next index, starting at this attempt
-    number, for which no evidence file exists yet, so every distinct producer
-    request keeps its response on disk.
-    """
-    paths = [capture_root / f"{name}{suffix}" for suffix in _ATTEMPT_SUFFIXES]
-    if not any(path.exists() for path in paths):
-        return
-    index = attempt
-    while any((capture_root / f"{name}.attempt-{index:02d}{suffix}").exists()
-              for suffix in _ATTEMPT_SUFFIXES):
-        index += 1
-    for path, suffix in zip(paths, _ATTEMPT_SUFFIXES):
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{index:02d}{suffix}")
 
 
 def _failed_receipt_error_code(capture_root: Path, name: str) -> str | None:

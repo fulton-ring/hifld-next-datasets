@@ -19,6 +19,15 @@ class Body(httpx.SyncByteStream):
 
 
 class ArcgisRetryTests(unittest.TestCase):
+    def test_refusal_predicate_preserves_family_integer_code_policy(self):
+        self.assertTrue(source.producer_error_doc(b'{"error":null}'))
+        for body in (b'{"error":null}', b'{"error":{"code":true}}', b'{"error":{"code":"500"}}'):
+            self.assertFalse(source.producer_error_doc(body, max_bytes=4096, require_int_code=True))
+        self.assertTrue(source.producer_error_doc(b'{"error":{"code":500}}', max_bytes=4096,
+                                                   require_int_code=True))
+        self.assertFalse(source.producer_error_doc(b'{"error":{"code":500}}', max_bytes=4,
+                                                    require_int_code=True))
+
     def test_final_complete_error_body_returns_for_family_bisection(self):
         body = b'{"error":{"code":500}}'
         def respond(request):
@@ -96,6 +105,7 @@ class RetryOwnershipTests(unittest.TestCase):
             'unincorporated_places_census_gnis', 'us_landslide_regions', 'tmas_stations',
             'wbd_hu8_subbasin', 'shipping_fairways', 'pad_us_manager_name', 'nfhl/capture',
             'railroad_bridges', 'runways', 'nfhl_lomas', 'railroad_grade_crossings',
+            'nhd_area_large_scale', 'nhd_waterbody', 'nhd_waterbody_large_scale', 'wbd_hu_family',
         )
         forbidden = {'capture_with_retry', 'producer_error_doc', 'preserve_failed_attempt'}
         for name in names:

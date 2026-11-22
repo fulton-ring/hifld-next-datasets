@@ -666,14 +666,20 @@ def witness_aside(capture_root: Path, name: str) -> None:
             source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
 
 
-def producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
+def producer_error_doc(body: bytes, *, max_bytes: int = 65536,
+                       require_int_code: bool = False) -> bool:
+    if not body.lstrip().startswith(b"{") or len(body) > max_bytes:
         return False
     try:
         document = json.loads(body)
     except ValueError:
         return False
-    return isinstance(document, dict) and "error" in document
+    if not isinstance(document, dict) or "error" not in document:
+        return False
+    if require_int_code:
+        envelope = document["error"]
+        return isinstance(envelope, dict) and type(envelope.get("code")) is int
+    return True
 
 
 def preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:

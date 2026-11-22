@@ -65,6 +65,7 @@ from shapely.geometry import LinearRing, MultiPolygon
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.sources.arcgis_layer import producer_error_doc
 from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -235,32 +236,11 @@ def capture_budgeted(root: Path, max_bytes: int, capture_max_bytes: int,
     return capture_get(client, url, root, name, max_bytes=max_bytes)
 
 
-def producer_error_document(body: bytes, *, max_bytes: int,
-                            require_int_code: bool) -> bool:
-    """The producer's deterministic error envelope document.
-
-    Retained as evidence, never validated as a page. The keyset-window layers
-    answer refused windows with HTTP 200 Esri error code 500 bodies of at most
-    a few KiB; the offset-segment HU8 policy accepts any small ``error``
-    envelope and lets the caller decide between bisection, retry and failure.
-    """
-    if not body.lstrip().startswith(b"{") or len(body) > max_bytes:
-        return False
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    error = document.get("error") if isinstance(document, dict) else None
-    if not isinstance(error, dict):
-        return False
-    return type(error.get("code")) is int if require_int_code else True
-
-
 def is_refusal(body: bytes) -> bool:
     """The producer's deterministic refused-window document (Esri error code
     500 "Error performing query operation" on windows that would decode beyond
     the serving envelope). Retained as evidence, never validated as a page."""
-    return producer_error_document(body, max_bytes=4096, require_int_code=True)
+    return producer_error_doc(body, max_bytes=4096, require_int_code=True)
 
 
 def retain_refusal(root: Path, name: str, body: bytes, receipt: dict) -> tuple[bytes, dict]:

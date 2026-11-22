@@ -78,6 +78,9 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_layer import save_state as _save_state
+from dagster_hifld.sources.arcgis_layer import (
+    producer_error_doc as _producer_error_doc,
+)
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
@@ -453,16 +456,6 @@ def _reject_error_response(capture_root: Path, name: str, body: bytes) -> None:
     if isinstance(document, dict) and "error" in document:
         _witness_attempt(capture_root, name)
         raise NhdWaterbodyLargeScaleError("source_page_error:" + name)
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
 
 
 def _failed_receipt_error_code(capture_root: Path, name: str) -> str | None:
