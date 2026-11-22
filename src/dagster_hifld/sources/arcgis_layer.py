@@ -703,12 +703,15 @@ def capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name:
                        require_json: bool = False,
                        return_final_error: bool = True,
                        schedule: tuple[float, ...] = (),
+                       error_document: Callable[[bytes], bool] | None = producer_error_doc,
                        capture: Callable[..., tuple[bytes, dict]] | None = None) -> tuple[bytes, dict[str, object]]:
     """Own bounded producer retries and retain all failed response evidence.
 
     Family policy controls reservation, status refusal and final error return.
     Returning the final complete error body lets windowed families bisect it.
     Attempt names never overwrite evidence retained by a previous session.
+    ``error_document=None`` retries only incomplete captures, leaving complete
+    producer error bodies to the source validator.
     """
     if reserve_all_attempts and max_total_bytes is not None:
         retained = sum(p.stat().st_size for p in capture_root.iterdir()
@@ -742,11 +745,13 @@ def capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name:
                     raise
                 raise ValueError("source_endpoint_retries_exhausted:" + name) from exc
         else:
+            if error_document is None:
+                return body, receipt
             if require_json:
                 document = json.loads(body)
                 is_error = isinstance(document, dict) and "error" in document
             else:
-                is_error = producer_error_doc(body)
+                is_error = error_document(body)
                 document = json.loads(body) if is_error else None
             if not is_error:
                 return body, receipt

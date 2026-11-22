@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import math
 import shutil
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -22,11 +21,12 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.arcgis_layer import (
+    capture_with_retry,
     capture_witness, ienc_layer_capture_roster,
     PAGE_MAX_BYTES, _canonical, _capture_identity, _esri_polyline_wkb,
     _load_capture, _parquet_bytes, _sha,    _validate_spatial_reference,
@@ -83,33 +83,11 @@ _TRANSIENT_RETRY_DELAYS = (5.0, 15.0, 45.0, 90.0)
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    # Roads-specific bounded budget: the roadway capture is roughly an order of
-    # magnitude larger than the shared obstruction-lines allowance.
-    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire") for path in root.glob(suffix)
-                   if path.is_file())
-    if retained + 2 * PAGE_MAX_BYTES > MAX_CAPTURE_BYTES:
-        raise ValueError("source_capture_budget_exceeded_before_request")
-    # The gateway intermittently answers sustained sequential walks with
-    # transient drops (observed 2026-11-14: HTTP 503 "The service is
-    # unavailable." at page_253 of 427). Retrying the same bounded request with
-    # backoff keeps one complete walk obtainable; partial attempt files are
-    # removed first because capture_get retains in append mode. Only
-    # incomplete-capture failures retry; anything else fails closed immediately.
-    for attempt, extra_delay in enumerate((0.0, *_TRANSIENT_RETRY_DELAYS)):
-        if attempt:
-            for suffix in (".body", ".wire", ".receipt.json"):
-                path = root / f"{name}{suffix}"
-                if path.exists():
-                    path.unlink()
-            if extra_delay:
-                time.sleep(extra_delay)
-        try:
-            return capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
-        except ValueError as exc:
-            if (attempt == len(_TRANSIENT_RETRY_DELAYS)
-                    or not str(exc).startswith(f"incomplete_source_capture:{name}")):
-                raise
-    raise ValueError(f"incomplete_source_capture:{name}")
+    return capture_with_retry(client, url, root, name, max_bytes=PAGE_MAX_BYTES,
+                              max_total_bytes=MAX_CAPTURE_BYTES,
+                              attempts=len(_TRANSIENT_RETRY_DELAYS) + 1,
+                              base_delay=0, schedule=_TRANSIENT_RETRY_DELAYS,
+                              error_document=None)
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:

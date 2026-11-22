@@ -106,6 +106,7 @@ class RetryOwnershipTests(unittest.TestCase):
             'wbd_hu8_subbasin', 'shipping_fairways', 'pad_us_manager_name', 'nfhl/capture',
             'railroad_bridges', 'runways', 'nfhl_lomas', 'railroad_grade_crossings',
             'nhd_area_large_scale', 'nhd_waterbody', 'nhd_waterbody_large_scale', 'wbd_hu_family',
+            'roads_usace_ienc', 'secondary_roads_census',
         )
         forbidden = {'capture_with_retry', 'producer_error_doc', 'preserve_failed_attempt'}
         for name in names:
@@ -115,3 +116,8 @@ class RetryOwnershipTests(unittest.TestCase):
                               if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                               and node.name.lstrip('_') in forbidden]
                 self.assertEqual(duplicates, [])
+                if name in {'roads_usace_ienc', 'secondary_roads_census'}:
+                    capture = next(node for node in tree.body
+                                   if isinstance(node, ast.FunctionDef) and node.name == '_capture')
+                    self.assertFalse(any(isinstance(node, (ast.For, ast.While))
+                                         for node in ast.walk(capture)))
