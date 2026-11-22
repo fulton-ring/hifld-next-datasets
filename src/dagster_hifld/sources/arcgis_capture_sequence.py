@@ -107,3 +107,34 @@ def quarantine_retry_response(storage, root, dataset_slug, version, name, reason
     body = body_path.read_bytes() if body_path.is_file() else b''
     capture_common.quarantine_incomplete_capture(storage, root, dataset_slug, version,
                                                {name: (body, receipt)}, reason)
+
+
+def capture_validated_document(client, url, root, name, *, max_bytes, attempts,
+                               complete, preserve_refusal, schedule,
+                               retained_path=False, capture=None):
+    """Capture bounded null/error documents under a source's bracket policy.
+
+    Refusal callbacks retain the native error filename and return its body
+    path. A disk-backed caller can then read the last refused source response
+    without restoring or duplicating an active artifact that policy moved.
+    """
+    import time
+    from pathlib import Path
+
+    value = (b'', {})
+    refused_path = None
+    for attempt in range(attempts):
+        value = (capture or capture_common.capture_get)(client, url, root, name,
+                                                        max_bytes=max_bytes)
+        if complete(value[0]):
+            return (Path(root) / f'{name}.body', value[1]) if retained_path else value
+        prior = set(Path(root).glob(f'{name}.error-*.body')) if retained_path else set()
+        refused_path = preserve_refusal()
+        if retained_path and refused_path is None:
+            created = set(Path(root).glob(f'{name}.error-*.body')) - prior
+            if len(created) != 1:
+                raise ValueError('retained_refused_response_path_missing:' + name)
+            refused_path = created.pop()
+        if attempt + 1 < attempts:
+            time.sleep(schedule[attempt] if attempt < len(schedule) else 0)
+    return (refused_path, value[1]) if retained_path else value

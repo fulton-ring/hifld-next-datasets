@@ -75,6 +75,8 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Polygon
 
+from dagster_hifld.sources.arcgis_capture_sequence import capture_validated_document
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups, ring_is_ccw
 from time import sleep, time_ns
 
@@ -215,13 +217,14 @@ _BRACKET_RETRY_ATTEMPTS = 4
 _BRACKET_RETRY_BASE_DELAY_SECONDS = 5.0
 
 
-def _witness_refused(root: Path, name: str) -> None:
+def _witness_refused(root: Path, name: str) -> Path:
     """Move a retained refused answer aside so the slot can be refetched."""
     stamp = time_ns()
     for suffix in ("body", "wire", "receipt.json"):
         source = root / f"{name}.{suffix}"
         if source.exists():
             source.replace(root / f"{name}.error-{stamp}.{suffix}")
+    return root / f"{name}.error-{stamp}.body"
 
 
 def _document_complete(name: str, body: bytes) -> bool:
@@ -239,19 +242,13 @@ def _document_complete(name: str, body: bytes) -> bool:
     return bool(document)
 
 
-def _acquire_document(client: httpx.Client, root: Path, name: str, url: str) -> \
-        tuple[bytes, dict[str, object]]:
-    """Fetch one bracket or page document, refetching transient null/error answers."""
-    body: bytes = b""
-    receipt: dict[str, object] = {}
-    for attempt in range(_BRACKET_RETRY_ATTEMPTS):
-        body, receipt = capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES)
-        if _document_complete(name, body):
-            return body, receipt
-        _witness_refused(root, name)
-        if attempt + 1 < _BRACKET_RETRY_ATTEMPTS:
-            sleep(_BRACKET_RETRY_BASE_DELAY_SECONDS * attempt)
-    return body, receipt
+def _acquire_document(client: httpx.Client, root: Path, name: str, url: str, *,
+                      retained_path: bool = False):
+    return capture_validated_document(client, url, root, name, max_bytes=MAX_BODY_BYTES,
+        attempts=_BRACKET_RETRY_ATTEMPTS, complete=lambda body: _document_complete(name, body),
+        preserve_refusal=lambda: _witness_refused(root, name),
+        schedule=tuple(_BRACKET_RETRY_BASE_DELAY_SECONDS * i for i in range(_BRACKET_RETRY_ATTEMPTS - 1)),
+        retained_path=retained_path)
 
 
 def _offline_wire(root: Path, name: str, body: bytes, receipt: Mapping[str, object]) -> bytes:
@@ -299,17 +296,17 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
         with httpx.Client(follow_redirects=False, timeout=120,
                           headers={"User-Agent":
                                    "hifld-next-datasets/usace-civil-works-divisions-draft"}) as client:
-            seed, receipt = _acquire_document(client, root, "ids_before",
-                                              _query(where="1=1", returnIdsOnly="true"))
-            captures["ids_before"] = (seed, receipt)
-            ids = json.loads(seed).get("objectIds")
-            if not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids) \
-                    or len(ids) != len(set(ids)):
-                raise ValueError("source_seed_id_roster_invalid")
-            urls = [(n, u) for n, u in _capture_names(sorted(ids)) if n != "ids_before"]
-            for name, url in urls:
-                body, receipt = _acquire_document(client, root, name, url)
-                captures[name] = (body, receipt)
+            def validate_seed(body):
+                ids = json.loads(body).get("objectIds")
+                if (not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids)
+                        or len(ids) != len(set(ids))):
+                    raise ValueError("source_seed_id_roster_invalid")
+                return sorted(ids)
+            captures = RetainedCaptureView(root, captures)
+            capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, seed_url=_query(where="1=1", returnIdsOnly="true"),
+                validate_seed=validate_seed, roster=_capture_names, on_validation_error=_validate,
+                fetch=lambda client, url, root, name: _acquire_document(client, root, name, url, retained_path=True))
         return captures
     except Exception as exc:
         if captures:

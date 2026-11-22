@@ -27,6 +27,7 @@ class RetainedCaptureView(MutableMapping):
     def __init__(self, root: Path, captures=()):
         self.root = Path(root)
         self._receipts = {}
+        self._body_paths = {}
         self.update(captures)
 
     @property
@@ -35,11 +36,11 @@ class RetainedCaptureView(MutableMapping):
 
     @property
     def body_paths(self):
-        return {name: self.root / f'{name}.body' for name in self}
+        return dict(self._body_paths)
 
     def __getitem__(self, name):
         receipt = self._receipts[name]
-        path = self.root / f'{name}.body'
+        path = self._body_paths[name]
         if path.is_symlink():
             raise ValueError('retained_capture_symlink_rejected')
         return path.read_bytes(), receipt
@@ -48,12 +49,17 @@ class RetainedCaptureView(MutableMapping):
         if not isinstance(name, str) or Path(name).name != name or '\\' in name:
             raise ValueError('capture_name_invalid')
         self._receipts[name] = value[1]
+        self._body_paths[name] = value[0] if isinstance(value[0], Path) else self.root / f'{name}.body'
 
     def __delitem__(self, name):
         del self._receipts[name]
+        del self._body_paths[name]
 
     def __iter__(self):
         return iter(self._receipts)
+
+    def __contains__(self, name):
+        return name in self._receipts
 
     def __len__(self):
         return len(self._receipts)

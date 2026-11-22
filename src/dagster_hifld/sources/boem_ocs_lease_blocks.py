@@ -41,6 +41,7 @@ import shapely
 from time import sleep
 
 from dagster_hifld.http_capture import validate_capture_roster
+from dagster_hifld.sources.arcgis_capture_sequence import capture_validated_document
 from dagster_hifld.sources.arcgis_layer import (
     capture_layer, RetainedCaptureView, capture_witness, load_replay, offset_layer_capture_roster,
     retained_capture_ids, witness_aside as _witness_refused,
@@ -175,19 +176,13 @@ def _document_complete(name: str, body: bytes) -> bool:
     return bool(document)
 
 
-def _acquire_document(client: httpx.Client, root: Path, name: str, url: str) -> \
-        tuple[bytes, dict[str, object]]:
-    """Fetch one bracket or page document, refetching transient null/error answers."""
-    body: bytes = b""
-    receipt: dict[str, object] = {}
-    for attempt in range(_BRACKET_RETRY_ATTEMPTS):
-        body, receipt = capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES)
-        if _document_complete(name, body):
-            return body, receipt
-        _witness_refused(root, name)
-        if attempt + 1 < _BRACKET_RETRY_ATTEMPTS:
-            sleep(_BRACKET_RETRY_BASE_DELAY_SECONDS * attempt)
-    return body, receipt
+def _acquire_document(client: httpx.Client, root: Path, name: str, url: str, *,
+                      retained_path: bool = False):
+    return capture_validated_document(client, url, root, name, max_bytes=MAX_BODY_BYTES,
+        attempts=_BRACKET_RETRY_ATTEMPTS, complete=lambda body: _document_complete(name, body),
+        preserve_refusal=lambda: _witness_refused(root, name),
+        schedule=tuple(_BRACKET_RETRY_BASE_DELAY_SECONDS * i for i in range(_BRACKET_RETRY_ATTEMPTS - 1)),
+        retained_path=retained_path)
 
 
 def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
@@ -245,7 +240,7 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
             return capture_layer(LAYER_URL, root, MAX_BODY_BYTES, PAGE_SIZE, client=client,
                 captures=captures, seed_url=_query(where="1=1", returnIdsOnly="true"),
                 validate_seed=validate_seed, roster=_capture_names, on_validation_error=_validate,
-                fetch=lambda client, url, root, name: _acquire_document(client, root, name, url))
+                fetch=lambda client, url, root, name: _acquire_document(client, root, name, url, retained_path=True))
     except Exception as exc:
         if captures:
             quarantine_incomplete_capture(storage, root, DATASET_SLUG, "incomplete", captures, type(exc).__name__)

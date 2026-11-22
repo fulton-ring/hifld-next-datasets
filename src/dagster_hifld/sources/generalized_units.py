@@ -30,6 +30,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 from dagster_hifld.sources.arcgis_layer import (
     layer_capture_roster, capture_witness, fetch_capture_retry, load_replay,
@@ -175,28 +176,23 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
             roster = capture_roster([])
             discovery = [(name, roster[name]) for name in (
                 'fws_data', 'official_item', 'service_before', 'layer', 'count', 'ids')]
-            pending = discovery
-            while pending:
-                for name, url in pending:
-                    if capture_dir is None:
-                        body, receipt = fetch_capture_retry(client, url, root, name, budget,
-                            max_capture_bytes=MAX_BYTES * 4, max_body_bytes=MAX_BYTES)
-                        receipt.update(requested_url=url, byte_length=len(body))
-                        (root / f'{name}.receipt.json').write_bytes(encode(receipt))
-                    else:
-                        body, receipt = load_replay(root, name)
-                        receipt = strict_json((root / f'{name}.receipt.json').read_bytes())
-                        budget[0] += len(body) + receipt['wire_bytes']
-                        if len(body) > MAX_BYTES or budget[0] > MAX_BYTES * 4:
-                            raise CBRSQuarantineError('capture_size_limit')
-                    wire = (root / f'{name}.wire').read_bytes()
-                    validate_receipt(body, receipt, url, wire)
-                    captures[name] = (body, receipt, wire)
-                if pending is discovery:
-                    roster = capture_urls(captures)
-                    pending = [(name, url) for name, url in roster.items() if name not in captures]
+            def read(name, url):
+                if capture_dir is None:
+                    body, receipt = fetch_capture_retry(client, url, root, name, budget,
+                        max_capture_bytes=MAX_BYTES * 4, max_body_bytes=MAX_BYTES)
+                    receipt.update(requested_url=url, byte_length=len(body))
+                    (root / f'{name}.receipt.json').write_bytes(encode(receipt))
                 else:
-                    pending = []
+                    body, receipt = load_replay(root, name)
+                    receipt = strict_json((root / f'{name}.receipt.json').read_bytes())
+                    budget[0] += len(body) + receipt['wire_bytes']
+                    if len(body) > MAX_BYTES or budget[0] > MAX_BYTES * 4:
+                        raise CBRSQuarantineError('capture_size_limit')
+                wire = (root / f'{name}.wire').read_bytes()
+                validate_receipt(body, receipt, url, wire)
+                return body, receipt, wire
+            capture_request_sequence(captures, discovery,
+                lambda retained: capture_urls(retained).items(), read)
             population_witness(captures)
         except (httpx.HTTPError, OSError, ValueError, TypeError, KeyError) as exc:
             location = quarantine(storage, b'', {'capture_path': str(root)}, str(exc))

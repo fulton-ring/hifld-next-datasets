@@ -25,6 +25,7 @@ import pyogrio
 import shapely
 from shapely.geometry import MultiPolygon
 
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -493,15 +494,17 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
                                                   replay_root / "replica_filegdb.zip.body")
         else:
             with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/proposed-critical-habitat-draft"}) as client:
-                seed, receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed", budget_roots)
-                ids = json.loads(_capture_body(seed)).get("objectIds")
-                if not isinstance(ids, list) or not ids: raise ValueError("source_seed_ids_missing")
-                captures["ids_seed"] = (seed, receipt)
-                for name, url in _urls(ids):
-                    if name.startswith("page_"):
-                        time.sleep(1.1)  # Stay below FWS/ArcGIS large-geometry quota (60 requests/minute).
-                    body, receipt = _fetch(client, url, capture_root, name, budget_roots)
-                    captures[name] = body, receipt
+                def validate_seed(seed):
+                    ids = json.loads(_capture_body(seed)).get("objectIds")
+                    if not isinstance(ids, list) or not ids: raise ValueError("source_seed_ids_missing")
+                    return ids
+                captures = RetainedCaptureView(capture_root, captures)
+                capture_layer(LAYER_URL, capture_root, MAX_ISSUE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_urls,
+                    fetch=lambda client, url, root, name: _fetch(client, url, capture_root, name, budget_roots),
+                    on_validation_error=lambda view: _feature_rows(view, _schema(json.loads(_capture_body(view["layer_before"][0])))),
+                    before_fetch=lambda name: time.sleep(1.1) if name.startswith("page_") else None)
             fields = _schema(json.loads(_capture_body(captures["layer_before"][0])))
             rows, audit = _feature_rows(captures, fields)
             original_receipts = {name:_canonical(receipt)+b"\n" for name,(_body,receipt) in captures.items()}

@@ -24,6 +24,7 @@ import pyproj
 import shapely
 from shapely.geometry import MultiPolygon
 
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 from shapely.prepared import prep as prepare_geometry
 
@@ -296,14 +297,17 @@ def capture_final_critical_habitat(storage: StagingStorageResource, *, version: 
     budget_roots = (ISSUE_EVIDENCE_ROOT, root)
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/final-critical-habitat-draft"}) as client:
-            seed, receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed", budget_roots)
-            ids = json.loads(_capture_body(seed)).get("objectIds")
-            if not isinstance(ids, list) or not ids: raise ValueError("source_seed_ids_missing")
-            ids = sorted(ids)
-            captures["ids_seed"] = (seed, receipt)
-            for name, url in _urls(ids):
-                body, receipt = _fetch(client, url, capture_root, name, budget_roots)
-                captures[name] = body, receipt
+            def validate_seed(seed):
+                ids = json.loads(_capture_body(seed)).get("objectIds")
+                if not isinstance(ids, list) or not ids: raise ValueError("source_seed_ids_missing")
+                ids = sorted(ids)
+                return ids
+            captures = RetainedCaptureView(capture_root, captures)
+            capture_layer(LAYER_URL, capture_root, MAX_ISSUE_BYTES, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                validate_seed=validate_seed, roster=_urls,
+                fetch=lambda client, url, root, name: _fetch(client, url, capture_root, name, budget_roots),
+                on_validation_error=lambda view: _feature_rows(view, _schema(json.loads(_capture_body(view["layer_before"][0])))))
         fields = _schema(json.loads(_capture_body(captures["layer_before"][0])))
         rows, audit = _feature_rows(captures, fields)
     except Exception as exc:

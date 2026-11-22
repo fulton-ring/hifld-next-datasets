@@ -27,6 +27,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources import capture_common
+from dagster_hifld.sources.arcgis_capture_sequence import LayerCaptureFetch
 from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
@@ -345,23 +346,11 @@ def capture_epa_frs_tri(storage: StagingStorageResource, *, version: str,
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
     captures = RetainedCaptureView(capture_root)
-    current_capture_name = "ids_seed"
-    current_capture_url = _query_url(where="1=1", returnIdsOnly="true", f="json")
+    cursor = LayerCaptureFetch(max_body_bytes=MAX_BODY_BYTES, max_capture_bytes=MAX_CAPTURE_TOTAL_BYTES)
+    cursor.current_name = "ids_seed"
+    cursor.current_url = _query_url(where="1=1", returnIdsOnly="true", f="json")
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/epa-frs-tri-draft"}) as client:
-            total_captured_bytes = 0
-
-            def fetch(client, url, root, name):
-                nonlocal current_capture_name, current_capture_url, total_captured_bytes
-                current_capture_name, current_capture_url = name, url
-                value = capture_common.capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = value
-                receipt = value[1]
-                total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
-                if name != "ids_seed" and total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
-                return value
-
             def validate_seed(body):
                 seed = json.loads(body).get("objectIds")
                 if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
@@ -374,9 +363,9 @@ def capture_epa_frs_tri(storage: StagingStorageResource, *, version: str,
                 return [(name, url) for name, url, _page_ids in page_plan] + _source_after_urls()
 
             capture_layer(LAYER_URL, capture_root, MAX_CAPTURE_TOTAL_BYTES, PAGE_SIZE,
-                client=client, captures=captures, seed_name="ids_seed", seed_url=current_capture_url,
+                client=client, captures=captures, seed_name="ids_seed", seed_url=cursor.current_url,
                 validate_seed=validate_seed, after_seed_documents=_source_metadata_urls(),
-                roster=roster, fetch=fetch, on_validation_error=_validate)
+                roster=roster, fetch=cursor.fetch, on_validation_error=_validate)
         layer, fields, features, audit = _validate(captures)
     except Exception as exc:
         receipts = {}
@@ -394,7 +383,7 @@ def capture_epa_frs_tri(storage: StagingStorageResource, *, version: str,
             wire = wire_path.read_bytes() if wire_path.exists() else b""
             receipt = receipts.get(name)
             if not isinstance(receipt, dict):
-                receipt = {"method":"GET","url":current_capture_url if name == current_capture_name else None,
+                receipt = {"method":"GET","url":cursor.current_url if name == cursor.current_name else None,
                     "final_url":None,"observed_at":datetime.now(timezone.utc).isoformat(),"status":None,
                     "complete_body":False,"wire_bytes":len(wire),"wire_sha256":_sha(wire),
                     "bytes":len(body),"sha256":_sha(body),"content_encoding":None,

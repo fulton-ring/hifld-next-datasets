@@ -34,6 +34,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request, quarantine_retry_response
 from dagster_hifld.sources.capture_common import (
     CaptureProgress, candidate_prefix, capture_get, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate,
@@ -721,38 +722,35 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
         receipts[name] = receipt
         return body
 
-    def capture_with_retry(client, name: str, url: str) -> bytes:
-        for attempt in range(PAGE_ATTEMPTS):
-            if attempt:
-                time.sleep(PAGE_RETRY_BACKOFF_SECONDS[min(attempt - 1, len(PAGE_RETRY_BACKOFF_SECONDS) - 1)])
-            try:
-                return capture_one(client, name, url)
-            except ValueError as exc:
-                if attempt == PAGE_ATTEMPTS - 1 or not str(exc).startswith("incomplete_source_capture:"):
-                    raise
-        raise AssertionError("unreachable_retry_state")
 
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/national-transit-map-routes-draft"}) as client:
             # Response bodies are validated as they arrive and then dropped: the
             # durable copy on disk is the only retained form, so a full capture
             # never accumulates in memory.
-            seed_body = capture_with_retry(client, "ids_seed",
-                                           _query_url(where="1=1", returnIdsOnly="true", f="json"))
-            seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
-                raise ValueError("source_seed_id_roster_missing_or_invalid")
-            del seed_body
-            for name, url in _source_metadata_urls():
-                capture_with_retry(client, name, url)
-            pinned_ids, layer_before = _validate_before_page_requests(capture_root, receipts)
-            _pagination_mode, page_plan = _page_plan(pinned_ids, layer_before)
-            for name, url, expected_page_ids in page_plan:
-                page_body = capture_with_retry(client, name, url)
-                _validate_page_ids(page_body, expected_page_ids)
-                del page_body
-            for name, url in _source_after_urls():
-                capture_with_retry(client, name, url)
+            def acquisition_steps():
+                seed_body = (yield ('ids_seed', _query_url(where='1=1', returnIdsOnly='true', f='json')))
+                seed = json.loads(seed_body).get("objectIds")
+                if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
+                    raise ValueError("source_seed_id_roster_missing_or_invalid")
+                del seed_body
+                for name, url in _source_metadata_urls():
+                    (yield (name, url))
+                pinned_ids, layer_before = _validate_before_page_requests(capture_root, receipts)
+                _pagination_mode, page_plan = _page_plan(pinned_ids, layer_before)
+                for name, url, expected_page_ids in page_plan:
+                    page_body = (yield (name, url))
+                    _validate_page_ids(page_body, expected_page_ids)
+                    del page_body
+                for name, url in _source_after_urls():
+                    (yield (name, url))
+            capture_request_steps(acquisition_steps(), lambda name, url: retry_capture_request(
+                    lambda attempt: capture_one(client, name, url), attempts=PAGE_ATTEMPTS,
+                    schedule=PAGE_RETRY_BACKOFF_SECONDS,
+                    retryable=lambda exc, attempt: isinstance(exc, ValueError) and str(exc).startswith("incomplete_source_capture:"),
+                    preserve_failed=lambda exc, attempt: quarantine_retry_response(storage, capture_root,
+                        DATASET_SLUG, version, name, type(exc).__name__)),
+                capture_root=capture_root, byte_budget=MAX_CAPTURE_TOTAL_BYTES)
         _plain_fields, audit, parquet = _build_candidate(capture_root, receipts)
     except Exception as exc:
         error_code = str(exc) if isinstance(exc, ValueError) and str(exc).replace("_", "").isalnum() else type(exc).__name__

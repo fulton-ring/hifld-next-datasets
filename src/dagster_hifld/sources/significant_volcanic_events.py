@@ -41,6 +41,7 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource,StagingStorageResource,default_capture_dir
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 
 SLUG='historical-significant-volcanic-event-locations'
 LANDING='https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/volcanoes'
@@ -322,15 +323,18 @@ def acquire(storage,capture_dir=None):
         if root is not None:
             pages=replay_witness_pages(root)
             replay_roster_guard(root,tuple(capture_urls(pages)))
-        for name,url in PRE_PAGE_URLS.items():
-            captures[name]=capture_one(storage,attempt,name,url,root)
-        if pages is None:
-            count_body,_=captures['count_before'];ids_body,_=captures['ids_before']
-            count=strict_json(count_body).get('count')
-            if type(count)is not int or count<0:raise VolcanicQuarantineError('invalid_count_witness')
-            pages=derive_pages(id_roster(ids_body,count))
-        for name,url in {**pages,**POST_PAGE_URLS}.items():
-            captures[name]=capture_one(storage,attempt,name,url,root)
+        def derive_requests(retained):
+            if pages is not None:
+                planned_pages = pages
+            else:
+                count_body, _ = retained['count_before']; ids_body, _ = retained['ids_before']
+                count = strict_json(count_body).get('count')
+                if type(count) is not int or count < 0:
+                    raise VolcanicQuarantineError('invalid_count_witness')
+                planned_pages = derive_pages(id_roster(ids_body, count))
+            return {**planned_pages, **POST_PAGE_URLS}.items()
+        capture_request_sequence(captures, PRE_PAGE_URLS.items(), derive_requests,
+            lambda name, url: capture_one(storage, attempt, name, url, root))
         return captures
     except Exception as exc:
         write_private(attempt,'failure.json',encode({'approved':False,'reason_type':type(exc).__name__}))

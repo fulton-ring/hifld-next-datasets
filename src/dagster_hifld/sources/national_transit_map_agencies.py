@@ -25,6 +25,7 @@ from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import validate_capture_roster
 from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.arcgis_layer import layer_capture_roster, load_replay
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
@@ -273,12 +274,11 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
         if not replay_capture_directory:
             with httpx.Client(follow_redirects=False, timeout=60, headers={
                     "User-Agent": "hifld-next-datasets/national-transit-map-agencies-draft"}) as client:
-                seed_url = dict(_capture_roster([]))["ids_seed"]
-                captures["ids_seed"] = _fetch(client, seed_url, root, "ids_seed")
-                seed = _validate_seed(json.loads(captures["ids_seed"][0]).get("objectIds"))
-                for name, url in _capture_roster(seed):
-                    if name != "ids_seed":
-                        captures[name] = _fetch(client, url, root, name)
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name="ids_seed", seed_url=dict(_capture_roster([]))["ids_seed"],
+                    validate_seed=lambda body: _validate_seed(json.loads(body).get("objectIds")),
+                    roster=_capture_roster, fetch=_fetch, on_validation_error=validate_captures)
         fields,features=validate_captures(captures)
     except Exception as exc:
         _admit_capture_directory(root)

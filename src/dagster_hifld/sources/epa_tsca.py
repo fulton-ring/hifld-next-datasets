@@ -28,6 +28,7 @@ from shapely.geometry import Point
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -319,16 +320,19 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
                     raise ValueError("replay_capture_request_url_mismatch:" + name)
         else:
             with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/epa-power-generation-draft"}) as client:
-                seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")
-                seed = json.loads(seed_body).get("objectIds")
-                captures["ids_seed"] = (seed_body, seed_receipt)
-                if (not isinstance(seed, list) or not seed
-                        or any(type(oid) is not int or oid <= 0 for oid in seed)
-                        or len(set(seed)) != len(seed)):
-                    raise ValueError("source_seed_id_count_drift")
-                for name, url in _feature_urls(seed):
-                    body, receipt = _fetch(client, url, capture_root, name)
-                    captures[name] = (body, receipt)
+                def validate_seed(seed_body):
+                    seed = json.loads(seed_body).get("objectIds")
+                    if (not isinstance(seed, list) or not seed
+                            or any(type(oid) is not int or oid <= 0 for oid in seed)
+                            or len(set(seed)) != len(seed)):
+                        raise ValueError("source_seed_id_count_drift")
+                    return seed
+                captures = RetainedCaptureView(capture_root, captures)
+                capture_layer(LAYER_URL, capture_root, 192_000_000, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_feature_urls,
+                    fetch=lambda client, url, root, name: _fetch(client, url, capture_root, name),
+                    on_validation_error=_validate_captures)
         layer, fields, extracted = _validate_captures(captures)
         item_provenance = _item_provenance(json.loads(captures["portal_item"][0]))
     except Exception as exc:

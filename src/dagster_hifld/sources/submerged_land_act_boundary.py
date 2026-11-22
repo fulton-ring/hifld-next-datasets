@@ -28,6 +28,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture_sequence import capture_validated_document
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity,
@@ -177,19 +178,13 @@ def _document_complete(name: str, body: bytes) -> bool:
     return bool(document)
 
 
-def _acquire_document(client: httpx.Client, root: Path, name: str, url: str) -> \
-        tuple[bytes, dict[str, object]]:
-    """Fetch one bracket or page document, refetching transient null/error answers."""
-    body: bytes = b""
-    receipt: dict[str, object] = {}
-    for attempt in range(_BRACKET_RETRY_ATTEMPTS):
-        body, receipt = capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES)
-        if _document_complete(name, body):
-            return body, receipt
-        _witness_refused(root, name)
-        if attempt + 1 < _BRACKET_RETRY_ATTEMPTS:
-            sleep(_BRACKET_RETRY_BASE_DELAY_SECONDS * attempt)
-    return body, receipt
+def _acquire_document(client: httpx.Client, root: Path, name: str, url: str, *,
+                      retained_path: bool = False):
+    return capture_validated_document(client, url, root, name, max_bytes=MAX_BODY_BYTES,
+        attempts=_BRACKET_RETRY_ATTEMPTS, complete=lambda body: _document_complete(name, body),
+        preserve_refusal=lambda: _witness_refused(root, name),
+        schedule=tuple(_BRACKET_RETRY_BASE_DELAY_SECONDS * i for i in range(_BRACKET_RETRY_ATTEMPTS - 1)),
+        retained_path=retained_path)
 
 
 def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
@@ -228,7 +223,7 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
             capture_layer(LAYER_URL, root, MAX_BODY_BYTES, PAGE_SIZE, client=client,
                 captures=captures, seed_url=_query(where="1=1", returnIdsOnly="true"),
                 validate_seed=validate_seed, roster=lambda ids: _capture_names(sorted(ids)), on_validation_error=_validate,
-                fetch=lambda client, url, root, name: _acquire_document(client, root, name, url))
+                fetch=lambda client, url, root, name: _acquire_document(client, root, name, url, retained_path=True))
         return captures
     except Exception as exc:
         if captures:

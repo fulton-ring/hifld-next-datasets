@@ -18,6 +18,8 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -515,7 +517,7 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
             raise ValueError("capture_directory_invalid")
     _require_disk_space(base)
     _require_disk_space(capture_root)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures = RetainedCaptureView(capture_root)
     offline_manifest = offline_receipts = None
     offline_manifest_sha = None
     retained_bytes = 0
@@ -586,65 +588,63 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
         client_context = (nullcontext(None) if retained_capture_directory else
                           httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/fema-nss-shelter-locations"}))
         with client_context as client:
-            portal_item = get(client, "portal_item", PORTAL_ITEM_URL)
-            if (portal_item.get("id") != ITEM_ID or portal_item.get("owner") != "FEMA_MAC"
-                    or portal_item.get("title") != "National Shelter System Facilities"
-                    or portal_item.get("type") != "Feature Service"
-                    or portal_item.get("url") != PORTAL_LAYER_URL or portal_item.get("access") != "public"):
-                raise ValueError("source_portal_authority_or_publication_drift")
-            service = get(client, "service_before", SERVICE_URL, {"f":"pjson"})
-            layer = get(client, "layer_before", LAYER_URL, {"f":"pjson"})
-            if (layer.get("name") != LAYER_NAME or layer.get("description") != LAYER_DESCRIPTION
-                    or layer.get("geometryType") != "esriGeometryPoint"
-                    or layer.get("definitionExpression") is not None
-                    or service.get("description") != SERVICE_DESCRIPTION):
-                raise ValueError("source_layer_identity_drift")
-            fields = _field_contract(layer)
-            dimensions = get(client, "data_elements_before", QUERY_DATA_ELEMENTS_URL,
-                              {"f": "pjson", "layers": f"[{LAYER_ID}]"})
-            has_z, has_m = _declared_dimensions(layer, dimensions)
-            if has_z or has_m:
-                raise ValueError("source_geometry_dimensions_unsupported")
-            sr = layer.get("extent", {}).get("spatialReference", {})
-            if sr.get("latestWkid") != 4326: raise ValueError("source_crs_drift")
-            count = get(client, "count_before", LAYER_URL+"/query", {"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
-            ids_response = get(client, "ids_before", LAYER_URL+"/query", {"where":"1=1","returnIdsOnly":"true","f":"json"})
-            oid_name = next(f["name"] for f in layer["fields"] if f.get("type") == "esriFieldTypeOID")
-            ids = ids_response.get("objectIds")
-            if ids_response.get("objectIdFieldName") != oid_name or type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count: raise ValueError("source_initial_id_roster_invalid")
-            if 12 + math.ceil(count / PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
-                raise ValueError("source_capture_request_count_exceeded")
-            seed = sorted(ids); features=[]
-            for page_no, offset in enumerate(range(0,count,PAGE_SIZE)):
-                expected_ids = seed[offset:offset + PAGE_SIZE]
-                page = get(client, f"page_{page_no:03d}", LAYER_URL+"/query", {
-                    "objectIds": ",".join(str(value) for value in expected_ids),
-                    "outFields":"*", "returnGeometry":"true", "returnZ":"true",
-                    "returnM":"true", "outSR":"4326", "resultRecordCount":PAGE_SIZE,
-                    "f":"json"})
-                rows=page.get("features")
-                if not isinstance(rows,list) or len(rows)!=len(expected_ids):
-                    raise ValueError("source_page_incomplete")
-                if page.get("exceededTransferLimit") is True:
-                    raise ValueError("source_page_exceeded_transfer_limit")
-                page_sr=page.get("spatialReference",{})
-                if not isinstance(page_sr,dict) or page_sr.get("latestWkid",page_sr.get("wkid"))!=4326:
-                    raise ValueError("source_page_crs_drift")
-                page_ids=[row.get("attributes",{}).get(oid_name) if isinstance(row,dict) else None for row in rows]
-                if sorted(page_ids)!=expected_ids or len(set(page_ids))!=len(expected_ids):
-                    raise ValueError("source_page_id_slice_mismatch")
-                features.extend(rows)
-            layer_after=get(client,"layer_after",LAYER_URL,{"f":"pjson"})
-            service_after=get(client,"service_after",SERVICE_URL,{"f":"pjson"})
-            count_after=get(client,"count_after",LAYER_URL+"/query",{"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
-            ids_after_response=get(client,"ids_after",LAYER_URL+"/query",{"where":"1=1","returnIdsOnly":"true","f":"json"})
-            dimensions_after=get(client,"data_elements_after",QUERY_DATA_ELEMENTS_URL,
-                                 {"f":"pjson","layers":f"[{LAYER_ID}]"})
-            ids_after=ids_after_response.get("objectIds")
-            if (ids_after_response.get("objectIdFieldName") != oid_name or not isinstance(ids_after, list)
-                    or len(ids_after) != count or any(type(i) is not int for i in ids_after)
-                    or len(set(ids_after)) != count):
-                raise ValueError("source_oid_property_drift")
+            def acquisition_steps():
+                portal_item = (yield ('portal_item', PORTAL_ITEM_URL))
+                if (portal_item.get("id") != ITEM_ID or portal_item.get("owner") != "FEMA_MAC"
+                        or portal_item.get("title") != "National Shelter System Facilities"
+                        or portal_item.get("type") != "Feature Service"
+                        or portal_item.get("url") != PORTAL_LAYER_URL or portal_item.get("access") != "public"):
+                    raise ValueError("source_portal_authority_or_publication_drift")
+                service = (yield ('service_before', SERVICE_URL, {'f': 'pjson'}))
+                layer = (yield ('layer_before', LAYER_URL, {'f': 'pjson'}))
+                if (layer.get("name") != LAYER_NAME or layer.get("description") != LAYER_DESCRIPTION
+                        or layer.get("geometryType") != "esriGeometryPoint"
+                        or layer.get("definitionExpression") is not None
+                        or service.get("description") != SERVICE_DESCRIPTION):
+                    raise ValueError("source_layer_identity_drift")
+                fields = _field_contract(layer)
+                dimensions = (yield ('data_elements_before', QUERY_DATA_ELEMENTS_URL, {'f': 'pjson', 'layers': f'[{LAYER_ID}]'}))
+                has_z, has_m = _declared_dimensions(layer, dimensions)
+                if has_z or has_m:
+                    raise ValueError("source_geometry_dimensions_unsupported")
+                sr = layer.get("extent", {}).get("spatialReference", {})
+                if sr.get("latestWkid") != 4326: raise ValueError("source_crs_drift")
+                count = (yield ('count_before', LAYER_URL + '/query', {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'})).get("count")
+                ids_response = (yield ('ids_before', LAYER_URL + '/query', {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}))
+                oid_name = next(f["name"] for f in layer["fields"] if f.get("type") == "esriFieldTypeOID")
+                ids = ids_response.get("objectIds")
+                if ids_response.get("objectIdFieldName") != oid_name or type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count: raise ValueError("source_initial_id_roster_invalid")
+                if 12 + math.ceil(count / PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
+                    raise ValueError("source_capture_request_count_exceeded")
+                seed = sorted(ids); features=[]
+                for page_no, offset in enumerate(range(0,count,PAGE_SIZE)):
+                    expected_ids = seed[offset:offset + PAGE_SIZE]
+                    page = (yield (f'page_{page_no:03d}', LAYER_URL + '/query', {'objectIds': ','.join((str(value) for value in expected_ids)), 'outFields': '*', 'returnGeometry': 'true', 'returnZ': 'true', 'returnM': 'true', 'outSR': '4326', 'resultRecordCount': PAGE_SIZE, 'f': 'json'}))
+                    rows=page.get("features")
+                    if not isinstance(rows,list) or len(rows)!=len(expected_ids):
+                        raise ValueError("source_page_incomplete")
+                    if page.get("exceededTransferLimit") is True:
+                        raise ValueError("source_page_exceeded_transfer_limit")
+                    page_sr=page.get("spatialReference",{})
+                    if not isinstance(page_sr,dict) or page_sr.get("latestWkid",page_sr.get("wkid"))!=4326:
+                        raise ValueError("source_page_crs_drift")
+                    page_ids=[row.get("attributes",{}).get(oid_name) if isinstance(row,dict) else None for row in rows]
+                    if sorted(page_ids)!=expected_ids or len(set(page_ids))!=len(expected_ids):
+                        raise ValueError("source_page_id_slice_mismatch")
+                    features.extend(rows)
+                layer_after=(yield ('layer_after', LAYER_URL, {'f': 'pjson'}))
+                service_after=(yield ('service_after', SERVICE_URL, {'f': 'pjson'}))
+                count_after=(yield ('count_after', LAYER_URL + '/query', {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'})).get("count")
+                ids_after_response=(yield ('ids_after', LAYER_URL + '/query', {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}))
+                dimensions_after=(yield ('data_elements_after', QUERY_DATA_ELEMENTS_URL, {'f': 'pjson', 'layers': f'[{LAYER_ID}]'}))
+                ids_after=ids_after_response.get("objectIds")
+                if (ids_after_response.get("objectIdFieldName") != oid_name or not isinstance(ids_after, list)
+                        or len(ids_after) != count or any(type(i) is not int for i in ids_after)
+                        or len(set(ids_after)) != count):
+                    raise ValueError("source_oid_property_drift")
+                return (fields, features, count, count_after, dimensions, dimensions_after, ids_after, layer, layer_after, service, service_after, has_z, has_m, oid_name, seed)
+            (fields, features, count, count_after, dimensions, dimensions_after, ids_after, layer, layer_after, service, service_after, has_z, has_m, oid_name, seed) = capture_request_steps(acquisition_steps(), lambda name, url, *params: get(client, name, url, *params),
+                capture_root=capture_root, byte_budget=max_capture_bytes)
         if (layer_after != layer or service_after != service or dimensions_after != dimensions
                 or count_after != count or sorted(ids_after or []) != seed):
             raise ValueError("source_changed_during_capture")

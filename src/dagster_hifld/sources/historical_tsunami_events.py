@@ -37,6 +37,7 @@ from dagster_hifld.release_approval import validate_release_provenance, verifier
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 SLUG='historical-tsunami-event-locations-'
 LAYER='historical_tsunami_events'
 BASE='https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_events/FeatureServer/0'
@@ -161,10 +162,9 @@ def acquire(storage,capture_dir=None):
         if total>MAX_CAPTURE_BYTES:raise TsunamiQuarantineError('cumulative_complete_capture_budget_exceeded')
         validate_capture(name,body,receipt,url)
     try:
-        for name,url in request_plan().items():read(name,url)
-        ids=source_ids(strict_json(captures['ids_before'][0]))
-        for name,url in request_plan(ids).items():
-            if name not in captures:read(name,url)
+        capture_request_sequence(captures, request_plan().items(),
+            lambda retained: request_plan(source_ids(strict_json(retained['ids_before'][0]))).items(),
+            read)
         if capture_dir is not None:
             actual={f.name for f in Path(capture_dir).iterdir() if f.is_file()}
             if actual!={name+suffix for name in captures for suffix in ('.body','.receipt.json')}:raise TsunamiQuarantineError('capture_directory_extra_or_missing_object')

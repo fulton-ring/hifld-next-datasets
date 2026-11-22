@@ -40,6 +40,7 @@ from dagster_hifld.release_approval import validate_release_provenance, verifier
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 SLUG='border-crossings-natural-gas'
 LAYER='natural_gas_border_crossings'
 SERVICE='https://geoappext.nrcan.gc.ca/arcgis/rest/services/NACEI/energy_infrastructure_of_north_america_en/MapServer'
@@ -206,10 +207,9 @@ def acquire(storage,capture_dir=None):
         validate_capture(name,body,receipt,url)
         if name in PINS and (len(body)!=PINS[name]['bytes'] or digest(body)!=PINS[name]['sha256']):raise NaturalGasCrossingsQuarantineError('pinned_baseline_candidate_changed:'+name)
     try:
-        for name,url in request_plan().items():read(name,url)
-        ids=source_ids(strict_json(captures['ids_before'][0]))
-        for name,url in request_plan(ids).items():
-            if name not in captures:read(name,url)
+        capture_request_sequence(captures, request_plan().items(),
+            lambda retained: request_plan(source_ids(strict_json(retained['ids_before'][0]))).items(),
+            read)
         if root is not None and {p.name for p in root.iterdir()}!={name+suffix for name in captures for suffix in ('.body','.receipt.json')}:raise NaturalGasCrossingsQuarantineError('capture_directory_extra_or_missing_object')
         immutable(storage,f'_acquisition-attempts/{SLUG}/{uuid4().hex}.json',encode({'approved':False,'receipt_metadata_validated':True,'objects':attempted}))
         return captures
