@@ -19,7 +19,6 @@ import json
 import shutil
 from array import array
 from collections.abc import Mapping
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
