@@ -22,6 +22,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -325,18 +326,19 @@ def capture_harbor_facility_locations_usace_ienc(storage: StagingStorageResource
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
                 # IDs are acquired first to form an exact full-population query;
                 # count and ID brackets below independently detect source drift.
-                body, receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                                         root, "ids_before")
-                ids = json.loads(body).get("objectIds")
-                if (not isinstance(ids, list) or not ids
-                        or any(type(oid) is not int or oid <= 0 for oid in ids)
-                        or len(set(ids)) != len(ids)):
-                    raise ValueError("source_seed_ID_population_drift")
-                urls = _capture_urls(ids)
-                urls = [(name, url) for name, url in urls if name != "ids_before"]
-                captures["ids_before"] = (body, receipt)
-                for name, url in urls:
-                    captures[name] = _capture(client, url, root, name)
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids
+                            or any(type(oid) is not int or oid <= 0 for oid in ids)
+                            or len(set(ids)) != len(ids)):
+                        raise ValueError("source_seed_ID_population_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, 192_000_000, 1000, client=client,
+                    captures=captures, seed_name='ids_before', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_urls,
+                    fetch=lambda client, url, root, name: _capture(client, url, root, name),
+                    on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             retained = {}

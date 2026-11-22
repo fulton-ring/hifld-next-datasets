@@ -37,7 +37,7 @@ from dagster_hifld.sources.capture_common import (
     write_immutable,
 )
 from dagster_hifld.sources.arcgis_layer import (
-    capture_layer_roster, capture_witness, layer_capture_roster, load_replay as _load_replay,
+    capture_layer, RetainedCaptureView, capture_witness, layer_capture_roster, load_replay as _load_replay,
     retained_capture_ids,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -525,21 +525,18 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
                 raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/ibwc-us-mexico-draft"}) as client:
-                seed_body, seed_receipt = _fetch_retry(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                                                       root, "ids_seed", capture_budget)
-                ids = json.loads(seed_body).get("objectIds")
-                captures["ids_seed"] = (seed_body, seed_receipt)
-                if (not isinstance(ids, list) or not ids
-                        or any(type(oid) is not int or oid <= 0 for oid in ids)
-                        or len(set(ids)) != len(ids)):
-                    raise ValueError("source_seed_id_count_or_roster_drift")
-                ids = sorted(ids)
-
-                def fetch(client, url, root, name):
-                    captures[name] = _fetch_retry(client, url, root, name, capture_budget)
-                    return captures[name]
-
-                capture_layer_roster(client, root, _capture_roster(ids), fetch)
+                def validate_seed(seed_body):
+                    ids = json.loads(seed_body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids
+                            or any(type(oid) is not int or oid <= 0 for oid in ids)
+                            or len(set(ids)) != len(ids)):
+                        raise ValueError("source_seed_id_count_or_roster_drift")
+                    return sorted(ids)
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name="ids_seed", validate_seed=validate_seed,
+                    roster=_capture_roster, on_validation_error=_validate,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, capture_budget))
         fields, features, audit = _validate(captures)
     except Exception as exc:
         retained = {}

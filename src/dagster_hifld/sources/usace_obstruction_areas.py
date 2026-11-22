@@ -23,6 +23,7 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -248,13 +249,17 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
                 raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
-                ids_body, ids_receipt = _fetch_retry(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before", budget)
-                ids = json.loads(ids_body).get("objectIds")
-                if not isinstance(ids, list):
-                    raise ValueError("source_id_population_missing")
-                captures["ids_before"] = (ids_body, ids_receipt)
-                for name, url in _capture_roster(ids):
-                    captures[name] = _fetch_retry(client, url, root, name, budget)
+                def validate_seed(ids_body):
+                    ids = json.loads(ids_body).get("objectIds")
+                    if not isinstance(ids, list):
+                        raise ValueError("source_id_population_missing")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_before', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, budget),
+                    on_validation_error=_validate)
         fields, features, audit = _validate(captures)
     except Exception as exc:
         receipts = {}

@@ -868,3 +868,6 @@ _load_capture = load_capture
 _capture_identity = capture_identity
 _esri_polyline_wkb = esri_polyline_wkb
 _parquet_bytes = polyline_parquet_bytes
+
+# Public disk-backed acquisition boundary.
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView

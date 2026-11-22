@@ -19,6 +19,7 @@ import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.sources import esri_geometry as crs_validation
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 from pyproj import CRS
 from shapely.geometry import mapping
@@ -359,15 +360,18 @@ def _live_capture(root: Path, storage: StagingStorageResource):
     try:
         with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(60, connect=15),
                           headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
-            for name, url in urls:
-                captures[name] = _capture(client, url, root, name, budget)
-            ids = json.loads(captures["ids_before"][0]).get("objectIds")
-            layer = json.loads(captures["layer_before"][0])
-            if not isinstance(ids, list) or type(layer.get("maxRecordCount")) is not int:
-                raise ValueError("source_id_roster_or_page_limit_invalid")
-            urls = _capture_urls(ids, layer["maxRecordCount"])
-            for name, url in urls[4:]:
-                captures[name] = _capture(client, url, root, name, budget)
+            def validate_seed(body):
+                ids = json.loads(body).get("objectIds")
+                layer = json.loads(captures["layer_before"][0])
+                if not isinstance(ids, list) or type(layer.get("maxRecordCount")) is not int:
+                    raise ValueError("source_id_roster_or_page_limit_invalid")
+                return ids
+            captures = RetainedCaptureView(root, captures)
+            capture_layer(LAYER_URL, root, CAPTURE_MAX_BYTES, 1, client=client,
+                captures=captures, discovery_documents=urls, validate_seed=validate_seed,
+                roster=lambda ids: _capture_urls(ids, json.loads(captures["layer_before"][0])["maxRecordCount"]),
+                fetch=lambda client, url, root, name: _capture(client, url, root, name, budget),
+                on_validation_error=_validate)
     except Exception as exc:
         for path in sorted(root.glob("*.receipt.json")):
             try:

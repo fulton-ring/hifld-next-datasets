@@ -22,6 +22,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -208,18 +209,22 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
         root.mkdir(parents=True,exist_ok=False);captures={}
         try:
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-building-draft"}) as client:
-                urls=[("bts_item",BTS_ITEM_URL),("directory",SERVICE_DIRECTORY_URL),("service_before",SERVICE_URL+"?f=pjson"),("layer_before",LAYER_URL+"?f=pjson"),
-                      ("count_before",_query({"where":"1=1","returnCountOnly":"true","f":"json"})),("ids_before",_query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
-                for name,url in urls: captures[name]=_capture(client,url,root,name)
-                ids=json.loads(captures["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids,list) or not ids or any(type(i)is not int or i<=0 for i in ids)
-                        or len(set(ids))!=len(ids)): raise ValueError("source_seed_id_roster_drift")
-                for i,start in enumerate(range(0,len(ids),BATCH_SIZE)):
-                    pageids=ids[start:start+BATCH_SIZE]
-                    url=_query({"objectIds":",".join(map(str,pageids)),"outFields":"*","returnGeometry":"true","orderByFields":"OBJECTID ASC","f":"json"})
-                    captures[f"page_{i:03d}"]=_capture(client,url,root,f"page_{i:03d}")
-                for name,url in [("service_after",SERVICE_URL+"?f=pjson"),("layer_after",LAYER_URL+"?f=pjson"),
-                    ("count_after",_query({"where":"1=1","returnCountOnly":"true","f":"json"})),("ids_after",_query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]: captures[name]=_capture(client,url,root,name)
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids or any(type(i) is not int or i <= 0 for i in ids)
+                            or len(set(ids)) != len(ids)):
+                        raise ValueError("source_seed_id_roster_drift")
+                    return ids
+                def roster(ids):
+                    return layer_capture_roster(ids, layer_url=LAYER_URL, service_url=SERVICE_URL,
+                        page_size=BATCH_SIZE,
+                        extra_documents=(("bts_item", BTS_ITEM_URL), ("directory", SERVICE_DIRECTORY_URL)),
+                        after_order=("service_after", "layer_after", "count_after", "ids_after"))
+                captures = RetainedCaptureView(root, captures)
+                discovery = roster([])[:6]
+                capture_layer(LAYER_URL, root, 192_000_000, BATCH_SIZE, client=client,
+                    captures=captures, discovery_documents=discovery, roster=roster,
+                    validate_seed=validate_seed, fetch=_capture, on_validation_error=_validate)
             fields,features,audit=_validate(captures)
         except Exception as exc:
             receipts={};names=set()

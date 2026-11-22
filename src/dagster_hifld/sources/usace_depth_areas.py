@@ -27,6 +27,7 @@ from dagster_hifld.http_capture import capture_http_response, capture_roster_dig
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import (
@@ -489,12 +490,12 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
                         artifact_names={path.name.removesuffix("."+suffix) for path in root.glob("*."+suffix)}
                         if artifact_names != found:
                             raise ValueError("partial_capture_artifact_roster_mismatch")
-                for name,url in _capture_roster(ids):
-                    if name in captures:
-                        continue
-                    captures[name]=_fetch_retry(client,url,root,name,capture_budget)
-                    if name.startswith("page_"):
-                        time.sleep(0.25)
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, capture_budget),
+                    after_fetch=lambda name: time.sleep(0.25) if name.startswith("page_") else None,
+                    on_validation_error=_validate)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         retained={}

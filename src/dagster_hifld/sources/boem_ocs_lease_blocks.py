@@ -42,7 +42,7 @@ from time import sleep
 
 from dagster_hifld.http_capture import validate_capture_roster
 from dagster_hifld.sources.arcgis_layer import (
-    capture_layer_roster, capture_witness, load_replay, offset_layer_capture_roster,
+    capture_layer, RetainedCaptureView, capture_witness, load_replay, offset_layer_capture_roster,
     retained_capture_ids, witness_aside as _witness_refused,
 )
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -235,20 +235,17 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
     try:
         with httpx.Client(follow_redirects=False, timeout=120,
                           headers={"User-Agent": "hifld-next-datasets/boem-ocs-lease-blocks-draft"}) as client:
-            seed, receipt = _acquire_document(client, root, "ids_before",
-                                              _query(where="1=1", returnIdsOnly="true"))
-            captures["ids_before"] = (seed, receipt)
-            ids = json.loads(seed).get("objectIds")
-            if not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids) \
-                    or len(ids) != len(set(ids)):
-                raise ValueError("source_seed_id_roster_invalid")
-            def fetch(client, url, root, name):
-                if name == 'ids_before':
-                    return captures[name]
-                body, receipt = _acquire_document(client, root, name, url)
-                captures[name] = (body, receipt)
-                return body, receipt
-            return capture_layer_roster(client, root, _capture_names(ids), fetch)
+            def validate_seed(seed):
+                ids = json.loads(seed).get("objectIds")
+                if (not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids)
+                        or len(ids) != len(set(ids))):
+                    raise ValueError("source_seed_id_roster_invalid")
+                return ids
+            captures = RetainedCaptureView(root, captures)
+            return capture_layer(LAYER_URL, root, MAX_BODY_BYTES, PAGE_SIZE, client=client,
+                captures=captures, seed_url=_query(where="1=1", returnIdsOnly="true"),
+                validate_seed=validate_seed, roster=_capture_names, on_validation_error=_validate,
+                fetch=lambda client, url, root, name: _acquire_document(client, root, name, url))
     except Exception as exc:
         if captures:
             quarantine_incomplete_capture(storage, root, DATASET_SLUG, "incomplete", captures, type(exc).__name__)
