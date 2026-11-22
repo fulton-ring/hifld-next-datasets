@@ -234,20 +234,30 @@ def _retain_file_fragment(path, body, read):
         raise OSError('pending_capture_readback_mismatch')
 
 
-def _preserve_file_transfer(path, result, read, encode):
+def _bounded_pending(block, retained, limit):
+    # HTTPX has already delivered the entire block. Keep its full observation
+    # identity while limiting physical refusal evidence to the remaining budget.
+    prefix = block[:max(0, limit - retained)]
+    observation = {'bytes': len(block), 'sha256': _sha(block)}
+    if len(prefix) != len(block):
+        observation.update(retained_bytes=len(prefix), retained_sha256=_sha(prefix), truncated=True)
+    return prefix, observation
+
+
+def _preserve_file_transfer(path, result, read, encode, limit):
     from dagster_hifld.validation import sha256_file
 
     transfer = {key: value for key, value in vars(result).items()
                 if key not in ('pending_wire', 'pending_decoded')}
     for label in ('wire', 'decoded'):
-        pending = getattr(result, 'pending_' + label)
+        observed = path / (label + '.body')
+        pending, observation = _bounded_pending(
+            getattr(result, 'pending_' + label), observed.stat().st_size, limit)
         if pending:
             _retain_file_fragment(path / ('pending_' + label + '.body'), pending, read)
         transfer['pending_' + label + '_artifact'] = {
-            'bytes': len(pending), 'sha256': _sha(pending),
-            'path': 'pending_' + label + '.body' if pending else None,
+            **observation, 'path': 'pending_' + label + '.body' if pending else None,
         }
-        observed = path / (label + '.body')
         transfer['physical_' + label] = {'bytes': observed.stat().st_size, 'sha256': sha256_file(observed)}
     readback = (transfer['physical_wire']['bytes'] == result.wire_bytes_retained
                 and transfer['physical_wire']['sha256'] == result.wire_sha256
@@ -258,11 +268,13 @@ def _preserve_file_transfer(path, result, read, encode):
     return readback
 
 
-def _retain_verified_block(stream, block, target):
+def _retain_verified_block(stream, block, target, limit):
     import os
     import stat
 
     before = os.fstat(stream.fileno())
+    if before.st_size + len(block) > limit:
+        raise ValueError('source_response_capture_budget_exceeded')
     written = stream.write(block)
     stream.flush()
     os.fsync(stream.fileno())
@@ -306,16 +318,16 @@ def _capture_file_response(url, path, *, policy, read, encode, client=None):
             with context as active, active.stream('GET', url) as response:
                 result = capture_http_response(
                     response, max_wire_bytes=policy.response_limit, max_decoded_bytes=policy.response_limit,
-                    reserve=reserve,
-                    retain_wire=lambda block: _retain_verified_block(wire, block, path / 'wire.body'),
-                    retain_decoded=lambda block: _retain_verified_block(decoded, block, path / 'decoded.body'),
+                    max_wire_block_bytes=policy.response_limit, reserve=reserve,
+                    retain_wire=lambda block: _retain_verified_block(wire, block, path / 'wire.body', policy.response_limit),
+                    retain_decoded=lambda block: _retain_verified_block(decoded, block, path / 'decoded.body', policy.response_limit),
                 )
                 receipt.update(final_url=str(response.url), status=response.status_code, complete_body=result.complete,
                     bytes=result.decoded_bytes_retained, sha256=result.decoded_sha256,
                     wire_bytes=result.wire_bytes_received, error_code=result.error_code)
         finally:
             if result is not None:
-                readback = _preserve_file_transfer(path, result, read, encode)
+                readback = _preserve_file_transfer(path, result, read, encode, policy.response_limit)
             wire.flush()
             decoded.flush()
     receipt['complete_body'] = result.complete and readback
@@ -331,6 +343,11 @@ def _capture_memory_response(url, name, *, policy, space_root, write, encode,
 
     wire, decoded = bytearray(), bytearray()
 
+    def retain(sink, block, limit):
+        if len(sink) + len(block) > limit:
+            raise policy.error('source_response_capture_budget_exceeded')
+        sink.extend(block)
+
     def reserve(progress):
         if shutil.disk_usage(space_root()).free < (policy.space_floor + len(wire) + len(decoded)
                                                    + progress.reserve_bytes):
@@ -343,14 +360,21 @@ def _capture_memory_response(url, name, *, policy, space_root, write, encode,
             try:
                 result = capture_http_response(
                     response, max_wire_bytes=policy.wire_limit, max_decoded_bytes=policy.decoded_limit,
-                    reserve=reserve, retain_wire=wire.extend, retain_decoded=decoded.extend,
+                    max_wire_block_bytes=policy.wire_limit, reserve=reserve,
+                    retain_wire=lambda block: retain(wire, block, policy.wire_limit),
+                    retain_decoded=lambda block: retain(decoded, block, policy.decoded_limit),
                 )
             except (KeyboardInterrupt, SystemExit):
                 on_interrupt({'wire.body': bytes(wire), 'response.body': bytes(decoded)})
                 raise
             body = bytes(decoded)
-            pieces.update({'wire.body': bytes(wire), 'response.body': body,
-                           'pending-wire.body': result.pending_wire, 'pending-decoded.body': result.pending_decoded})
+            pieces.update({'wire.body': bytes(wire), 'response.body': body})
+            for label, retained, limit in (('wire', len(wire), policy.wire_limit),
+                                           ('decoded', len(body), policy.decoded_limit)):
+                pending, observation = _bounded_pending(getattr(result, 'pending_' + label), retained, limit)
+                pieces['pending-' + label + '.body'] = pending
+                if observation.get('truncated'):
+                    pieces['pending-' + label + '.observation.json'] = encode(observation)
             if (len(wire) != result.wire_bytes_retained or _sha(bytes(wire)) != result.wire_sha256
                     or len(body) != result.decoded_bytes_retained or _sha(body) != result.decoded_sha256):
                 raise policy.error('capture_sink_readback_mismatch')

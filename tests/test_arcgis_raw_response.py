@@ -170,3 +170,84 @@ class RawResponseTests(unittest.TestCase):
         self.assertIn(b'original', self.writes.values())
         self.assertIn(b'not JSON', self.writes.values())
         self.assertEqual(self.diagnostics[0][0]['original-receipt.body'], b'not JSON')
+    def test_oversized_transport_block_has_bounded_file_evidence(self):
+        delivered = b'x' * 8192
+        self.file_request(self.client(delivered))
+        request = self.root / 'request'
+        wire = (request / 'wire.body').read_bytes()
+        pending = (request / 'pending_wire.body').read_bytes()
+        self.assertLessEqual(len(wire) + len(pending), 4096)
+        transfer = json.loads((request / 'transfer.json').read_bytes())
+        self.assertEqual(transfer['wire_bytes_received'], len(delivered))
+        evidence = transfer['pending_wire_artifact']
+        self.assertEqual(evidence['bytes'], len(delivered))
+        self.assertEqual(evidence['sha256'], hashlib.sha256(delivered).hexdigest())
+        self.assertEqual(evidence['retained_bytes'], len(pending))
+        self.assertTrue(evidence['truncated'])
+
+    def test_gzip_expansion_has_bounded_file_evidence(self):
+        self.file_request(self.client(gzip.compress(b'x' * 8192), headers={'content-encoding':'gzip'}))
+        request = self.root / 'request'
+        retained = sum((request / name).stat().st_size for name in ('decoded.body', 'pending_decoded.body'))
+        self.assertLessEqual(retained, 4096)
+        transfer = json.loads((request / 'transfer.json').read_bytes())
+        self.assertFalse(transfer['complete'])
+        self.assertTrue(transfer['pending_decoded_artifact']['truncated'])
+
+    def test_oversized_memory_block_has_bounded_diagnostic_evidence(self):
+        delivered = b'x' * 8192
+        with self.assertRaisesRegex(ValueError, 'preserved:refusal'):
+            self.memory_request(self.client(delivered))
+        pieces, _ = self.diagnostics[0]
+        self.assertLessEqual(len(pieces['wire.body']) + len(pieces['pending-wire.body']), 4096)
+        observation = json.loads(pieces['pending-wire.observation.json'])
+        self.assertEqual(observation['bytes'], len(delivered))
+        self.assertEqual(observation['sha256'], hashlib.sha256(delivered).hexdigest())
+
+    def test_gzip_expansion_has_bounded_memory_diagnostic_evidence(self):
+        with self.assertRaisesRegex(ValueError, 'preserved:refusal'):
+            self.memory_request(self.client(gzip.compress(b'x' * 8192), headers={'content-encoding':'gzip'}))
+        pieces, _ = self.diagnostics[0]
+        self.assertLessEqual(len(pieces['response.body']) + len(pieces['pending-decoded.body']), 4096)
+        self.assertIn('pending-decoded.observation.json', pieces)
+
+    def test_real_dialysis_acquisition_refuses_four_megabyte_block_at_native_limit(self):
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources import dialysis_centers
+        delivered = b'x' * 4_000_000
+        client = self.client(delivered)
+        with patch.object(dialysis_centers.httpx, 'Client', return_value=client):
+            with self.assertRaises(ValueError):
+                dialysis_centers.acquire(StagingStorageResource(local_dir=str(self.root)))
+        wire = next(self.root.glob('_acquisition-attempts/*/*/*/wire.body'))
+        pending = wire.with_name('pending_wire.body')
+        self.assertLessEqual(wire.stat().st_size + pending.stat().st_size, dialysis_centers.MAX_BODY_BYTES)
+        transfer = json.loads(wire.with_name('transfer.json').read_bytes())
+        self.assertEqual(transfer['wire_bytes_received'], len(delivered))
+        self.assertEqual(transfer['pending_wire_artifact']['sha256'], hashlib.sha256(delivered).hexdigest())
+        self.assertFalse(transfer['complete'])
+
+    def test_prior_prefix_survives_later_wire_refusal_with_bounded_pending(self):
+        prefix, refused = b'admitted', b'x' * 8192
+        class Stream(httpx.SyncByteStream):
+            def __iter__(self):
+                yield prefix
+                yield refused
+        def client():
+            value = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, stream=Stream())))
+            self.addCleanup(value.close)
+            return value
+        _, receipt = self.file_request(client())
+        request = self.root / 'request'
+        self.assertFalse(receipt['complete_body'])
+        self.assertEqual((request / 'wire.body').read_bytes(), prefix)
+        self.assertEqual((request / 'decoded.body').read_bytes(), prefix)
+        self.assertEqual((request / 'pending_wire.body').stat().st_size, 4096 - len(prefix))
+        with self.assertRaisesRegex(ValueError, 'preserved:refusal'):
+            self.memory_request(client())
+        pieces, _ = self.diagnostics[0]
+        self.assertEqual(pieces['wire.body'], prefix)
+        self.assertEqual(pieces['response.body'], prefix)
+        self.assertEqual(len(pieces['pending-wire.body']), 4096 - len(prefix))
+        observation = json.loads(pieces['pending-wire.observation.json'])
+        self.assertEqual(observation['sha256'], hashlib.sha256(refused).hexdigest())
