@@ -102,12 +102,16 @@ def request_raw(client, url, params, name, budget, *, write, encode, policy,
         body_parts, wire_parts = [], []
         response_obj = None
         retained_size = 0
+        sink_sizes = {'wire': 0, 'decoded': 0}
 
-        def retain(parts, block):
+        def retain(parts, block, kind):
             nonlocal retained_size
+            if sink_sizes[kind] + len(block) > policy.response_limit:
+                raise ValueError('source_response_capture_budget_exceeded')
             reserve(retained_size + len(block))
             parts.append(block)
             retained_size += len(block)
+            sink_sizes[kind] += len(block)
 
         try:
             with client.stream(method, url, params=params if method == 'GET' else None,
@@ -118,8 +122,8 @@ def request_raw(client, url, params, name, budget, *, write, encode, policy,
                     max_wire_bytes=policy.response_limit, max_decoded_bytes=policy.response_limit,
                     max_wire_block_bytes=policy.response_limit,
                     reserve=lambda p: reserve(p.wire_bytes_retained + p.decoded_bytes_retained + p.reserve_bytes),
-                    retain_wire=lambda block: retain(wire_parts, block),
-                    retain_decoded=lambda block: retain(body_parts, block))
+                    retain_wire=lambda block: retain(wire_parts, block, 'wire'),
+                    retain_decoded=lambda block: retain(body_parts, block, 'decoded'))
         except Exception as exc:
             if policy.preserve_transport:
                 body, wire = b''.join(body_parts), b''.join(wire_parts)

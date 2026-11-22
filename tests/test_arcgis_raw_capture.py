@@ -184,3 +184,20 @@ class RawCaptureTests(unittest.TestCase):
         self.assertEqual(receipt['wire_bytes_received'], 1_600_000)
         self.assertEqual(receipt['wire_bytes'], 1_600_000)
         self.assertEqual(receipt['bytes'], 0)
+
+    def test_refused_decoded_expansion_keeps_only_bounded_wire_evidence(self):
+        import gzip
+        objects = {}
+        decoded = b'x' * 2000
+        wire = gzip.compress(decoded)
+        with httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(
+                200, stream=httpx.ByteStream(wire), headers={'content-encoding': 'gzip'}))) as client:
+            with self.assertRaisesRegex(ValueError, 'incomplete_source_response:page'):
+                request_raw(client, 'https://agency.test/query', {}, 'page', [0],
+                    write=objects.__setitem__, encode=lambda v: json.dumps(v).encode(),
+                    policy=RawCapturePolicy(1000, 10_000_000))
+        receipt = json.loads(objects['raw/page.receipt.json'])
+        self.assertEqual(objects['raw/page.wire'], wire)
+        self.assertEqual(objects['raw/page.json'], b'')
+        self.assertEqual(receipt['decoded_bytes_produced'], len(decoded))
+        self.assertEqual(receipt['bytes'], 0)
