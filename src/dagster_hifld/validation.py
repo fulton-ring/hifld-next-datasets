@@ -3,6 +3,11 @@
 The JSONL adapter consumes one GeoJSON Feature per line. It does not establish
 upstream completeness or acceptance: those require separately reviewed evidence.
 No normalization, geometry repair, CRS inference or numeric coercion is applied.
+
+Each side's population quality is counted (null keys, invalid records, duplicate
+keys, null values in nullable columns, null geometries when the contract allows
+them); a quality regression is named in the report and sidecar whenever the
+candidate's count exceeds the baseline's.
 """
 
 from __future__ import annotations
@@ -219,6 +224,8 @@ def compare_full_rows(
             columns = contract["columns"]
             if any(name not in columns for name in [*contract["id_fields"], *contract["coverage_fields"]]):
                 raise ValueError("Contract key/coverage field absent from schema")
+            nullable_columns = [name for name, rule in columns.items() if rule["nullable"]]
+            count_null_geometry = bool(contract["geometry"]) and bool(contract.get("geometry_nullable", False))
             if contract["geometry"] and not contract.get("crs"):
                 raise ValueError("Unknown CRS")
             if contract["geometry"]:
@@ -254,7 +261,8 @@ def compare_full_rows(
                             raise ValueError("Scratch quota exceeded")
 
                     for side, path in (("baseline", baseline), ("candidate", candidate)):
-                        counts = {"rows": 0, "null_keys": 0, "invalid_records": 0, "duplicate_keys": 0}
+                        counts = {"rows": 0, "null_keys": 0, "invalid_records": 0, "duplicate_keys": 0,
+                                  "null_attributes": 0, "null_geometry": 0}
                         with path.open("rb") as stream:
                             while line := stream.readline(limits.max_record_bytes + 1):
                                 if len(line) > limits.max_record_bytes:
@@ -274,6 +282,11 @@ def compare_full_rows(
                                 values = [props.get(name) for name in contract["id_fields"]]
                                 if any(value is None for value in values):
                                     counts["null_keys"] += 1
+                                for name in nullable_columns:
+                                    if props.get(name) is None:
+                                        counts["null_attributes"] += 1
+                                if count_null_geometry and record.get("geometry") is None:
+                                    counts["null_geometry"] += 1
                                 key = _encode(values)
                                 db.execute("INSERT INTO rows VALUES (?,?,?,?)", (side, key, _encode(props), _encode(record.get("geometry"))))
                                 for field in contract["coverage_fields"]:
@@ -287,7 +300,8 @@ def compare_full_rows(
                         if not counts["rows"] and not contract.get("allow_empty", False):
                             raise ValueError("Empty population requires explicit contract")
                         quota()
-                    changes = {"added": 0, "removed": 0, "attributes": 0, "geometry": 0, "coverage_buckets": 0}
+                    changes = {"added": 0, "removed": 0, "attributes": 0, "geometry": 0, "coverage_buckets": 0,
+                               "quality_regressions": 0}
                     for side, other, kind in (("baseline", "candidate", "removed"), ("candidate", "baseline", "added")):
                         for (key,) in db.execute("SELECT DISTINCT a.key FROM rows a WHERE a.side=? AND NOT EXISTS (SELECT 1 FROM rows b WHERE b.side=? AND b.key=a.key)", (side, other)):
                             changes[kind] += 1
@@ -331,6 +345,17 @@ def compare_full_rows(
                         changes["coverage_buckets"] += 1
                         emit("coverage", field=field, bucket=json.loads(bucket), baseline=left, candidate=right)
                         quota()
+                    indicators = ("null_keys", "invalid_records", "duplicate_keys", "null_attributes", "null_geometry")
+                    quality = {side: {name: counts[name] for name in indicators}
+                               for side, counts in report["populations"].items()}
+                    regressions = [name for name in indicators if quality["candidate"][name] > quality["baseline"][name]]
+                    for name in regressions:
+                        emit("quality_regression", field=name,
+                             baseline=quality["baseline"][name], candidate=quality["candidate"][name])
+                        quota()
+                    report["quality"] = {"baseline": quality["baseline"], "candidate": quality["candidate"],
+                                         "regressions": regressions}
+                    changes["quality_regressions"] = len(regressions)
                     report["differences"] = changes
                     for path, expected in ((baseline, baseline_sha256), (candidate, candidate_sha256)):
                         if _file_identity(path) != identities[path] or sha256_file(path) != expected:
@@ -341,6 +366,8 @@ def compare_full_rows(
                         report["reason_codes"].append("invalid_schema_key_or_geometry")
                     elif any(changes.values()):
                         report["reason_codes"].append("full_population_changes_require_acceptance")
+                        if changes["quality_regressions"]:
+                            report["reason_codes"].append("quality_regressions_require_acceptance")
                     quota()
         except (ValueError, OSError, sqlite3.Error, KeyError, TypeError, OverflowError, ShapelyError, CRSError, RecursionError) as exc:
             report["status"] = "blocked"
