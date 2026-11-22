@@ -30,6 +30,7 @@ from dagster_hifld.source_release import (
     decide_release, decide_unchanged_poll, load_release_state, record_release_state,
     release_state_record, unchanged_result,
 )
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -291,14 +292,17 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
                     id_contract_accepted=False, freshness_accepted=False,
                     rights_accepted=False, mapping_approved=False,
                 )
-            seed_body, seed_receipt = capture_get(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed", max_bytes=MAX_BODY_BYTES)
-            seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or not seed:
-                raise ValueError("source_seed_id_list_missing")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _urls(sorted(seed)):
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
+            def validate_seed(seed_body):
+                seed = json.loads(seed_body).get("objectIds")
+                if not isinstance(seed, list) or not seed:
+                    raise ValueError("source_seed_id_list_missing")
+                return sorted(seed)
+            captures = RetainedCaptureView(capture_root, captures)
+            capture_layer(LAYER_URL, capture_root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                validate_seed=validate_seed, roster=_urls,
+                fetch=lambda client, url, root, name: capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES),
+                on_validation_error=lambda c: validate_capture_documents({n: body for n, (body, receipt) in c.items()}))
             item_after_body, item_after_receipt = capture_get(client, EPA_ITEM_URL, capture_root, "epa_item_after", max_bytes=MAX_BODY_BYTES)
             captures["epa_item_after"] = (item_after_body, item_after_receipt)
         layer, fields, extracted = validate_capture_documents({name: body for name, (body, _) in captures.items()})

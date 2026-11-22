@@ -24,6 +24,7 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_layer import capture_with_retry
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -316,33 +317,24 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(60, connect=15),
                               headers={"User-Agent": "hifld-next-datasets/noaa-ocs-draft"}) as client:
-                ids_body, ids_receipt = capture_with_retry(client, LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before",
-                    max_bytes=PAGE_MAX_BYTES,
-                    max_total_bytes=MAX_CAPTURE_BYTES,
-                    attempts=6,
-                    base_delay=0,
-                    schedule=(1.5, 3.0, 5.0, 8.0, 12.0),
-                    retryable_statuses=RETRYABLE_HTTP_STATUS,
-                    require_json=True,
-                    return_final_error=False)
-                seed = json.loads(ids_body).get("objectIds")
-                if (not isinstance(seed, list) or not seed
-                        or any(type(oid) is not int or oid <= 0 for oid in seed)
-                        or len(set(seed)) != len(seed)):
-                    raise ValueError("source_seed_id_roster_drift")
-                captures["ids_before"] = (ids_body, ids_receipt)
-                for name, url in _capture_roster(seed):
-                    if name == "ids_before":
-                        continue
-                    captures[name] = capture_with_retry(client, url, root, name,
-                        max_bytes=PAGE_MAX_BYTES,
-                        max_total_bytes=MAX_CAPTURE_BYTES,
-                        attempts=6,
-                        base_delay=0,
+                def validate_seed(ids_body):
+                    seed = json.loads(ids_body).get("objectIds")
+                    if (not isinstance(seed, list) or not seed
+                            or any(type(oid) is not int or oid <= 0 for oid in seed)
+                            or len(set(seed)) != len(seed)):
+                        raise ValueError("source_seed_id_roster_drift")
+                    return seed
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_before', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: capture_with_retry(
+                        client, url, root, name, max_bytes=PAGE_MAX_BYTES,
+                        max_total_bytes=MAX_CAPTURE_BYTES, attempts=6, base_delay=0,
                         schedule=(1.5, 3.0, 5.0, 8.0, 12.0),
                         retryable_statuses=RETRYABLE_HTTP_STATUS,
-                        require_json=name != "inport_item",
-                        return_final_error=False)
+                        require_json=name != "inport_item", return_final_error=False),
+                    on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}

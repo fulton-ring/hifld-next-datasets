@@ -61,6 +61,7 @@ from dagster_hifld.sources.arcgis_layer import (
     producer_error_doc as _producer_error_doc,
     preserve_failed_attempt as _preserve_failed_attempt,
 )
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -502,25 +503,20 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-lomas-draft"}) as client:
-            seed_body, seed_receipt = _capture_with_retry(
-                client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
-                attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or any(type(value) is not int for value in seed)
-                    or len(set(seed)) != len(seed)):
-                raise ValueError("source_seed_id_population_drift")
-            receipts["ids_seed"] = seed_receipt
-            for name, url in _feature_urls(sorted(seed)):
-                _, receipt = _capture_with_retry(
-                    client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
-                    attempts=PAGE_CAPTURE_ATTEMPTS if name.startswith("page_") else DOC_CAPTURE_ATTEMPTS,
-                    base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS if name.startswith("page_")
-                    else DOC_CAPTURE_BASE_DELAY_SECONDS)
-                # Capture bodies stay on disk in the attempt directory; only the
-                # small hash-pinned receipts are kept in memory and streamed back
-                # during validation, so the population is never held.
-                receipts[name] = receipt
+            def validate_seed(seed_body):
+                seed = json.loads(seed_body).get("objectIds")
+                if (not isinstance(seed, list) or any(type(value) is not int for value in seed)
+                        or len(set(seed)) != len(seed)):
+                    raise ValueError("source_seed_id_population_drift")
+                return sorted(seed)
+            captures = RetainedCaptureView(capture_root)
+            capture_layer(LAYER_URL, capture_root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                validate_seed=validate_seed, roster=_feature_urls,
+                fetch=lambda client, url, root, name: _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES, attempts=PAGE_CAPTURE_ATTEMPTS if name.startswith('page_') else DOC_CAPTURE_ATTEMPTS, base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS if name.startswith('page_') else DOC_CAPTURE_BASE_DELAY_SECONDS),
+                on_validation_error=lambda view: _validate_and_extract(capture_root, view.receipts,
+                    parquet_path=capture_root / "candidate.parquet"))
+            receipts = captures.receipts
         parquet_path = capture_root / "candidate.parquet"
         source_fields, extracted = _validate_and_extract(capture_root, receipts, parquet_path=parquet_path)
     except Exception as exc:

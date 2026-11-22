@@ -28,6 +28,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
@@ -371,20 +372,17 @@ def capture_usace_ienc_isolated_danger(
     try:
         with httpx.Client(follow_redirects=False, timeout=60,
                           headers={"User-Agent":"hifld-next-datasets/usace-ienc-isolated-danger-draft"}) as client:
-            seed_body, seed_receipt = capture_get(
-                client,
-                LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"}),
-                capture_root, "ids_seed", max_bytes=MAX_BODY_BYTES,
-            )
-            seed = json.loads(seed_body).get("objectIds")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
-                raise ValueError("source_seed_id_count_drift")
-            for name, url in _capture_names(seed):
-                if name == "ids_seed":
-                    continue
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
+            def validate_seed(seed_body):
+                seed = json.loads(seed_body).get("objectIds")
+                if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
+                    raise ValueError("source_seed_id_count_drift")
+                return seed
+            captures = RetainedCaptureView(capture_root, captures)
+            capture_layer(LAYER_URL, capture_root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                validate_seed=validate_seed, roster=_capture_names,
+                fetch=lambda client, url, root, name: capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES),
+                on_validation_error=_validate_captures)
         fields, audit, features = _validate_captures(captures)
     except Exception as exc:
         receipts = {}

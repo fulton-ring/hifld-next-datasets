@@ -27,6 +27,7 @@ from dagster_hifld.construction_state import canonical_construction_bundle, load
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     verify_cached_candidate, write_immutable,
@@ -372,18 +373,17 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
             captures["epa_frs_sources_page"] = (body, receipt)
         with httpx.Client(follow_redirects=False, timeout=60,
                           headers={"User-Agent": "hifld-next-datasets/epa-rmp-facilities-draft"}) as client:
-            seed_body, seed_receipt = capture_get(client,
-                _query_url({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), capture_root,
-                "ids_seed", max_bytes=MAX_BODY_BYTES)
-            seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or len(seed) != SOURCE_COUNT:
-                raise ValueError("source_seed_id_count_drift")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _source_urls(sorted(seed)):
-                if name == "epa_frs_sources_page" and replayed_document is not None:
-                    continue
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
+            def validate_seed(seed_body):
+                seed = json.loads(seed_body).get("objectIds")
+                if not isinstance(seed, list) or len(seed) != SOURCE_COUNT:
+                    raise ValueError("source_seed_id_count_drift")
+                return sorted(seed)
+            captures = RetainedCaptureView(capture_root, captures)
+            capture_layer(LAYER_URL, capture_root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=_query_url({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                validate_seed=validate_seed, roster=_source_urls,
+                fetch=lambda client, url, root, name: capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES),
+                on_validation_error=validate_source_captures)
         extracted = validate_source_captures(captures)
     except Exception as exc:
         receipts = {}

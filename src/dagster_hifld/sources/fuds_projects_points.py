@@ -28,6 +28,7 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -225,18 +226,19 @@ def capture_fuds_projects_points(storage: StagingStorageResource, *, version: st
     try:
         with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/fuds-projects-draft"}) as client:
             seed_url = LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})
-            seed_body, seed_receipt = capture_page(client, seed_url, capture_root, "ids_seed",
-                                                   page_max_bytes=MAX_CAPTURE_BYTES)
-            seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or not seed
-                    or any(type(value) is not int or value <= 0 for value in seed)
-                    or len(set(seed)) != len(seed)):
-                raise ValueError("source_seed_id_population_drift")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _feature_urls(sorted(seed)):
-                body, receipt = capture_page(client, url, capture_root, name,
-                                              page_max_bytes=MAX_CAPTURE_BYTES)
-                captures[name] = (body, receipt)
+            def validate_seed(seed_body):
+                seed = json.loads(seed_body).get("objectIds")
+                if (not isinstance(seed, list) or not seed
+                        or any(type(value) is not int or value <= 0 for value in seed)
+                        or len(set(seed)) != len(seed)):
+                    raise ValueError("source_seed_id_population_drift")
+                return sorted(seed)
+            captures = RetainedCaptureView(capture_root, captures)
+            capture_layer(LAYER_URL, capture_root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=seed_url,
+                validate_seed=validate_seed, roster=_feature_urls,
+                fetch=lambda client, url, root, name: capture_page(client, url, capture_root, name, page_max_bytes=MAX_CAPTURE_BYTES),
+                on_validation_error=_validate_captures)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}

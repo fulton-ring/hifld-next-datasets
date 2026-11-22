@@ -29,6 +29,10 @@ class RetainedCaptureView(MutableMapping):
         self.update(captures)
 
     @property
+    def receipts(self):
+        return dict(self._receipts)
+
+    @property
     def body_paths(self):
         return {name: self.root / f'{name}.body' for name in self}
 
