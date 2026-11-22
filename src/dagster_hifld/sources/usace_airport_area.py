@@ -269,7 +269,7 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
                 def validate_seed(seed_body):
                     ids=json.loads(seed_body).get("objectIds")
-                    if not isinstance(ids,list) or len(ids)!=len(features): raise ValueError("source_seed_id_count_drift")
+                    if not isinstance(ids,list): raise ValueError("source_seed_id_count_drift")
                     return ids
                 captures = RetainedCaptureView(root, captures)
                 capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,

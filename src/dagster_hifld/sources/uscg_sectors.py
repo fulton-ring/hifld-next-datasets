@@ -599,6 +599,7 @@ def capture_uscg_sectors(storage: StagingStorageResource, *, version: str,
                     return ids
                 captures = RetainedCaptureView(root, captures)
                 capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                    oid_field="FID",
                     captures=captures, seed_name='ids_before', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
                     validate_seed=validate_seed, roster=_capture_roster,
                     fetch=lambda client, url, root, name: _capture(client, url, root, name),

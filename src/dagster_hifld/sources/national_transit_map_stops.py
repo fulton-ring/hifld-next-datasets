@@ -474,8 +474,8 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
                 count_after=(yield ('count_after', _metadata_url('count_after'))).get("count")
                 ids_after_doc=(yield ('ids_after', _metadata_url('ids_after')))
                 ids_after=ids_after_doc.get("objectIds")
-                return (fields, features, count, count_after, ids, ids_after, ids_after_doc, layer, layer_after, service, service_after, has_z, has_m, seed)
-            (fields, features, count, count_after, ids, ids_after, ids_after_doc, layer, layer_after, service, service_after, has_z, has_m, seed) = capture_request_steps(acquisition_steps(), lambda name, url, *params: get(client, name, url, *params),
+                return (fields, features, count, count_after, ids, ids_after, ids_after_doc, layer, layer_after, service, service_after, has_z, has_m, seed, portal)
+            (fields, features, count, count_after, ids, ids_after, ids_after_doc, layer, layer_after, service, service_after, has_z, has_m, seed, portal) = capture_request_steps(acquisition_steps(), lambda name, url, *params: get(client, name, url, *params),
                 capture_root=root, byte_budget=max_capture_bytes)
         if layer_after != layer or service_after != service or ids_after_doc.get("objectIdFieldName") != "OBJECTID":
             raise ValueError("source_changed_during_capture")

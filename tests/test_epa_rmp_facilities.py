@@ -1,3 +1,5 @@
+import httpx
+from datetime import datetime
 import hashlib
 import json
 import tempfile
@@ -12,6 +14,7 @@ from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.assets.epa_rmp_facilities import epa_emergency_response_rmp_facilities_complete
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
 from dagster_hifld.source_manifest import load_resolved_source_manifest
+from dagster_hifld.sources import capture_common, epa_rmp_facilities as source
 from dagster_hifld.sources.epa_rmp_facilities import (
     _canonical,
     _parquet_bytes,
@@ -215,22 +218,26 @@ class EpaRmpSourceTests(unittest.TestCase):
         captures, fields, _ = _capture_fixture()
         captures["ids_seed"] = (_canonical({"objectIds": [2, 1]}), {})
         schema_sha = hashlib.sha256(_canonical(fields)).hexdigest()
-        urls = [(name, f"https://{'www.epa.gov' if name.startswith('epa_frs') else 'www.arcgis.com' if name.startswith('portal') else 'services.arcgis.com'}/{name}") for name in captures
-                if name not in {"ids_seed"}]
-        urls.insert(0, ("ids_seed", "https://services.arcgis.com/ids_seed"))
-
+        urls = source._source_urls([1, 2])
         observation_time = ["2026-10-19T00:00:00Z"]
-        def fake_get(_client, url, capture_root, name, *, max_bytes):
-            body = captures[name][0]
-            wire = body
-            (capture_root / f"{name}.body").write_bytes(body)
-            (capture_root / f"{name}.wire").write_bytes(wire)
-            receipt = {"method": "GET", "url": url, "final_url": url, "observed_at": observation_time[0],
-                       "status": 200, "complete_body": True, "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(),
-                       "wire_bytes": len(wire), "wire_sha256": hashlib.sha256(wire).hexdigest(),
-                       "content_encoding": "identity", "content_length": len(body), "error_code": None}
-            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-            return body, receipt
+        class CaptureClock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime.fromisoformat(observation_time[0].replace("Z", "+00:00"))
+        real_client = httpx.Client
+        planned = [("ids_seed", source._query_url({"where": "1=1", "returnIdsOnly": "true", "f": "json"})), *urls]
+        responses = {}
+        for name, url in planned:
+            responses.setdefault(str(httpx.URL(url)), []).append(captures[name][0])
+        request_counts = {}
+        def respond(request):
+            url = str(request.url)
+            choices = responses[url]
+            index = request_counts.get(url, 0)
+            request_counts[url] = index + 1
+            return httpx.Response(200, stream=httpx.ByteStream(choices[index % len(choices)]))
+        def client_factory(*args, **kwargs):
+            return real_client(*args, transport=httpx.MockTransport(respond), **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"), use_local=True, backend="local")
@@ -252,10 +259,10 @@ class EpaRmpSourceTests(unittest.TestCase):
             with (patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_COUNT", 2),
                   patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_FIELD_COUNT", 3),
                   patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_SCHEMA_SHA256", schema_sha),
-                  patch("dagster_hifld.sources.epa_rmp_facilities._source_urls", return_value=urls),
                   patch("dagster_hifld.sources.epa_rmp_facilities.validate_construction_code_identity"),
                   patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"),
-                  patch("dagster_hifld.sources.epa_rmp_facilities.capture_get", side_effect=fake_get)):
+                  patch.object(source.httpx, "Client", side_effect=client_factory),
+                  patch.object(capture_common, "datetime", CaptureClock)):
                 first = capture_epa_rmp_facilities(storage, **args)
                 self.assertFalse(first["release_accepted"])
                 self.assertEqual(first["feature_count"], 2)

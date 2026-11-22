@@ -478,6 +478,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
                     return ids
                 captures = RetainedCaptureView(root, captures)
                 capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                    oid_field="ObjectId",
                     captures=captures, discovery_documents=_capture_roster()[:7],
                     validate_seed=validate_seed, roster=lambda ids: _capture_roster(len(ids)),
                     fetch=capture_page, on_validation_error=_validate)

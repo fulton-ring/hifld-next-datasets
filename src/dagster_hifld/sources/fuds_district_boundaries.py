@@ -97,6 +97,34 @@ def _native_parquet(fields: list[dict], source_fields: list[dict], features: lis
     return sink.getvalue().to_pybytes()
 
 
+def _validate_capture_pages(captures, count, seed, fields, layer, service):
+    features = []
+    for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
+        page = json.loads(captures[f"page_{page_no:03d}"][0])
+        rows = page.get("features")
+        expected = min(PAGE_SIZE, count - offset)
+        if not isinstance(rows, list) or len(rows) != expected:
+            raise ValueError("source_page_incomplete")
+        if page.get("exceededTransferLimit") is True and offset + expected >= count:
+            raise ValueError("source_final_page_exceeded_transfer_limit")
+        page_sr = page.get("spatialReference", {})
+        if page_sr.get("latestWkid", page_sr.get("wkid")) != 4326:
+            raise ValueError("source_page_crs_drift")
+        names = [f["name"] for f in fields]
+        if any(not isinstance(r, dict) or list(r.get("attributes", {})) != names for r in rows):
+            raise ValueError("source_record_schema_drift")
+        if [r["attributes"].get("OBJECTID") for r in rows] != seed[offset:offset + expected]:
+            raise ValueError("source_page_id_slice_mismatch")
+        features.extend(rows)
+    layer_after = json.loads(captures["layer_after"][0])
+    service_after = json.loads(captures["service_after"][0])
+    count_after = json.loads(captures["count_after"][0]).get("count")
+    ids_after = json.loads(captures["ids_after"][0]).get("objectIds")
+    if layer_after != layer or service_after != service or count_after != count or sorted(ids_after or []) != seed:
+        raise ValueError("source_changed_during_capture")
+    return features
+
+
 def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version: str,
                                      capture_directory: str | None = None) -> dict:
     """Bracket a complete, ID-ordered native capture; retain exact response bytes."""
@@ -149,30 +177,9 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
                 get(client, name, url)
                 return captures[name]
             capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
-                captures=captures, roster=lambda ids: roster, fetch=fetch)
-            for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
-                page = json.loads(captures[f"page_{page_no:03d}"][0])
-                rows = page.get("features")
-                expected = min(PAGE_SIZE, count - offset)
-                if not isinstance(rows, list) or len(rows) != expected:
-                    raise ValueError("source_page_incomplete")
-                if page.get("exceededTransferLimit") is True and offset + expected >= count:
-                    raise ValueError("source_final_page_exceeded_transfer_limit")
-                page_sr = page.get("spatialReference", {})
-                if page_sr.get("latestWkid", page_sr.get("wkid")) != 4326:
-                    raise ValueError("source_page_crs_drift")
-                names = [f["name"] for f in fields]
-                if any(not isinstance(r, dict) or list(r.get("attributes", {})) != names for r in rows):
-                    raise ValueError("source_record_schema_drift")
-                if [r["attributes"].get("OBJECTID") for r in rows] != seed[offset:offset + expected]:
-                    raise ValueError("source_page_id_slice_mismatch")
-                features.extend(rows)
-            layer_after = json.loads(captures["layer_after"][0])
-            service_after = json.loads(captures["service_after"][0])
-            count_after = json.loads(captures["count_after"][0]).get("count")
-            ids_after = json.loads(captures["ids_after"][0]).get("objectIds")
-        if layer_after != layer or service_after != service or count_after != count or sorted(ids_after or []) != seed:
-            raise ValueError("source_changed_during_capture")
+                captures=captures, roster=lambda ids: roster, fetch=fetch,
+                on_validation_error=lambda retained: _validate_capture_pages(retained, count, seed, fields, layer, service))
+            features = _validate_capture_pages(captures, count, seed, fields, layer, service)
         capture_witness(captures, captured_ids=[row["attributes"]["OBJECTID"] for row in features])
         for row in features:
             _esri_polygon(row.get("geometry", {}))

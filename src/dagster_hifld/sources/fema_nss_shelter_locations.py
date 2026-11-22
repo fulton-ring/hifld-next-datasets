@@ -642,8 +642,8 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
                         or len(ids_after) != count or any(type(i) is not int for i in ids_after)
                         or len(set(ids_after)) != count):
                     raise ValueError("source_oid_property_drift")
-                return (fields, features, count, count_after, dimensions, dimensions_after, ids_after, layer, layer_after, service, service_after, has_z, has_m, oid_name, seed)
-            (fields, features, count, count_after, dimensions, dimensions_after, ids_after, layer, layer_after, service, service_after, has_z, has_m, oid_name, seed) = capture_request_steps(acquisition_steps(), lambda name, url, *params: get(client, name, url, *params),
+                return (fields, features, count, count_after, dimensions, dimensions_after, ids_after, layer, layer_after, service, service_after, has_z, has_m, oid_name, seed, portal_item)
+            (fields, features, count, count_after, dimensions, dimensions_after, ids_after, layer, layer_after, service, service_after, has_z, has_m, oid_name, seed, portal_item) = capture_request_steps(acquisition_steps(), lambda name, url, *params: get(client, name, url, *params),
                 capture_root=capture_root, byte_budget=max_capture_bytes)
         if (layer_after != layer or service_after != service or dimensions_after != dimensions
                 or count_after != count or sorted(ids_after or []) != seed):

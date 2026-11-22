@@ -1,4 +1,5 @@
 """Focused integrity tests for the exact USACE FUDS district adapter."""
+import httpx
 import unittest
 import hashlib
 import json
@@ -19,11 +20,40 @@ from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.catalog import summarize_staged_catalog, write_catalog_metadata
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import fuds_district_boundaries as source
 from dagster_hifld.sources.fuds_district_boundaries import (
     EXPECTED_SCHEMA_SHA256, DATASET_SLUG, FILE_SLUG, _canonical, _esri_polygon,
     _field_contract, capture_fuds_district_boundaries,
 )
 from dagster_hifld.source_manifest import load_resolved_source_manifest
+
+
+_HTTP_CLIENT = httpx.Client
+
+
+def _fixture_client(response_body):
+    """Drive the actual capture transport and retain its complete artifacts."""
+    def factory(*args, **kwargs):
+        counts = {"service": 0, "layer": 0, "count": 0, "ids": 0}
+        def respond(request):
+            params = request.url.params
+            if params.get("returnCountOnly") == "true":
+                kind = "count"
+            elif params.get("returnIdsOnly") == "true":
+                kind = "ids"
+            elif params.get("outFields") == "*":
+                offset = int(params.get("resultOffset", "0"))
+                name = f"page_{offset // source.PAGE_SIZE:03d}"
+                return httpx.Response(200, stream=httpx.ByteStream(response_body(name)))
+            elif request.url.path == httpx.URL(source.LAYER_URL).path:
+                kind = "layer"
+            else:
+                kind = "service"
+            phase = "before" if counts[kind] == 0 else "after"
+            counts[kind] += 1
+            return httpx.Response(200, stream=httpx.ByteStream(response_body(f"{kind}_{phase}")))
+        return _HTTP_CLIENT(*args, transport=httpx.MockTransport(respond), **kwargs)
+    return factory
 
 
 class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
@@ -69,7 +99,7 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
                 [0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]},
         }]}
 
-        def fake_capture(_client, url, root, name):
+        def response_body(name):
             if name.startswith("service_"):
                 doc = service
             elif name.startswith("layer_"):
@@ -81,18 +111,12 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
             else:
                 doc = page
             body = _canonical(doc)
-            (root / f"{name}.wire").write_bytes(body)
-            receipt = {"url": url, "final_url": url, "observed_at": "2026-10-19T00:00:00Z",
-                       "status": 200, "complete_body": True, "bytes": len(body),
-                       "sha256": hashlib.sha256(body).hexdigest(), "wire_bytes": len(body),
-                       "wire_sha256": hashlib.sha256(body).hexdigest(),
-                       "content_encoding": "identity"}
-            return body, receipt
+            return body
 
         with tempfile.TemporaryDirectory() as directory:
             storage = StagingStorageResource(local_dir=directory, use_local=True)
             with patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_SCHEMA_SHA256", schema_sha), \
-                 patch("dagster_hifld.sources.fuds_district_boundaries.capture_page", fake_capture), \
+                 patch("dagster_hifld.sources.fuds_district_boundaries.httpx.Client", side_effect=_fixture_client(response_body)), \
                  patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
                  patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 first = capture_fuds_district_boundaries(storage, version="fixture-v1",
@@ -136,29 +160,23 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
                 "page_000": {"spatialReference": {"latestWkid": 4326}, "features": features},
             }
 
-            def fake_capture(_client, url, root, name):
+            def response_body(name):
                 doc = docs[name]
                 body = _canonical(doc)
-                (root / f"{name}.wire").write_bytes(body)
-                receipt = {"url": url, "final_url": url, "observed_at": "2026-10-19T00:00:00Z",
-                           "status": 200, "complete_body": True, "bytes": len(body),
-                           "sha256": hashlib.sha256(body).hexdigest(), "wire_bytes": len(body),
-                           "wire_sha256": hashlib.sha256(body).hexdigest(),
-                           "content_encoding": "identity"}
-                return body, receipt
-            return fake_capture
+                return body
+            return response_body
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             with patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_SCHEMA_SHA256", schema_sha), \
-                 patch("dagster_hifld.sources.fuds_district_boundaries.capture_page", responder([1])), \
+                 patch("dagster_hifld.sources.fuds_district_boundaries.httpx.Client", side_effect=_fixture_client(responder([1]))), \
                  patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
                  patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 before = capture_fuds_district_boundaries(
                     StagingStorageResource(local_dir=str(root / "before"), use_local=True),
                     version="before-v1", capture_directory=f"{root}/before-captures")
             with patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_SCHEMA_SHA256", schema_sha), \
-                 patch("dagster_hifld.sources.fuds_district_boundaries.capture_page", responder([1, 2])), \
+                 patch("dagster_hifld.sources.fuds_district_boundaries.httpx.Client", side_effect=_fixture_client(responder([1, 2]))), \
                  patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
                  patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
                 after = capture_fuds_district_boundaries(
@@ -199,7 +217,7 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
         schema_sha, layer, service, page = self._tiny_layer_fixture()
         storage = StagingStorageResource(local_dir=directory, use_local=True)
 
-        def fake_capture(_client, url, root, name):
+        def response_body(name):
             if name.startswith("service_"):
                 doc = service
             elif name.startswith("layer_"):
@@ -212,16 +230,10 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
                 doc = page
             mutate(name, doc)
             body = _canonical(doc)
-            (root / f"{name}.wire").write_bytes(body)
-            receipt = {"url": url, "final_url": url, "observed_at": "2026-10-19T00:00:00Z",
-                       "status": 200, "complete_body": True, "bytes": len(body),
-                       "sha256": hashlib.sha256(body).hexdigest(), "wire_bytes": len(body),
-                       "wire_sha256": hashlib.sha256(body).hexdigest(),
-                       "content_encoding": "identity"}
-            return body, receipt
+            return body
 
         with patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_SCHEMA_SHA256", schema_sha), \
-             patch("dagster_hifld.sources.fuds_district_boundaries.capture_page", fake_capture), \
+             patch("dagster_hifld.sources.fuds_district_boundaries.httpx.Client", side_effect=_fixture_client(response_body)), \
              patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
              patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"):
             captures_dir = Path(directory) / "captures"
@@ -276,7 +288,7 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
         storage = StagingStorageResource(
             local_dir=self.enterContext(tempfile.TemporaryDirectory()), use_local=True)
 
-        def fake_capture(_client, url, root, name):
+        def response_body(name):
             if name.startswith("service_"):
                 doc = service
             elif name.startswith("layer_"):
@@ -288,19 +300,13 @@ class FudsDistrictBoundaryIntegrityTests(unittest.TestCase):
             else:
                 doc = page
             body = _canonical(doc)
-            (root / f"{name}.wire").write_bytes(body)
-            receipt = {"url": url, "final_url": url, "observed_at": "2026-10-19T00:00:00Z",
-                       "status": 200, "complete_body": True, "bytes": len(body),
-                       "sha256": hashlib.sha256(body).hexdigest(), "wire_bytes": len(body),
-                       "wire_sha256": hashlib.sha256(body).hexdigest(),
-                       "content_encoding": "identity"}
-            return body, receipt
+            return body
 
         instance_dir = Path(self.enterContext(tempfile.TemporaryDirectory())) / "dagster"
         instance_dir.mkdir()
         (instance_dir / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
         with patch("dagster_hifld.sources.fuds_district_boundaries.EXPECTED_SCHEMA_SHA256", schema_sha), \
-             patch("dagster_hifld.sources.fuds_district_boundaries.capture_page", fake_capture), \
+             patch("dagster_hifld.sources.fuds_district_boundaries.httpx.Client", side_effect=_fixture_client(response_body)), \
              patch("dagster_hifld.sources.fuds_district_boundaries.validate_construction_code_identity"), \
              patch("dagster_hifld.sources.capture_common.validate_construction_code_identity"), \
              DagsterInstance.from_config(str(instance_dir)) as instance:

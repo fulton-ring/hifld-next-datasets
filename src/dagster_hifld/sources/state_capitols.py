@@ -31,7 +31,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
@@ -409,6 +409,23 @@ def _stable_layer(layer: dict) -> dict:
              "fields", "maxRecordCount", "extent")}
 
 
+def _validate_capture(captures):
+    docs = CaptureDocuments(captures)
+    _validate_metadata(docs["service_before"], docs["layer_before"])
+    _validate_metadata(docs["service_after"], docs["layer_after"])
+    if (docs["service_after"] != docs["service_before"]
+            or _stable_layer(docs["layer_after"]) != _stable_layer(docs["layer_before"])):
+        raise ValueError("source_changed_during_capture")
+    if docs["count_before"].get("count") != COUNT or docs["count_after"].get("count") != COUNT:
+        raise ValueError("source_count_drift")
+    if docs["ids_after"].get("objectIds") != docs["ids_before"].get("objectIds"):
+        raise ValueError("source_id_roster_changed_during_capture")
+    pages = CaptureDocuments(captures, (name for name in docs if name.startswith("page_")))
+    return _validate_population(
+        docs["page_000"].get("fields") if pages else None,
+        docs["ids_before"].get("objectIds"), pages)
+
+
 def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                            capture_directory: str | None = None,
                            repo_root: Path | None = None) -> dict[str, object]:
@@ -433,7 +450,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
         if requested and any(requested.glob("*.body")):
             raise ValueError("unsealed_capture_attempt_exists")
         root = ((requested / version) if requested
-                else Path("/tmp/hifld-state-capitols-capture")) / uuid4().hex
+                else default_capture_dir("hifld-state-capitols-capture")) / uuid4().hex
         if any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
@@ -450,21 +467,9 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                 captures = RetainedCaptureView(root, captures)
                 capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, BATCH_SIZE, client=client,
                     captures=captures, discovery_documents=_urls([])[:4], roster=_urls,
-                    validate_seed=validate_seed, fetch=_capture)
-            docs = CaptureDocuments(captures)
-            _validate_metadata(docs["service_before"], docs["layer_before"])
-            _validate_metadata(docs["service_after"], docs["layer_after"])
-            if (docs["service_after"] != docs["service_before"]
-                    or _stable_layer(docs["layer_after"]) != _stable_layer(docs["layer_before"])):
-                raise ValueError("source_changed_during_capture")
-            if docs["count_before"].get("count") != COUNT or docs["count_after"].get("count") != COUNT:
-                raise ValueError("source_count_drift")
-            if docs["ids_after"].get("objectIds") != docs["ids_before"].get("objectIds"):
-                raise ValueError("source_id_roster_changed_during_capture")
-            pages = CaptureDocuments(captures, (name for name in docs if name.startswith("page_")))
-            _features, audit = _validate_population(docs["page_000"].get("fields")
-                                                    if pages else None,
-                                                    docs["ids_before"].get("objectIds"), pages)
+                    validate_seed=validate_seed, fetch=_capture, oid_field="objectid",
+                    on_validation_error=_validate_capture)
+            _features, audit = _validate_capture(captures)
             manifest = {
                 "complete": True,
                 "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
