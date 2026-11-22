@@ -481,6 +481,7 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
     if schema_drift or ids_field_after != layer_after.get("objectIdField"):
         raise EOCSourceError("source_metadata_drift_during_capture")
     audit = _source_contract(layer_before, count_before, count_after, ids_before, ids_after, features)
+    features = list(features)
     table, geometry_quality = _table(layer_before, features)
     audit["quality_errors"] = sorted(set(audit["quality_errors"] + geometry_quality))
     audit["source_schema_sha256"] = hashlib.sha256(_json(_schema_identity(layer_before))).hexdigest()

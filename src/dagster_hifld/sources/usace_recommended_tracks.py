@@ -402,6 +402,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
         if owned_client:
             client.close()
 
+    features = list(features)
     row_objects = [{"attributes": feature["attributes"], "geometry": feature["geometry"]}
                    for feature in features]
     source_record_sha = _sha(_json(row_objects).rstrip(b"\n"))
