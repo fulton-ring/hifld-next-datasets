@@ -44,12 +44,13 @@ and the producer's nulls.
 """
 from __future__ import annotations
 
+from functools import partial
+
 import hashlib
 import json
 import math
 import re
 import shutil
-from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -62,6 +63,8 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon
 
+from dagster_hifld.http_capture import capture_retention_budget
+from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
 from dagster_hifld.capture_completeness import validate_capture_witness
@@ -507,46 +510,14 @@ def _code_identity() -> dict[str, object]:
     return processing_identity(Path(__file__).parents[3])
 
 
-def _capture_pages(client: httpx.Client, capture_root: Path,
-                   total: int) -> dict[str, tuple[bytes, dict[str, object]]]:
-    """Capture the complete layer as ordered, adaptively bisected roster pages.
-
-    Pages start at PAGE_START_RECORDS. A page the producer keeps refusing with
-    an error document or keeps dropping mid-stream is bisected until the
-    producer serves both halves; the refused page's final body and receipts stay
-    on disk as evidence under its own name. A single-record page that still
-    fails ends the capture explicitly.
-    """
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
-    pages: deque[tuple[int, int]] = deque(
-        (offset, min(PAGE_START_RECORDS, total - offset))
-        for offset in range(0, total, PAGE_START_RECORDS)
+def _slice_capture_spec() -> SliceCaptureSpec:
+    return SliceCaptureSpec(
+        byte_budget=MAX_CAPTURE_TOTAL_BYTES,
+        page_name=_page_name, page_url=_page_query,
+        capture=partial(_capture_with_retry, max_bytes=MAX_CAPTURE_BYTES), producer_error=_producer_error_doc,
+        page_attempts=PAGE_PROBE_ATTEMPTS, page_delay=PAGE_PROBE_BASE_DELAY_SECONDS,
+        doc_attempts=DOC_CAPTURE_ATTEMPTS, doc_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
     )
-    while pages:
-        offset, count = pages.popleft()
-        name = _page_name(offset, count)
-        try:
-            body, receipt = _capture_with_retry(
-                client, _page_query(offset, count), capture_root, name,
-                max_bytes=MAX_CAPTURE_BYTES,
-                attempts=PAGE_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                base_delay=PAGE_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
-        except ValueError as exc:
-            if count == 1 or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            middle = count // 2
-            pages.appendleft((offset + middle, count - middle))
-            pages.appendleft((offset, middle))
-            continue
-        if _producer_error_doc(body):
-            if count == 1:
-                raise ValueError("source_single_feature_unservable")
-            middle = count // 2
-            pages.appendleft((offset + middle, count - middle))
-            pages.appendleft((offset, middle))
-            continue
-        captures[name] = (body, receipt)
-    return captures
 
 
 def capture_runways(storage: StagingStorageResource, *, version: str,
@@ -571,7 +542,7 @@ def capture_runways(storage: StagingStorageResource, *, version: str,
     capture_root.mkdir(parents=True, exist_ok=True)
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
     try:
-        with httpx.Client(follow_redirects=False, timeout=180,
+        with capture_retention_budget(capture_root, MAX_CAPTURE_TOTAL_BYTES), httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/faa-runways-draft"}) as client:
             seed_body, seed_receipt = _capture_with_retry(
                 client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
@@ -596,7 +567,7 @@ def capture_runways(storage: StagingStorageResource, *, version: str,
             layer_doc = json.loads(captures["layer_before"][0])
             if layer_doc.get("maxRecordCount") != 2000 or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
                 raise ValueError("source_record_limit_drift")
-            captures.update(_capture_pages(client, capture_root, seed_count))
+            captures.update(capture_offset_pages(_slice_capture_spec(), client, capture_root, seed_count, page_size=PAGE_START_RECORDS))
             captured_total += sum(receipt["bytes"] + receipt["wire_bytes"]
                                   for _, receipt in _page_receipts(captures))
             if captured_total > MAX_CAPTURE_TOTAL_BYTES:

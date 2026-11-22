@@ -7,7 +7,7 @@ from pathlib import Path
 
 import httpx
 
-from dagster_hifld.sources import gnis_capture
+from dagster_hifld.sources import arcgis_adaptive
 from dagster_hifld.sources import gnis_historical_cultural_political_points as source
 from test_gnis_historical_cultural_political_points import (
     FIXTURE_OBJECTIDS, JSONStream, _fixture_rows, make_responder,
@@ -19,7 +19,7 @@ class GnisCaptureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             with httpx.Client(transport=make_responder(_fixture_rows())) as client:
-                result = gnis_capture.capture_gnis_layer(source._capture_spec(), root,
+                result = arcgis_adaptive.capture_adaptive_layer(source._capture_spec(), root,
                                                          client=client)
                 self.assertFalse(client.is_closed)
             self.assertEqual(result.roster, list(FIXTURE_OBJECTIDS))
@@ -33,7 +33,7 @@ class GnisCaptureTests(unittest.TestCase):
                 self.fail(f"retained capture unexpectedly fetched {request.url}")
 
             with httpx.Client(transport=httpx.MockTransport(offline)) as client:
-                replay = gnis_capture.capture_gnis_layer(source._capture_spec(), root,
+                replay = arcgis_adaptive.capture_adaptive_layer(source._capture_spec(), root,
                                                          client=client)
                 self.assertFalse(client.is_closed)
             self.assertEqual(replay.roster, result.roster)
@@ -61,7 +61,7 @@ class GnisCaptureTests(unittest.TestCase):
             with httpx.Client(transport=httpx.MockTransport(respond)) as client:
                 with self.assertRaisesRegex(source.GnisHistoricalCulturalPoliticalPointsError,
                                             "source_id_population_drift:ids_after"):
-                    gnis_capture.capture_gnis_layer(source._capture_spec(), root,
+                    arcgis_adaptive.capture_adaptive_layer(source._capture_spec(), root,
                                                     client=client)
                 self.assertFalse(client.is_closed)
             self.assertTrue((root / "ids_after.receipt.json").exists())
@@ -77,7 +77,19 @@ class GnisCaptureTests(unittest.TestCase):
             root = Path(tmp)
             with self.assertRaisesRegex(source.GnisHistoricalCulturalPoliticalPointsError,
                                         "source_capture_failed:JSONDecodeError"):
-                gnis_capture.capture_gnis_layer(spec, root)
+                arcgis_adaptive.capture_adaptive_layer(spec, root)
             self.assertTrue(client.is_closed)
             self.assertTrue((root / "ids_seed.receipt.json").exists())
             self.assertFalse((root / "capture_state.json").exists())
+
+    def test_capture_budget_is_enforced_before_streamed_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spec = replace(source._capture_spec(), byte_budget=1,
+                           doc_attempts=1, doc_delay=0)
+            with httpx.Client(transport=make_responder(_fixture_rows())) as client:
+                with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
+                    arcgis_adaptive.capture_adaptive_layer(spec, root, client=client)
+            self.assertTrue((root / "service_before.receipt.json").exists())
+            self.assertLessEqual(sum(path.stat().st_size for path in root.iterdir()
+                                     if path.name.endswith((".body", ".wire"))), 1)

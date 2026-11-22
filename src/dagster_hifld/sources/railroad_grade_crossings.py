@@ -55,7 +55,6 @@ import hashlib
 import json
 import re
 import shutil
-from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -68,6 +67,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import capture_retention_budget
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -75,6 +75,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages
 from dagster_hifld.sources.arcgis_layer import (
     capture_with_retry,
     producer_error_doc as _producer_error_doc,
@@ -511,47 +512,14 @@ def _capture_with_budget(client: httpx.Client, url: str, capture_root: Path, nam
 
 
 
-def _capture_pages(client: httpx.Client, capture_root: Path, total: int,
-                   ledger: _CaptureLedger) -> dict[str, tuple[bytes, dict[str, object]]]:
-    """Capture the complete layer as ordered, adaptively bisected roster pages.
-
-    Pages start at PAGE_START_RECORDS. A page the producer keeps refusing with
-    an error document or keeps dropping mid-stream is bisected until the
-    producer serves both halves; the refused page's final body and receipts
-    stay on disk as evidence under its own name, charged against the shared
-    budget like every accepted page. A single-record page that still fails ends
-    the capture explicitly.
-    """
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
-    pages: deque[tuple[int, int]] = deque(
-        (offset, min(PAGE_START_RECORDS, total - offset))
-        for offset in range(0, total, PAGE_START_RECORDS)
+def _slice_capture_spec(ledger: _CaptureLedger) -> SliceCaptureSpec:
+    return SliceCaptureSpec(
+        byte_budget=MAX_CAPTURE_TOTAL_BYTES,
+        page_name=_page_name, page_url=_page_query,
+        capture=partial(capture_with_retry, capture=partial(_capture_with_budget, ledger=ledger), max_bytes=MAX_CAPTURE_BYTES), producer_error=_producer_error_doc,
+        page_attempts=PAGE_PROBE_ATTEMPTS, page_delay=PAGE_PROBE_BASE_DELAY_SECONDS,
+        doc_attempts=DOC_CAPTURE_ATTEMPTS, doc_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
     )
-    while pages:
-        offset, count = pages.popleft()
-        name = _page_name(offset, count)
-        try:
-            body, receipt = capture_with_retry(
-                client, _page_query(offset, count), capture_root, name, capture=partial(_capture_with_budget, ledger=ledger),
-                max_bytes=MAX_CAPTURE_BYTES,
-                attempts=PAGE_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                base_delay=PAGE_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
-        except ValueError as exc:
-            if count == 1 or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            middle = count // 2
-            pages.appendleft((offset + middle, count - middle))
-            pages.appendleft((offset, middle))
-            continue
-        if _producer_error_doc(body):
-            if count == 1:
-                raise ValueError("source_single_feature_unservable")
-            middle = count // 2
-            pages.appendleft((offset + middle, count - middle))
-            pages.appendleft((offset, middle))
-            continue
-        captures[name] = (body, receipt)
-    return captures
 
 
 _EVIDENCE_SUFFIXES = (".receipt.json", ".body", ".wire")
@@ -635,7 +603,7 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
     captures: dict[str, tuple[bytes, dict[str, object]]] = {}
     ledger = _CaptureLedger(MAX_CAPTURE_TOTAL_BYTES)
     try:
-        with httpx.Client(follow_redirects=False, timeout=180,
+        with capture_retention_budget(capture_root, MAX_CAPTURE_TOTAL_BYTES), httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/railroad-grade-crossings-draft"}) as client:
             seed_body, seed_receipt = capture_with_retry(
                 client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
@@ -658,7 +626,7 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
             layer_doc = json.loads(captures["layer_before"][0])
             if layer_doc.get("maxRecordCount") != 2000 or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
                 raise ValueError("source_record_limit_drift")
-            captures.update(_capture_pages(client, capture_root, seed_count, ledger))
+            captures.update(capture_offset_pages(_slice_capture_spec(ledger), client, capture_root, seed_count, page_size=PAGE_START_RECORDS))
             for name, url in _after_doc_urls():
                 body, receipt = capture_with_retry(client, url, capture_root, name,
                                                     max_bytes=MAX_CAPTURE_BYTES,

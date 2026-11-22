@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from functools import partial
+from dagster_hifld.sources import arcgis_adaptive
 from dagster_hifld.sources import arcgis_layer
 
 import hashlib
@@ -734,7 +735,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(arcgis_layer.time, "sleep"):
-                pages = source._capture_pages(None, root, 6, source._CaptureLedger(1 << 30))
+                pages = arcgis_adaptive.capture_offset_pages(source._slice_capture_spec(source._CaptureLedger(1 << 30)), None, root, 6, page_size=source.PAGE_START_RECORDS)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
             self.assertEqual(calls.count("page_000000_00004"), 1)
@@ -770,7 +771,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(arcgis_layer.time, "sleep"):
-                pages = source._capture_pages(None, root, 6, source._CaptureLedger(1 << 30))
+                pages = arcgis_adaptive.capture_offset_pages(source._slice_capture_spec(source._CaptureLedger(1 << 30)), None, root, 6, page_size=source.PAGE_START_RECORDS)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual(calls.count("page_000000_00004"), 1)
 
@@ -794,7 +795,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
                  patch.object(arcgis_layer.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
-                    source._capture_pages(None, root, 6, source._CaptureLedger(1 << 30))
+                    arcgis_adaptive.capture_offset_pages(source._slice_capture_spec(source._CaptureLedger(1 << 30)), None, root, 6, page_size=source.PAGE_START_RECORDS)
 
     def test_capture_requires_explicit_local_staging(self):
         from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -990,7 +991,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             ledger = source._CaptureLedger(budget)
             with patch.multiple(source, PAGE_START_RECORDS=2), patch.object(arcgis_layer.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_capture_exceeds_scratch_budget"):
-                    source._capture_pages(client, root, 6, ledger)
+                    arcgis_adaptive.capture_offset_pages(source._slice_capture_spec(ledger), client, root, 6, page_size=source.PAGE_START_RECORDS)
             self.assertEqual(ledger.retained, budget)
             self.assertLessEqual(sum(path.stat().st_size for path in root.iterdir()
                                      if path.name.endswith((".body", ".wire"))), budget)
@@ -1037,7 +1038,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             ledger = source._CaptureLedger(1 << 30)
             with patch.multiple(source, PAGE_START_RECORDS=4, PAGE_PROBE_ATTEMPTS=1,
                                 DOC_CAPTURE_ATTEMPTS=1), patch.object(arcgis_layer.time, "sleep"):
-                pages = source._capture_pages(client, root, 6, ledger)
+                pages = arcgis_adaptive.capture_offset_pages(source._slice_capture_spec(ledger), client, root, 6, page_size=source.PAGE_START_RECORDS)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             accepted = 2 * sum(len(bodies[name]) for name in sorted(pages))
             self.assertEqual(ledger.retained, 2 * len(error_body) + accepted)

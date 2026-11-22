@@ -377,7 +377,9 @@ def capture_fixed_keyset_layer(capture_root: Path, *, client, doc_client,
                                witness: Callable, validate_cursor: Callable,
                                page_url: Callable, read_capture: Callable,
                                metadata_urls: dict[str, str], closing_urls: dict[str, str],
-                               error_type: type[Exception], page_size: int):
+                               error_type: type[Exception], page_size: int,
+                               validate_before: Callable | None = None,
+                               page_count_error: str = "source_page_count_exceeds_reported_count"):
     """Capture the fixed-size keyset protocol with its original data-page identities."""
     state = load_state(capture_root)
     pages: list[dict[str, object]] = list(state.get("data_pages", []))
@@ -391,9 +393,12 @@ def capture_fixed_keyset_layer(capture_root: Path, *, client, doc_client,
         retained = capture_documents(
             active, docs_active, capture_root, metadata_urls,
             retained_or_fetch=retained_or_fetch, reject_error_response=reject_error_response)
-        count_before = json.loads(retained["count_before"][0]).get("count")
-        if type(count_before) is not int or count_before <= 0:
-            raise error_type("source_count_drift")
+        if validate_before is not None:
+            count_before = validate_before(retained)
+        else:
+            count_before = json.loads(retained["count_before"][0]).get("count")
+            if type(count_before) is not int or count_before <= 0:
+                raise error_type("source_count_drift")
         last_objectid = pages[-1]["last_objectid"] if pages else 0
         while not (capture_root / "page_tail.body").exists():
             name = f"page_{len(pages):06d}"
@@ -423,7 +428,7 @@ def capture_fixed_keyset_layer(capture_root: Path, *, client, doc_client,
                           "body_sha256": _sha(body)})
             save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
             if len(pages) > (count_before + page_size - 1) // page_size:
-                raise error_type("source_page_count_exceeds_reported_count")
+                raise error_type(page_count_error)
             if len(features) < page_size or more is False:
                 tail = capture_tail(
                     active, capture_root, page_url(last_objectid), last_objectid,

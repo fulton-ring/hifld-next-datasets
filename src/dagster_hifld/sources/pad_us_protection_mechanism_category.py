@@ -26,6 +26,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.sources.nhd_capture import capture_fixed_keyset_layer
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
@@ -737,6 +738,24 @@ def _doc_client() -> httpx.Client:
     )
 
 
+def _keyset_before(retained: dict) -> int:
+    count = json.loads(retained["count_before"][0]).get("count")
+    roster = _validate_ids_roster(
+        json.loads(retained["ids_before"][0]).get("objectIds"), "ids_before")
+    try:
+        validate_capture_witness(count, roster, count, roster)
+    except ValueError as exc:
+        raise PadUsProtectionError(str(exc)) from exc
+    return count
+
+
+def _keyset_cursor(features: list[dict], last_objectid: int) -> int:
+    for feature in features:
+        last_objectid, _vertices = _validate_feature(
+            feature, tuple(entry[0] for entry in NATIVE_FIELDS), last_objectid)
+    return last_objectid
+
+
 def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, client: httpx.Client | None = None,
                              doc_client: httpx.Client | None = None) -> dict[str, object]:
     """Retain every raw response for the pinned layer, resuming earlier progress.
@@ -745,102 +764,20 @@ def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, clie
     """
     capture_root = Path(capture_root).absolute()
     capture_root.mkdir(parents=True, exist_ok=True)
-    state = _load_state(capture_root)
-    pages: list[dict[str, object]] = list(state.get("data_pages", []))
-    tail: dict[str, object] | None = state.get("tail")
-    owner_client = client is None
-    owner_doc = doc_client is None
-    active = client or _default_client()
-    docs_active = doc_client or _doc_client()
-    first_captured_at = pages[0]["captured_at"] if pages else datetime.now(timezone.utc).isoformat()
-    try:
-        retained: dict[str, tuple[bytes, dict[str, object]]] = {}
-        for name in METADATA_NAMES:
-            url = _metadata_urls()[name]
-            active_client = docs_active if name == "service_doc" else active
-            retained[name] = _retained_or_fetch(active_client, capture_root, name, url)
-            if name != "service_doc":
-                _reject_error_response(capture_root, name, retained[name][0])
-        count_before = json.loads(retained["count_before"][0]).get("count")
-        roster_before = _validate_ids_roster(
-            json.loads(retained["ids_before"][0]).get("objectIds"), "ids_before")
-        try:
-            validate_capture_witness(count_before, roster_before, count_before, roster_before)
-        except ValueError as exc:
-            raise PadUsProtectionError(str(exc)) from exc
-        last_objectid = pages[-1]["last_objectid"] if pages else 0
-        while not (capture_root / "page_tail.body").exists():
-            name = f"page_{len(pages):06d}"
-            body, receipt = _retained_or_fetch(active, capture_root, name, _page_url(last_objectid))
-            page = json.loads(body)
-            if not isinstance(page, dict) or "error" in page:
-                _witness_error_response(capture_root, name)
-                raise PadUsProtectionError("source_page_error")
-            features = page.get("features")
-            if not isinstance(features, list):
-                raise PadUsProtectionError("source_page_missing_features")
-            if not features:
-                if last_objectid == 0:
-                    raise PadUsProtectionError("source_page_population_incomplete")
-                # An empty page in a data slot is the completeness witness: the same
-                # query URL defines page_tail, so retain its exact bytes under that name.
-                for suffix in ("body", "wire", "receipt.json"):
-                    (capture_root / f"page_tail.{suffix}").write_bytes(
-                        (capture_root / f"{name}.{suffix}").read_bytes())
-                break
-            for feature in features:
-                last_objectid, _vertices = _validate_feature(
-                    feature, tuple(entry[0] for entry in NATIVE_FIELDS), last_objectid)
-            more = page.get("exceededTransferLimit")
-            if len(features) < PAGE_SIZE and more is True:
-                raise PadUsProtectionError("source_page_transfer_truncated")
-            pages.append({"name": name, "last_objectid": last_objectid, "features": len(features),
-                          "exceeded_transfer_limit": more, "captured_at": receipt["observed_at"],
-                          "body_sha256": _sha(body)})
-            _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
-            if len(pages) > (count_before + PAGE_SIZE - 1) // PAGE_SIZE:
-                raise PadUsProtectionError("source_page_count_exceeds_reported_population")
-            if len(features) < PAGE_SIZE or more is False:
-                tail_body, tail_receipt = _retained_or_fetch(active, capture_root, "page_tail",
-                                                             _page_url(last_objectid))
-                _reject_error_response(capture_root, "page_tail", tail_body)
-                if json.loads(tail_body).get("features") != []:
-                    raise PadUsProtectionError("source_tail_page_not_empty")
-                tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                        "captured_at": tail_receipt["observed_at"], "body_sha256": _sha(tail_body)}
-                _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
-                break
-        if tail is None and (capture_root / "page_tail.body").exists():
-            tail_receipt = json.loads((capture_root / "page_tail.receipt.json").read_bytes())
-            tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                    "captured_at": tail_receipt["observed_at"]}
-        if tail is None or not (capture_root / "page_tail.body").exists():
-            raise PadUsProtectionError("source_tail_page_not_empty")
-        for name, url in (("layer_after", LAYER_URL + "?f=pjson"),
-                          ("service_after", SERVICE_URL + "?f=pjson"),
-                          ("count_after", _count_url()),
-                          ("ids_after", _ids_url())):
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            _reject_error_response(capture_root, name, body)
-            retained[name] = (body, _read_capture(capture_root, name)[1])
-        if json.loads(retained["count_after"][0]).get("count") != count_before:
-            raise PadUsProtectionError("source_metadata_or_count_changed_during_capture")
-    except PadUsProtectionError:
-        if owner_client:
-            active.close()
-        if owner_doc:
-            docs_active.close()
-        raise
-    except Exception as exc:
-        if owner_client:
-            active.close()
-        if owner_doc:
-            docs_active.close()
-        raise PadUsProtectionError("source_capture_failed:" + type(exc).__name__) from exc
-    if owner_client:
-        active.close()
-    if owner_doc:
-        docs_active.close()
+    pages, tail, first_captured_at = capture_fixed_keyset_layer(
+        capture_root, client=client, doc_client=doc_client,
+        load_state=_load_state, save_state=_save_state,
+        default_client=_default_client, document_client=_doc_client,
+        retained_or_fetch=_retained_or_fetch, reject_error_response=_reject_error_response,
+        witness=_witness_error_response, validate_cursor=_keyset_cursor,
+        page_url=_page_url, read_capture=_read_capture,
+        metadata_urls={name: _metadata_urls()[name] for name in METADATA_NAMES},
+        closing_urls={"layer_after": LAYER_URL + "?f=pjson",
+                      "service_after": SERVICE_URL + "?f=pjson",
+                      "count_after": _count_url(), "ids_after": _ids_url()},
+        error_type=PadUsProtectionError, page_size=PAGE_SIZE,
+        validate_before=_keyset_before,
+        page_count_error="source_page_count_exceeds_reported_population")
 
     last_captured_at = str(tail["captured_at"])
     # Construction happens once at seal time (capture_pad_us_protection_mechanism_category);

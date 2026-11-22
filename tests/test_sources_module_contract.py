@@ -19,7 +19,7 @@ SHARED_SOURCES = frozenset({
     "census_latest", "census_tiger_common",
     "eia_860m_common", "electric_retail_service_territories_common",
     "epa_capture", "epa_frs_national_archive", "epa_icis_wastewater_common", "epa_regions_common",
-    "esri_common", "esri_geometry", "gnis_capture",
+    "esri_common", "esri_geometry", "arcgis_adaptive",
     "national_inventory_of_dams_common", "nces_edge_common", "usace_ienc_common",
     "wbd_hu_family", "nhd_capture", "nhd_transport",
 })

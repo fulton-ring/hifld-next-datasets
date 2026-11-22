@@ -10,13 +10,14 @@ GDAL assembles source polygons without repair. All approvals stay false.
 """
 from __future__ import annotations
 
+from functools import partial
+
 import hashlib
 import json
 import re
 import shutil
 import stat
 from array import array
-from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -29,6 +30,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import capture_retention_budget
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.esri_pbf import decode_feature_collection_pbf
@@ -36,6 +38,9 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources import arcgis_layer as shared
+from dagster_hifld.sources.arcgis_adaptive import (
+    SliceCaptureSpec, capture_checkpoint_segments, plan_verified_segments,
+)
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.arcgis_layer import capture_with_retry
 from dagster_hifld.sources.capture_common import (
@@ -442,150 +447,59 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
 _producer_error_doc = shared.producer_error_doc
 
 
-def _plan_segment_gaps(capture_root: Path, roster: list[int],
-                       state: dict[str, object]) -> list[tuple[int, int]]:
-    """Plan the roster gaps that still need a capture this session.
-
-    A retained segment counts as accepted only when its receipt and body
-    verify, its body decodes as a complete PBF page, and it already sits in
-    the capture state; anything else is witnessed aside and refetched.
-    """
-    accepted_entries = {entry.get("name"): entry for entry in state["segments"]
-                        if isinstance(entry, dict)}
-    for path in (*capture_root.glob("page_*.wire"),
-                 *capture_root.glob("page_*.receipt.json")):
-        name = path.name.removesuffix(".wire").removesuffix(".receipt.json")
-        if _SEGMENT_NAME_PATTERN.fullmatch(name) and not (capture_root / f"{name}.body").exists():
-            _witness_aside(capture_root, name)
-    retained: list[tuple[int, int]] = []
-    for path in sorted(capture_root.glob("page_*.body")):
-        name = path.name.removesuffix(".body")
-        match = _SEGMENT_NAME_PATTERN.fullmatch(name)
-        if match is None:
-            continue
-        try:
-            body, _receipt = _read_capture(capture_root, name)
-        except PadUsManagerNameAdmissionError:
-            raise
-        except PadUsManagerNameError:
-            _witness_aside(capture_root, name)
-            continue
-        entry = accepted_entries.get(name)
-        if (entry is None or entry.get("body_sha256") != _receipt["sha256"]
-                or entry.get("captured_at") != _receipt["observed_at"]):
-            _witness_aside(capture_root, name)
-            continue
-        try:
-            page = decode_feature_collection_pbf(body, allow_transfer_limit=True)
-        except ValueError:
-            _witness_aside(capture_root, name)
-            continue
-        offset, count = _parse_segment_name(name)
-        if offset + count > len(roster) or \
-                [row.get("attributes", {}).get("OBJECTID") for row in page["features"]] \
-                != roster[offset:offset + count]:
-            _witness_aside(capture_root, name)
-            continue
-        retained.append((offset, count))
-    gaps: list[tuple[int, int]] = []
-    covered = bytearray(len(roster))
-    accepted_segments = []
-    for offset, count in sorted(retained):
-        if offset < 0 or count < 1 or offset + count > len(roster) \
-                or any(covered[offset:offset + count]):
-            _witness_aside(capture_root, _segment_name(offset, count))
-            continue
-        covered[offset:offset + count] = b"\x01" * count
-        name = _segment_name(offset, count)
-        receipt = _load_receipt(capture_root, name)
-        accepted_segments.append({"name": name, "offset": offset, "count": count,
-                                  "features": count, "captured_at": receipt["observed_at"],
-                                  "body_sha256": receipt["sha256"]})
-    state["segments"] = accepted_segments
-    _save_state(capture_root, state)
-    cursor = 0
-    while cursor < len(roster):
-        if covered[cursor]:
-            cursor += 1
-            continue
-        start = cursor
-        while cursor < len(roster) and not covered[cursor]:
-            cursor += 1
-        chunk_start = start
-        while chunk_start < cursor:
-            count_chunk = min(SEGMENT_START_RECORDS, cursor - chunk_start)
-            gaps.append((chunk_start, count_chunk))
-            chunk_start += count_chunk
-    return gaps
+def _segment_page_ids(body: bytes) -> list[int]:
+    page = decode_feature_collection_pbf(body, allow_transfer_limit=True)
+    return [row.get("attributes", {}).get("OBJECTID") for row in page["features"]]
 
 
-def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
-                    state: dict[str, object]) -> None:
-    """Capture the complete layer as adaptively bisected roster segments.
+def _segment_capture_plan():
+    return partial(plan_verified_segments,
+        read_capture=_read_capture, load_receipt=_load_receipt,
+        witness=_witness_aside, name_pattern=_SEGMENT_NAME_PATTERN,
+        parse_name=_parse_segment_name, segment_name=_segment_name,
+        page_ids=_segment_page_ids, error_type=PadUsManagerNameError,
+        admission_error=PadUsManagerNameAdmissionError,
+        save_state=_save_state, page_size=SEGMENT_START_RECORDS)
 
-    Segments start at SEGMENT_START_RECORDS. A segment the producer keeps
-    refusing is bisected until the producer serves both halves, whether the
-    refusal is a persistent error document or a persistent incomplete transport
-    capture. A single-record segment that still fails ends the capture
-    explicitly.
-    """
-    todo: deque[tuple[int, int]] = deque(_plan_segment_gaps(capture_root, roster, state))
-    segments = state["segments"]
-    accepted = {entry["name"] for entry in segments}
-    while todo:
-        offset, count = todo.popleft()
-        name = _segment_name(offset, count)
-        if name in accepted and (capture_root / f"{name}.body").exists():
-            continue
-        try:
-            body, receipt = capture_with_retry(client, _segment_query(offset, count), capture_root, name,
-                attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS,
-                max_bytes=MAX_BODY_BYTES,
-                max_total_bytes=MAX_CAPTURE_BYTES,
-                budget_error=PadUsManagerNameError,
-                reserve_all_attempts=True)
-        except ValueError as exc:
-            if count > 1 and str(exc).startswith("incomplete_source_capture:"):
-                middle = count // 2
-                todo.appendleft((offset + middle, count - middle))
-                todo.appendleft((offset, middle))
-                continue
-            raise PadUsManagerNameError(
-                "source_capture_failed:" + type(exc).__name__) from exc
-        if _producer_error_doc(body):
-            _witness_aside(capture_root, name)
-            if count == 1:
-                raise PadUsManagerNameError("source_single_feature_unservable")
-            middle = count // 2
-            todo.appendleft((offset + middle, count - middle))
-            todo.appendleft((offset, middle))
-            continue
-        try:
-            page = decode_feature_collection_pbf(body, allow_transfer_limit=True)
-        except ValueError as exc:
-            _witness_aside(capture_root, name)
-            raise PadUsManagerNameError("source_page_decode_failed:" + name) from exc
-        rows = page.get("features")
-        if not isinstance(rows, list) or len(rows) != count:
-            _witness_aside(capture_root, name)
-            raise PadUsManagerNameError("source_page_row_count_incomplete:" + name)
-        expected = roster[offset:offset + count]
-        actual = [row.get("attributes", {}).get("OBJECTID") for row in rows
-                  if isinstance(row, dict)]
-        if actual != expected:
-            _witness_aside(capture_root, name)
-            raise PadUsManagerNameError("source_page_id_slice_incomplete_or_reordered")
-        if name not in accepted:
-            segments.append({"name": name, "offset": offset, "count": count,
-                             "features": len(rows), "captured_at": receipt["observed_at"],
-                             "body_sha256": _sha(body)})
-            accepted.add(name)
-            _save_state(capture_root, state)
+
+def _segment_capture_spec() -> SliceCaptureSpec:
+    return SliceCaptureSpec(
+        byte_budget=MAX_CAPTURE_BYTES,
+        page_name=_segment_name, page_url=_segment_query,
+        capture=partial(capture_with_retry, max_bytes=MAX_BODY_BYTES,
+            max_total_bytes=MAX_CAPTURE_BYTES, budget_error=PadUsManagerNameError,
+            reserve_all_attempts=True),
+        producer_error=_producer_error_doc, error=PadUsManagerNameError,
+        wrap_capture_errors=True,
+        page_attempts=SEGMENT_PROBE_ATTEMPTS, page_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS,
+        doc_attempts=DOC_CAPTURE_ATTEMPTS, doc_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+
+
+def _validate_segment_page(body: bytes, name: str, count: int, expected: list[int], *,
+                           capture_root: Path) -> None:
+    try:
+        page = decode_feature_collection_pbf(body, allow_transfer_limit=True)
+    except ValueError as exc:
+        _witness_aside(capture_root, name)
+        raise PadUsManagerNameError("source_page_decode_failed:" + name) from exc
+    rows = page.get("features")
+    if not isinstance(rows, list) or len(rows) != count:
+        _witness_aside(capture_root, name)
+        raise PadUsManagerNameError("source_page_row_count_incomplete:" + name)
+    actual = [row.get("attributes", {}).get("OBJECTID") for row in rows
+              if isinstance(row, dict)]
+    if actual != expected:
+        _witness_aside(capture_root, name)
+        raise PadUsManagerNameError("source_page_id_slice_incomplete_or_reordered")
 
 
 def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client | None = None,
+                                    doc_client: httpx.Client | None = None) -> dict[str, object]:
+    with capture_retention_budget(capture_root, MAX_CAPTURE_BYTES):
+        return _fetch_manager_pages(capture_root, client=client, doc_client=doc_client)
+
+
+def _fetch_manager_pages(capture_root: Path, *, client: httpx.Client | None = None,
                                     doc_client: httpx.Client | None = None) \
         -> dict[str, object]:
     """Retain every raw response for the pinned layer, resuming earlier progress.
@@ -649,7 +563,10 @@ def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client 
                                      count_before.get("count"), roster)
         except ValueError as exc:
             raise PadUsManagerNameError(str(exc)) from exc
-        _fetch_segments(active, capture_root, roster, state)
+        capture_checkpoint_segments(_segment_capture_spec(), active, capture_root, roster, state,
+            plan_gaps=_segment_capture_plan(),
+            validate_page=partial(_validate_segment_page, capture_root=capture_root),
+            witness=_witness_aside, save_state=_save_state)
         segments = list(state["segments"])
         for name in AFTER_NAMES:
             url = {"layer_after": LAYER_URL + "?f=pjson",

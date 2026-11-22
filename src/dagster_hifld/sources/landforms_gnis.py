@@ -70,7 +70,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.gnis_capture import GnisCaptureSpec, capture_gnis_layer
+from dagster_hifld.sources.arcgis_adaptive import AdaptiveCaptureSpec, capture_adaptive_layer
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     content_derived_version,
@@ -540,8 +540,9 @@ def _page_matches_slice(body: bytes, offset: int, count: int,
     return actual == expected
 
 
-def _capture_spec() -> GnisCaptureSpec:
-    return GnisCaptureSpec(
+def _capture_spec() -> AdaptiveCaptureSpec:
+    return AdaptiveCaptureSpec(
+        byte_budget=MAX_CAPTURE_BYTES,
         service_url=SERVICE_URL, layer_url=LAYER_URL,
         count_url=_count_url(), ids_url=_ids_url(),
         metadata_names=tuple(METADATA_NAMES), after_names=tuple(AFTER_NAMES),
@@ -567,7 +568,7 @@ def fetch_landforms_gnis_pages(
     Pure-local when the capture directory already holds every required page
     and document.
     """
-    acquisition = capture_gnis_layer(_capture_spec(), capture_root, client=client)
+    acquisition = capture_adaptive_layer(_capture_spec(), capture_root, client=client)
     capture_root = acquisition.root
     roster, pages = acquisition.roster, acquisition.pages
     first_captured_at = acquisition.first_captured_at
