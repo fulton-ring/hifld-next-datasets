@@ -95,9 +95,16 @@ from dagster_hifld.sources.arcgis_layer import (
 )
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    candidate_prefix,
+    capture_get,
+    content_derived_version,
+    processing_identity,
+    quarantine_incomplete_capture,
+    verify_cached_candidate,
     write_immutable,
+    reuse_sealed_candidate,
+    stage_candidate_objects,
+    upload_refused_candidate_evidence,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -1356,11 +1363,15 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
     }
-    if storage.object_snapshot(state_key) is not None:
+    def verify_existing():
         parquet_body = Path(extracted["parquet_path"]).read_bytes()
         result = _verify_sealed_candidate(storage, prefix, state_key, version,
                                           identity, audit, parquet_body)
         return {**result, "capture_directory": str(capture_root)}
+
+    reused = reuse_sealed_candidate(storage, state_key, verify_existing)
+    if reused is not None:
+        return reused
     parquet_body = Path(extracted["parquet_path"]).read_bytes()
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects = {parquet_name: {"bytes": len(parquet_body),
@@ -1485,40 +1496,14 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     }
     # Stream every retained capture to storage one page at a time; the seal never
     # holds more than one page body/wire pair plus the small receipt maps.
-    descriptors: dict[str, dict[str, object]] = {}
-    for relative, body in metadata_outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-        descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted(receipts):
-        body, receipt = _read_capture(capture_root, name)
-        wire = (capture_root / f"{name}.wire").read_bytes()
-        for suffix, blob in (("body", body), ("wire", wire),
-                             ("receipt.json", _canonical(receipt) + b"\n")):
-            relative = f"raw/{name}.{suffix}"
-            write_immutable(storage, f"{prefix}/{relative}", blob)
-            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
-    evidence = {path.name.removesuffix(suffix) for path in capture_root.iterdir()
-                for suffix in (".body", ".wire", ".receipt.json") if path.name.endswith(suffix)} - set(receipts)
-    for name in sorted(evidence):
-        paths = [capture_root / f"{name}.{suffix}" for suffix in ("body", "wire", "receipt.json")]
-        before = [path.stat() for path in paths]
-        _validate_retained_transport(capture_root, names=(name,))
-        blobs = [path.read_bytes() for path in paths]
-        after = [path.stat() for path in paths]
-        if any((a.st_dev, a.st_ino, a.st_size, a.st_mtime_ns, a.st_ctime_ns)
-               != (b.st_dev, b.st_ino, b.st_size, b.st_mtime_ns, b.st_ctime_ns)
-               for a, b in zip(before, after)):
-            raise UsLandslideRegionsError("retained_capture_changed_during_admission:" + name)
-        for suffix, blob in zip(("body", "wire", "receipt.json"), blobs):
-            relative = f"evidence/refused/{name}.{suffix}"
-            write_immutable(storage, f"{prefix}/{relative}", blob)
-            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
-    fingerprint = _sha(_canonical(identity))
-    payload = {"processing_identity": identity,
-               "source_record_sha256": audit["source_record_sha256"],
-               "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": receipts, "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    stage_candidate_objects(
+        storage, prefix, state_key, version, identity, metadata_outputs,
+        capture_root, receipts, _read_capture,
+        retain_extra=lambda descriptors: upload_refused_candidate_evidence(
+            storage, prefix, capture_root, receipts, descriptors,
+            _validate_retained_transport, UsLandslideRegionsError),
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'])
     # identity= selects the scheme-aware validation branch: a packaged runtime
     # (/app without .git) carries a packaged-sha256: commit that the Git-only
     # branch would reject as construction_invalid_commit after a valid seal.

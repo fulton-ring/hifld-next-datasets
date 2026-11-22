@@ -39,10 +39,15 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources import arcgis_layer as shared
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, content_derived_version, processing_identity,
+    candidate_prefix,
+    content_derived_version,
+    processing_identity,
     validate_capture_request_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    quarantine_incomplete_capture,
+    verify_cached_candidate,
     write_immutable,
+    reuse_sealed_candidate,
+    stage_candidate_objects,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -1104,12 +1109,17 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                       extracted["schema_sha"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
+
+    def verify_existing():
         parquet_body = Path(extracted["parquet_path"]).read_bytes()
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             extracted,
             parquet_body)
+
+    reused = reuse_sealed_candidate(storage, state_key, verify_existing)
+    if reused is not None:
+        return reused
     audit = {
         "source_feature_count": extracted["feature_count"], "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
@@ -1288,24 +1298,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "metadata/candidate_ready.json": _canonical(ready) + b"\n",
         "metadata/segment_pages_index.json": segment_index_body,
     }
-    descriptors: dict[str, dict[str, object]] = {}
-    for relative, body in metadata_outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-        descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted((*METADATA_NAMES, *AFTER_NAMES, *segment_names)):
-        body, receipt = _read_capture(capture_root, name)
-        wire = (capture_root / f"{name}.wire").read_bytes()
-        for suffix, blob in (("body", body), ("wire", wire),
-                             ("receipt.json", _canonical(receipt) + b"\n")):
-            relative = f"raw/{name}.{suffix}"
-            write_immutable(storage, f"{prefix}/{relative}", blob)
-            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
-    fingerprint = _sha(_canonical(identity))
-    payload = {"processing_identity": identity,
-               "source_record_sha256": audit["source_record_sha256"],
-               "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": doc_receipts, "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    stage_candidate_objects(
+        storage, prefix, state_key, version, identity, metadata_outputs,
+        capture_root, doc_receipts, _read_capture, capture_names=(*METADATA_NAMES, *AFTER_NAMES, *segment_names),
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'])
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

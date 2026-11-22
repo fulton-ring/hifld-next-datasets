@@ -79,9 +79,16 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_layer import save_state as _save_state
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    candidate_prefix,
+    capture_get,
+    content_derived_version,
+    processing_identity,
+    quarantine_incomplete_capture,
+    verify_cached_candidate,
     write_immutable,
+    reuse_sealed_candidate,
+    stage_candidate_objects,
+    write_immutable_file as _write_immutable_file,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import to_wkb
@@ -1210,15 +1217,6 @@ def _parquet_descriptor(path: Path) -> dict[str, object]:
     return {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
 
 
-def _write_immutable_file(storage: StagingStorageResource, key: str, source: Path,
-                          descriptor: Mapping[str, object]) -> None:
-    """write_immutable for a local file too large to buffer as bytes."""
-    snapshot = storage.object_snapshot(key)
-    if snapshot is None:
-        storage.upload_local_file(source, key)
-        return
-    if snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
-        raise ValueError("immutable_staged_object_changed:" + key)
 
 
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
@@ -1232,7 +1230,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     parquet_path = Path(extracted["parquet_path"])
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
     parquet_descriptor = _parquet_descriptor(parquet_path)
-    if storage.object_snapshot(state_key) is not None:
+    def verify_existing():
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
@@ -1240,6 +1238,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "feature_count": extracted["feature_count"],
              "source_null_geometry_count": extracted["null_geometry_count"]},
             parquet_descriptor)
+
+    reused = reuse_sealed_candidate(storage, state_key, verify_existing)
+    if reused is not None:
+        return reused
     refused_oids = sorted(int(key) for key in
                           dict(_load_state(capture_root).get("refused", {})))
     null_geometry_count = int(extracted["null_geometry_count"])
@@ -1449,23 +1451,12 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     descriptors: dict[str, dict[str, object]] = {}
     _write_immutable_file(storage, f"{prefix}/{parquet_name}", parquet_path, parquet_descriptor)
     descriptors[parquet_name] = dict(parquet_descriptor)
-    for relative, body in metadata_outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-        descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted(receipts):
-        body, receipt = _read_capture(capture_root, name)
-        wire = (capture_root / f"{name}.wire").read_bytes()
-        for suffix, blob in (("body", body), ("wire", wire),
-                             ("receipt.json", _canonical(receipt) + b"\n")):
-            relative = f"raw/{name}.{suffix}"
-            write_immutable(storage, f"{prefix}/{relative}", blob)
-            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
-    fingerprint = _sha(_canonical(identity))
-    payload = {"processing_identity": identity,
-               "source_record_sha256": extracted["record_sha"],
-               "source_schema_sha256": extracted["schema_sha"],
-               "capture_receipts": receipts, "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    stage_candidate_objects(
+        storage, prefix, state_key, version, identity, metadata_outputs,
+        capture_root, receipts, _read_capture,
+        descriptors=descriptors,
+        source_record_sha256=extracted['record_sha'],
+        source_schema_sha256=extracted['schema_sha'])
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

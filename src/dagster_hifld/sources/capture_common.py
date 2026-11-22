@@ -14,7 +14,7 @@ import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable, Iterable, Mapping
 from uuid import uuid4
 
 import httpx
@@ -324,6 +324,136 @@ def seal_ready_candidate(storage: StagingStorageResource, state_key: str, versio
     """CAS-seal the READY candidate using the shared construction registry."""
     seal_first_construction(storage, state_key, version, fingerprint,
                             canonical_construction_bundle(version, fingerprint, dict(payload)))
+
+
+def reuse_sealed_candidate(storage: StagingStorageResource, state_key: str,
+                           verify: Callable[[], dict[str, object]]) -> dict[str, object] | None:
+    """Dispatch reuse only after a seal exists; the adapter verifies its source contract.
+
+    A failed verification must propagate. Never fall through to reconstruction
+    of a candidate whose immutable construction state already exists.
+    """
+    if storage.object_snapshot(state_key) is not None:
+        return verify()
+    return None
+
+
+def upload_candidate_objects(
+    storage: StagingStorageResource, prefix: str, outputs: Mapping[str, bytes],
+    capture_root: Path, capture_names: Iterable[str],
+    read_capture: Callable[[Path, str], tuple[bytes, Mapping[str, object]]],
+    *, descriptors: Mapping[str, Mapping[str, object]] | None = None,
+) -> dict[str, dict[str, object]]:
+    """Upload prepared outputs and validated raw evidence one capture at a time.
+
+    The reader preserves each family's receipt/checkpoint validation. Existing
+    descriptors represent large files already streamed to staging.
+    """
+    result = {name: dict(value) for name, value in (descriptors or {}).items()}
+
+    def retain(relative: str, blob: bytes) -> None:
+        write_immutable(storage, f"{prefix}/{relative}", blob)
+        result[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
+
+    for relative, body in outputs.items():
+        retain(relative, body)
+    for name in sorted(capture_names):
+        body, receipt = read_capture(capture_root, name)
+        wire = (capture_root / f"{name}.wire").read_bytes()
+        for suffix, blob in (("body", body), ("wire", wire),
+                             ("receipt.json", _canonical(dict(receipt)) + b"\n")):
+            retain(f"raw/{name}.{suffix}", blob)
+    return result
+
+
+def write_immutable_file(storage: StagingStorageResource, key: str, source: Path,
+                          descriptor: Mapping[str, object]) -> None:
+    """write_immutable for a local file too large to buffer as bytes."""
+    snapshot = storage.object_snapshot(key)
+    if snapshot is None:
+        storage.upload_local_file(source, key)
+        return
+    if snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
+        raise ValueError("immutable_staged_object_changed:" + key)
+
+
+def upload_candidate_file(
+    storage: StagingStorageResource, key: str, path: Path,
+    readback_descriptor: Callable[[StagingStorageResource, str], Mapping[str, object]],
+    error_type: type[ValueError],
+) -> dict[str, object]:
+    """Stream a new candidate file and verify its stored bytes before sealing."""
+    storage.upload_local_file(path, key)
+    expected = {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
+    actual = dict(readback_descriptor(storage, key))
+    if actual != expected:
+        raise error_type("candidate_parquet_readback_mismatch")
+    return actual
+
+
+def upload_refused_candidate_evidence(
+    storage: StagingStorageResource, prefix: str, capture_root: Path,
+    receipts: Mapping[str, object], descriptors: dict[str, dict[str, object]],
+    validate_transport: Callable, error_type: type[ValueError],
+) -> None:
+    """Retain refused attempts with transport validation and mutation detection."""
+    evidence = {path.name.removesuffix(suffix) for path in capture_root.iterdir()
+                for suffix in (".body", ".wire", ".receipt.json") if path.name.endswith(suffix)} - set(receipts)
+    for name in sorted(evidence):
+        paths = [capture_root / f"{name}.{suffix}" for suffix in ("body", "wire", "receipt.json")]
+        before = [path.stat() for path in paths]
+        validate_transport(capture_root, names=(name,))
+        blobs = [path.read_bytes() for path in paths]
+        after = [path.stat() for path in paths]
+        if any((a.st_dev, a.st_ino, a.st_size, a.st_mtime_ns, a.st_ctime_ns)
+               != (b.st_dev, b.st_ino, b.st_size, b.st_mtime_ns, b.st_ctime_ns)
+               for a, b in zip(before, after)):
+            raise error_type("retained_capture_changed_during_admission:" + name)
+        for suffix, blob in zip(("body", "wire", "receipt.json"), blobs):
+            relative = f"evidence/refused/{name}.{suffix}"
+            write_immutable(storage, f"{prefix}/{relative}", blob)
+            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
+
+
+def seal_candidate_objects(
+    storage: StagingStorageResource, state_key: str, version: str,
+    identity: Mapping[str, object], receipts: Mapping[str, object],
+    descriptors: Mapping[str, Mapping[str, object]], *,
+    source_record_sha256: str, source_schema_sha256: str,
+) -> None:
+    """CAS-seal the exact uploaded inventory and checkpoint receipt map."""
+    payload = {"processing_identity": identity,
+               "source_record_sha256": source_record_sha256,
+               "source_schema_sha256": source_schema_sha256,
+               "capture_receipts": receipts, "objects": descriptors}
+    seal_ready_candidate(storage, state_key, version, _sha(_canonical(identity)), payload)
+
+
+def stage_candidate_objects(
+    storage: StagingStorageResource, prefix: str, state_key: str, version: str,
+    identity: Mapping[str, object], outputs: Mapping[str, bytes],
+    capture_root: Path, receipts: Mapping[str, object], read_capture: Callable,
+    *, source_record_sha256: str, source_schema_sha256: str,
+    capture_names: Iterable[str] | None = None,
+    descriptors: Mapping[str, Mapping[str, object]] | None = None,
+    retain_extra: Callable[[dict[str, dict[str, object]]], None] | None = None,
+) -> None:
+    """Own the upload-to-seal transition for a prepared native candidate.
+
+    Upload failures leave the candidate unsealed. Source-specific preparation
+    and reuse verification happen before entry; this boundary records exactly
+    the accepted outputs, retained responses and optional failed evidence.
+    """
+    inventory = upload_candidate_objects(
+        storage, prefix, outputs, capture_root,
+        receipts if capture_names is None else capture_names, read_capture,
+        descriptors=descriptors)
+    if retain_extra is not None:
+        retain_extra(inventory)
+    seal_candidate_objects(
+        storage, state_key, version, identity, receipts, inventory,
+        source_record_sha256=source_record_sha256,
+        source_schema_sha256=source_schema_sha256)
 
 
 STAGED_RELEASE_DERIVATIVE_NAMES = frozenset({"collection.json", "README.md", "AGENTS.md"})
