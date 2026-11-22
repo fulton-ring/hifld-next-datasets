@@ -35,7 +35,8 @@ from dagster_hifld.sources.electric_retail_service_territories_common import (
     _arrow_type, _canonical, _field_signature, _safe_local_storage,
 )
 from dagster_hifld.sources.capture_common import capture_get, processing_identity, write_immutable
-from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, ExactIdCapturePlan
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 
 IOWA = 'iowa-electric-service-boundaries'
 WISCONSIN = 'wisconsin-psc-electric-service-territories'
@@ -128,7 +129,7 @@ def validate_contract(file_slug, info, table):
 
 
 def acquire_iowa(directory, replay):
-    captures = {}
+    captures = RetainedCaptureView(directory)
     def get(name, url):
         body, receipt = capture(url, directory, name, replay=replay)
         captures[name] = (body, receipt)
@@ -153,21 +154,26 @@ def acquire_iowa(directory, replay):
                 or any(type(i) is not int for i in ids) or len(set(ids)) != count):
             raise ValueError('iowa_population_incomplete')
         ids = sorted(ids)
-        features = []
-        for offset in range(0, count, 100):
-            wanted = ids[offset:offset + 100]
-            page = (yield (f'page_{offset:05}', query(objectIds=','.join(map(str, wanted)), outFields='*', returnGeometry='true', returnZ='true', returnM='false', returnTrueCurves='true', orderByFields='OBJECTID ASC'),))
+        def page_request(offset, wanted):
+            return (f'page_{offset:05}', query(objectIds=','.join(map(str, wanted)), outFields='*', returnGeometry='true', returnZ='true', returnM='false', returnTrueCurves='true', orderByFields='OBJECTID ASC'))
+        def validate_page(offset, wanted, page):
             if (page.get('exceededTransferLimit') is True or page.get('geometryType') != 'esriGeometryPolygon'
                     or page.get('spatialReference', {}).get('wkid') != 102004
                     or _field_signature(page.get('fields')) != fields
                     or [f.get('attributes', {}).get('OBJECTID') for f in page.get('features', [])] != wanted):
                 raise ValueError('iowa_page_incomplete_or_drift')
-            features.extend(page['features'])
-        if ((yield ('count_after', query(where='1=1', returnCountOnly='true'),))['count'] != count
-                or sorted((yield ('ids_after', query(where='1=1', returnIdsOnly='true'),))['objectIds']) != ids
-                or (yield ('layer_after', LAYER + '?f=pjson',)) != layer):
+            return page['features']
+        features, _pages, closed = (yield ExactIdCapturePlan(ids, 100,
+            page_request=page_request, validate_page=validate_page,
+            read_page=lambda offset: captures[f'page_{offset:05}'][0],
+            closing_requests=(('count_after', query(where='1=1', returnCountOnly='true')),
+                ('ids_after', query(where='1=1', returnIdsOnly='true')),
+                ('layer_after', LAYER + '?f=pjson'))))
+        if (closed['count_after']['count'] != count
+                or sorted(closed['ids_after']['objectIds']) != ids
+                or closed['layer_after'] != layer):
             raise ValueError('iowa_changed_during_capture')
-        table = iowa_table(features, fields)
+        table = iowa_table(list(features), fields)
         validate_contract('electrical-service-boundaries', {'crs': 'ESRI:102004', 'geometry_type': 'Polygon'}, table)
         return {'electrical-service-boundaries': (table, 'ESRI:102004', layer['editingInfo'].get('dataLastEditDate'))}, captures
     return capture_request_steps(request_steps(), get)

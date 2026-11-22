@@ -29,7 +29,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
-from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, ExactIdCapturePlan
 
 SLUG = "state-emergency-operations-centers-eoc"
 SERVICE = "https://gis.fema.gov/arcgis/rest/services/FEMA/STATE_EOC"
@@ -443,7 +443,7 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
     captures: dict[str, tuple[bytes, dict]] = RetainedCaptureView(run_capture)
     def get(client, name, url):
         body, receipt = _capture(client, url, run_capture, name)
-        captures[name] = (body, receipt)
+        captures[name] = (run_capture / f"{name}.decoded", receipt)
         return body
 
     with httpx.Client(timeout=45, follow_redirects=True) as client:
@@ -453,21 +453,26 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
             ids_field_before, ids_before = _object_ids((yield ('ids_before', _query_url(where='1=1', returnIdsOnly='true'),)))
             if type(count_before) is not int or count_before > MAX_COUNT or ids_field_before != layer_before.get("objectIdField"):
                 raise EOCSourceError("initial_count_or_id_probe_invalid")
-            features = []
             batch_size = min(500, max(1, int(layer_before.get("maxRecordCount", 500))))
-            for index in range(0, len(ids_before), batch_size):
-                page_ids = ids_before[index:index + batch_size]
-                url = _query_url(objectIds=",".join(map(str, page_ids)), outFields="*", returnGeometry="true", returnZ="true", returnM="true", orderByFields=layer_before["objectIdField"])
-                page = _strict_json((yield (f'features_{index:05d}', url,)))
+            def page_request(index, page_ids):
+                return (f'features_{index:05d}', _query_url(objectIds=",".join(map(str, page_ids)), outFields="*", returnGeometry="true", returnZ="true", returnM="true", orderByFields=layer_before["objectIdField"]))
+            def validate_page(index, page_ids, body):
+                page = _strict_json(body)
                 if page.get("exceededTransferLimit") is True:
                     raise EOCSourceError("source_page_exceeded_transfer_limit")
                 if not _is_wgs84(page.get("spatialReference")):
                     raise EOCSourceError("source_page_coordinate_reference_changed")
                 _validate_query_page_fields(page.get("fields"), layer_before.get("fields"))
-                features.extend(page.get("features", []))
-            layer_after = _strict_json((yield ('layer_after', BASE + '?f=pjson',)))
-            count_after = _strict_json((yield ('count_after', _query_url(where='1=1', returnCountOnly='true'),))).get("count")
-            ids_field_after, ids_after = _object_ids((yield ('ids_after', _query_url(where='1=1', returnIdsOnly='true'),)))
+                return page.get("features", [])
+            features, _pages, closed = (yield ExactIdCapturePlan(ids_before, batch_size,
+                page_request=page_request, validate_page=validate_page,
+                read_page=lambda index: captures[f'features_{index:05d}'][0],
+                closing_requests=(('layer_after', BASE + '?f=pjson'),
+                    ('count_after', _query_url(where='1=1', returnCountOnly='true')),
+                    ('ids_after', _query_url(where='1=1', returnIdsOnly='true')))))
+            layer_after = _strict_json(closed['layer_after'])
+            count_after = _strict_json(closed['count_after']).get("count")
+            ids_field_after, ids_after = _object_ids(closed['ids_after'])
 
             return layer_before, count_before, ids_field_before, ids_before, features, layer_after, count_after, ids_field_after, ids_after
         layer_before, count_before, ids_field_before, ids_before, features, layer_after, count_after, ids_field_after, ids_after = capture_request_steps(request_steps(), lambda name, url: get(client, name, url))

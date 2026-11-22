@@ -41,7 +41,7 @@ from dagster_hifld.sources.capture_common import (
     write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, ExactIdCapturePlan
 
 DATASET_SLUG = "recommended-tracks-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -349,11 +349,9 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
             if (type(count_before.get("count")) is not int or count_before["count"] < 1
                     or len(ids_before) != count_before["count"]):
                 raise ValueError("source_count_drift_before")
-            features = []
-            for offset in range(0, len(ids_before), PAGE_SIZE):
-                requested = ids_before[offset:offset + PAGE_SIZE]
-                name = f"page_{offset:06d}"
-                page = (yield (name, _url(LAYER_QUERY_URL, {'objectIds': ','.join(map(str, requested)), 'outFields': '*', 'returnGeometry': 'true', 'outSR': '4326', 'f': 'json'}),))
+            def page_request(offset, requested):
+                return (f"page_{offset:06d}", _url(LAYER_QUERY_URL, {'objectIds': ','.join(map(str, requested)), 'outFields': '*', 'returnGeometry': 'true', 'outSR': '4326', 'f': 'json'}))
+            def validate_page(offset, requested, page):
                 if (page.get("geometryType") != "esriGeometryPolyline"
                         or page.get("exceededTransferLimit") is True
                         or not isinstance(page.get("features"), list)
@@ -369,11 +367,19 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
                         or [{"name": f.get("name"), "type": f.get("type")} for f in page_fields]
                         != expected_attributes):
                     raise ValueError("source_page_schema_drift")
-                for feature, identity in zip(page["features"], requested, strict=True):
-                    features.append(_validate_feature(feature, identity, EXPECTED_EXTENT))
-            ids_after_value = (yield ('ids_after', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),))
-            count_after = (yield ('count_after', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'}),))
-            metadata_after = (yield ('layer_after', _url(LAYER_URL, {'f': 'json'}),))
+                return [_validate_feature(feature, identity, EXPECTED_EXTENT)
+                        for feature, identity in zip(page["features"], requested, strict=True)]
+            features, _pages, closed = (yield ExactIdCapturePlan(ids_before, PAGE_SIZE,
+                page_request=page_request, validate_page=validate_page,
+                read_page=lambda offset: captures[f'page_{offset:06d}'][0],
+                project_rows=lambda page: [_validate_feature(feature, feature['attributes']['OBJECTID'], EXPECTED_EXTENT)
+                                          for feature in page['features']],
+                closing_requests=(('ids_after', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'})),
+                    ('count_after', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'})),
+                    ('layer_after', _url(LAYER_URL, {'f': 'json'})))))
+            ids_after_value = closed['ids_after']
+            count_after = closed['count_after']
+            metadata_after = closed['layer_after']
             _validate_metadata(metadata_after)
             ids_after = _ids(ids_after_value, "after")
             if (ids_before != ids_after or count_after.get("count") != count_before.get("count")

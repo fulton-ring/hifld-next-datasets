@@ -61,7 +61,7 @@ class LayerCaptureFetch:
 class ExactIdCapturePlan:
     """Native request and validation policy for the common ID population owner."""
     ids: Sequence[int]
-    page_size: int
+    page_size: int | Callable
     page_request: Callable
     validate_page: Callable
     read_page: Callable
