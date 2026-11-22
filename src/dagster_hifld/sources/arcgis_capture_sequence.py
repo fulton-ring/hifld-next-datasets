@@ -59,7 +59,12 @@ class LayerCaptureFetch:
 
 @dataclass(frozen=True)
 class ExactIdCapturePlan:
-    """Native request and validation policy for the common ID population owner."""
+    """Native policy for the common ID slicing and closing-witness owner.
+
+    Request callbacks declare arguments for the outer native fetch. Page bytes
+    are read from retained evidence; pure row projection preserves normalization.
+    Closing validation can refuse one witness before requesting the next.
+    """
     ids: Sequence[int]
     page_size: int | Callable
     page_request: Callable
@@ -67,6 +72,7 @@ class ExactIdCapturePlan:
     read_page: Callable
     closing_requests: Sequence[tuple] = ()
     project_rows: Callable | None = None
+    validate_closing: Callable | None = None
 
 
 def capture_request_steps(steps, fetch, *, capture_root=None, byte_budget=None):
@@ -90,13 +96,21 @@ def capture_request_steps(steps, fetch, *, capture_root=None, byte_budget=None):
                 return completed.value
             if isinstance(request, ExactIdCapturePlan):
                 from dagster_hifld.sources.arcgis_raw_capture import capture_exact_id_population
+                def close_witnesses():
+                    closed = {}
+                    def read(name, args):
+                        value = fetch(name, *args)
+                        if request.validate_closing is not None:
+                            request.validate_closing(name, value, closed)
+                        return value
+                    return capture_request_sequence(closed,
+                        [(item[0], item[1:]) for item in request.closing_requests],
+                        lambda captures: (), read)
                 result = capture_exact_id_population(request.ids, request.page_size,
                     fetch_page=lambda offset, ids: fetch(*request.page_request(offset, ids)),
                     validate_page=request.validate_page,
                     read_page=request.read_page, project_rows=request.project_rows,
-                    close_witnesses=lambda: capture_request_sequence({},
-                        [(item[0], item[1:]) for item in request.closing_requests],
-                        lambda captures: (), lambda name, args: fetch(name, *args)))
+                    close_witnesses=close_witnesses)
             else:
                 result = fetch(*request)
 

@@ -163,8 +163,13 @@ def acquire_iowa(directory, replay):
                     or [f.get('attributes', {}).get('OBJECTID') for f in page.get('features', [])] != wanted):
                 raise ValueError('iowa_page_incomplete_or_drift')
             return page['features']
+        def validate_closing(name, value, closed):
+            if ((name == 'count_after' and value['count'] != count)
+                    or (name == 'ids_after' and sorted(value['objectIds']) != ids)
+                    or (name == 'layer_after' and value != layer)):
+                raise ValueError('iowa_changed_during_capture')
         features, _pages, closed = (yield ExactIdCapturePlan(ids, 100,
-            page_request=page_request, validate_page=validate_page,
+            page_request=page_request, validate_page=validate_page, validate_closing=validate_closing,
             read_page=lambda offset: captures[f'page_{offset:05}'][0],
             closing_requests=(('count_after', query(where='1=1', returnCountOnly='true')),
                 ('ids_after', query(where='1=1', returnIdsOnly='true')),

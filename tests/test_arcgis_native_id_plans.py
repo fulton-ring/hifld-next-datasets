@@ -71,7 +71,7 @@ class NativeIdPlanTests(unittest.TestCase):
             self.assertFalse((capture/'ids_after.body').exists())
             self.assertTrue(storage.list_prefix('_quarantine/'+tracks.DATASET_SLUG))
 
-    def test_iowa_keeps_order_fields_crs_and_refuses_second_page_before_witnesses(self):
+    def _iowa_capture(self, refuse_page):
         ids=list(range(1,102));fields=[{'name':name,'type':kind,'length':length}for name,kind,length in electric.IOWA_FIELDS]
         layer={'id':14,'geometryType':'esriGeometryPolygon','objectIdField':'OBJECTID','hasZ':True,'hasM':False,
                'extent':{'spatialReference':{'wkid':102004}},'fields':fields}
@@ -81,10 +81,10 @@ class NativeIdPlanTests(unittest.TestCase):
             if 'objectIds'in params:
                 wanted=list(map(int,params['objectIds'].split(',')))
                 value={'geometryType':'esriGeometryPolygon','spatialReference':{'wkid':102004},
-                    'fields':fields if wanted[0]==1 else fields[:-1],
+                    'fields':fields if wanted[0]==1 or not refuse_page else fields[:-1],
                     'features':[{'attributes':{'OBJECTID':oid,'Owner':'  Native  '},'geometry':None}for oid in wanted]}
             elif 'returnIdsOnly'in params:value={'objectIds':list(reversed(ids))}
-            elif 'returnCountOnly'in params:value={'count':len(ids)}
+            elif 'returnCountOnly'in params:value={'count':len(ids)+(1 if not refuse_page and sum('returnCountOnly'in item for item in seen)>1 else 0)}
             else:value=layer
             return httpx.Response(200,stream=httpx.ByteStream(json.dumps(value).encode()))
         real_client=httpx.Client
@@ -92,7 +92,7 @@ class NativeIdPlanTests(unittest.TestCase):
             root=Path(tmp)
             with patch.object(electric.httpx,'Client',side_effect=lambda *a,**kw:real_client(*a,transport=httpx.MockTransport(respond),**kw)),patch.object(
                     owner,'capture_exact_id_population',wraps=owner.capture_exact_id_population)as common:
-                with self.assertRaisesRegex(ValueError,'iowa_page_incomplete_or_drift'):
+                with self.assertRaisesRegex(ValueError,'iowa_page_incomplete_or_drift' if refuse_page else 'iowa_changed_during_capture'):
                     electric.acquire_iowa(root,False)
                 common.assert_called_once()
             pages=[r for r in seen if 'objectIds'in r]
@@ -100,4 +100,12 @@ class NativeIdPlanTests(unittest.TestCase):
             self.assertTrue(all(r['returnZ']=='true'and r['returnM']=='false'and r['returnTrueCurves']=='true'for r in pages))
             self.assertTrue((root/'page_00000.body').is_file())
             self.assertTrue((root/'page_00100.receipt.json').is_file())
-            self.assertFalse((root/'count_after.body').exists())
+            self.assertEqual((root/'count_after.body').exists(),not refuse_page)
+            self.assertFalse((root/'ids_after.body').exists())
+            self.assertFalse((root/'layer_after.body').exists())
+
+    def test_iowa_keeps_order_fields_crs_and_refuses_second_page_before_witnesses(self):
+        self._iowa_capture(True)
+
+    def test_iowa_closing_count_refusal_precedes_later_witness_requests(self):
+        self._iowa_capture(False)
