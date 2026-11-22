@@ -192,7 +192,7 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     native_name = f"geoparquet/{DATASET_SLUG}.parquet"
     objects = {native_name: native}
-    receipts = {n: r for n, (_, r) in sorted(captures.items())}
+    receipts = {n: r for n, (_, r) in ((name, captures[name]) for name in sorted(captures))}
     inputs = []
     for name, receipt in sorted(receipts.items()):
         parsed = urlsplit(receipt["url"])

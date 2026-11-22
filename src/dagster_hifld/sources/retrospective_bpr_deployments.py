@@ -547,7 +547,7 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
             "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
 
@@ -589,7 +589,7 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
                     or current != body or _sha(wire) != old.get("wire_sha256")):
                 raise ValueError("cached_source_capture_content_changed:" + name)
     receipts = existing["capture_receipts"] if existing else {
-        name: receipt for name, (_body, receipt) in sorted(captures.items())}
+        name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     audit.update({"source_capture_evidence_sha256": capture_hash,
                   "source_capture_evidence": capture_identity,
                   "source_release_accepted": False, "source_freshness_accepted": False,

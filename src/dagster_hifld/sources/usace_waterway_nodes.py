@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import httpx
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -388,7 +389,7 @@ def capture_usace_waterway_nodes(
                           headers={"User-Agent": "hifld-next-datasets/usace-waterway-node-draft"}) as client:
             for name, url in urls.items():
                 captured[name] = _capture(client, url, capture_root, name)
-            docs = {name: json.loads(body) for name, (body, _) in captured.items()}
+            docs = CaptureDocuments(captured)
             fields, source_ids = _validate_source(
                 docs["bts_item"], docs["usace_item"], docs["service_before"],
                 docs["layer_before"], docs["count_before"], docs["ids_before"],
@@ -400,7 +401,7 @@ def capture_usace_waterway_nodes(
             captured["filegdb_export"] = (archive_path.read_bytes(), archive_receipt)
             for name, url in (("layer_after", urls["layer_before"]), ("count_after", count_url), ("ids_after", ids_url)):
                 captured[name] = _capture(client, url, capture_root, name)
-        after = {name: json.loads(body) for name, (body, _) in captured.items() if name.endswith("_after")}
+        after = CaptureDocuments(captured, (name for name in captured if name.endswith('_after')))
         if (after["layer_after"] != docs["layer_before"]
                 or after["count_after"].get("count") != docs["count_before"].get("count")
                 or sorted(after["ids_after"].get("objectIds", [])) != source_ids):

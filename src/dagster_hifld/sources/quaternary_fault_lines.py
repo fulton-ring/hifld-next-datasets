@@ -24,6 +24,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
@@ -373,7 +374,7 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
                 capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, BATCH_SIZE, client=client,
                     captures=captures, discovery_documents=(('service_before', SERVICE_URL + '?f=pjson'), ('layer_before', LAYER_URL + '?f=pjson'), ('count_before', _query({'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'})), ('ids_before', _query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}))), roster=roster,
                     validate_seed=validate_seed, fetch=fetch)
-            docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+            docs = CaptureDocuments(captures)
             _validate_metadata(docs["service_before"], docs["layer_before"])
             if docs["service_after"] != docs["service_before"] or docs["layer_after"] != docs["layer_before"]:
                 raise ValueError("source_changed_during_capture")
@@ -381,7 +382,7 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
                 raise ValueError("source_count_drift")
             if docs["ids_after"].get("objectIds") != docs["ids_before"].get("objectIds"):
                 raise ValueError("source_id_roster_changed_during_capture")
-            pages = {name: payload for name, payload in docs.items() if name.startswith("page_")}
+            pages = CaptureDocuments(captures, (name for name in docs if name.startswith("page_")))
             _features, audit = _validate_population(docs["layer_before"], docs["ids_before"].get("objectIds"), pages)
             manifest = {
                 "complete": True,
@@ -390,7 +391,7 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
                 "source_record_sha256": audit["source_record_sha256"],
                 "source_schema_sha256": audit["source_schema_sha256"],
                 "artifact_names": sorted(captures),
-                "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+                "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             }
             (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         except Exception as exc:
@@ -409,7 +410,7 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
                 "receipts": receipts,
             }) + b"\n")
             raise
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     _validate_metadata(docs["service_before"], docs["layer_before"])
     if docs["service_after"] != docs["service_before"] or docs["layer_after"] != docs["layer_before"]:
         raise ValueError("source_changed_during_capture")
@@ -417,13 +418,13 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
         raise ValueError("source_count_drift")
     if docs["ids_after"].get("objectIds") != docs["ids_before"].get("objectIds"):
         raise ValueError("source_id_roster_changed_during_capture")
-    pages = {name: payload for name, payload in docs.items() if name.startswith("page_")}
+    pages = CaptureDocuments(captures, (name for name in docs if name.startswith("page_")))
     features, audit = _validate_population(docs["layer_before"], docs["ids_before"].get("objectIds"), pages)
     parquet = _parquet_bytes(features)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
     identity = _processing_identity()
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{
         "input_id": name,
         "producer": PUBLISHER,

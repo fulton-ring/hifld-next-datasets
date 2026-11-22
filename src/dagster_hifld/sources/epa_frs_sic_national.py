@@ -436,7 +436,7 @@ def capture_epa_frs_eia860_sic(staging_storage: StagingStorageResource, *, versi
             "capture_manifest_sha256": capture_manifest_sha,
             "inputs": [
                 archive._input_provenance(name, receipt)
-                for name, (_body, receipt) in sorted(captures.items())
+                for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))
             ] + member_inputs,
             "transformations": [{
                 "operation": "bounded_http_range_zip_member_stream_and_registry_join",
@@ -543,7 +543,7 @@ def capture_epa_frs_eia860_sic(staging_storage: StagingStorageResource, *, versi
             "metadata/capture_manifest.json": _canonical(capture_manifest) + b"\n",
             "metadata/candidate_ready.json": _canonical(ready) + b"\n",
         }
-        for name, (body, receipt) in sorted(captures.items()):
+        for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
             outputs[f"raw/{name}.body"] = body
             outputs[f"raw/{name}.wire"] = (capture_root / f"{name}.wire").read_bytes()
             outputs[f"raw/{name}.receipt.json"] = _canonical(dict(receipt)) + b"\n"

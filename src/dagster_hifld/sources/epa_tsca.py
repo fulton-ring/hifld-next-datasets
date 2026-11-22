@@ -25,6 +25,7 @@ import pyproj
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
@@ -102,7 +103,7 @@ def _profile_schema(layer: dict[str, object]) -> tuple[list[dict[str, object]], 
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items() if name != "epa_data_sources_page"}
+    docs = CaptureDocuments(captures, (name for name in captures if name != 'epa_data_sources_page'))
     witness_ids = docs.get("ids_before", {}).get("objectIds")
     page_count = ((len(witness_ids) + PAGE_SIZE - 1) // PAGE_SIZE
                   if isinstance(witness_ids, list) else 0)
@@ -362,7 +363,7 @@ def _finalize_epa_tsca(storage: StagingStorageResource, version: str, capture_ro
       "schema_version":1,"approved":False,"title":LAYER_NAME,"description":"Exact EPA_GEO hosted EPA FRS TSCA-associated point layer. Source release date, currentness, and any successor decision remain pending.",
       "publisher":PUBLISHER,"agency":"Environmental Protection Agency","source_url":LAYER_URL,"license":item_provenance["license"],"license_evidence":{"source_item_id":ITEM_ID,"metadata_field":"licenseInfo","url":item_provenance["license"]},
       "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":EPA_FRS_DATA_SOURCES_URL if name == "epa_data_sources_page" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":("unknown" if name == "epa_data_sources_page" else item_provenance["license"]),"license_unknown_reason":("The EPA FRS data sources page response has no separate license declaration in the captured item metadata." if name == "epa_data_sources_page" else None),"license_evidence":(None if name == "epa_data_sources_page" else {"source_item_id":ITEM_ID,"metadata_field":"licenseInfo","url":item_provenance["license"]}),"attribution":item_provenance["attribution"],"release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in sorted(captures.items())],
+      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":EPA_FRS_DATA_SOURCES_URL if name == "epa_data_sources_page" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":("unknown" if name == "epa_data_sources_page" else item_provenance["license"]),"license_unknown_reason":("The EPA FRS data sources page response has no separate license declaration in the captured item metadata." if name == "epa_data_sources_page" else None),"license_evidence":(None if name == "epa_data_sources_page" else {"source_item_id":ITEM_ID,"metadata_field":"licenseInfo","url":item_provenance["license"]}),"attribution":item_provenance["attribution"],"release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))],
       "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"feature_layer_id":LAYER_ID,"source_fields":"all 32 fields preserved in producer order and declared physical types","source_ids":"Preserve each OBJECTID and REGISTRY_ID unchanged; all other source fields retained verbatim","proposed_physical_type_mapping":PROPOSED_PHYSICAL_TYPE_MAPPING,"raw_source_values_preserved":True,"mapping_approved":False,"geometry":"Esri point x/y retained as WKB at EPSG:4269; no reprojection or repair","candidate_status":"unapproved; production publication prohibited pending source freshness, schema/ID contract, rights and mapping acceptance"}}],
       "lineage":"EPA_GEO ArcGIS item 3c8a335f4b5243a188fd75472459e567 serves exact FeatureServer layer 0 (TSCA). Item describes its records as the subset of EPA FRS facilities linked to the Toxic Substances Control Act Chemical Substance Inventory System. Item modification time is not asserted as source release date.",
       "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri query values, all attributes, IDs and source point geometry retained; source vintage and release approvals remain unresolved.","objects":[{"path":next(iter(source_objects)),**next(iter(source_objects.values()))}]}}},
@@ -376,7 +377,7 @@ def _finalize_epa_tsca(storage: StagingStorageResource, version: str, capture_ro
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     provenance_name = "replay_provenance.json" if replayed_from else "capture_manifest.json"
-    (capture_root / provenance_name).write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"replayed_from":replayed_from,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+    (capture_root / provenance_name).write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"replayed_from":replayed_from,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {
         "geoparquet/epa-frs-toxic-substances-control-act-tsca.parquet":parquet_body,

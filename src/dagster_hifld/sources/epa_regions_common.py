@@ -30,6 +30,7 @@ import pyarrow.parquet as pq
 import pyogrio
 import pyproj
 import shapely
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.http_capture import capture_http_response
@@ -512,7 +513,7 @@ def inspect_captures(captures):
     if set(captures)!=set(URLS):raise EpaRegions2023Error('incomplete_or_extra_capture_roster')
     for name,(body,receipt)in captures.items():validate_receipt(name,body,receipt)
     json_names={'source_service','item','owner','layer_before','layer_after','item_after','count_before','count_after','ids_before','ids_after','page_00000'}
-    values={name:strict_json(body)for name,(body,_receipt)in captures.items()if name in json_names}
+    values=CaptureDocuments(captures, (name for name in captures if name in json_names), decode=strict_json)
     service=values['source_service'];item=values['item'];owner=values['owner'];before=values['layer_before'];after=values['layer_after']
     if (service.get('serviceItemId')!=ITEM or item.get('id')!=ITEM or item.get('owner')!='EPA_GEO' or item.get('orgId')!='cJ9YHowT8TU7DUyn'
         or item.get('url')!=SERVICE or item.get('access')!='public' or owner.get('username')!='EPA_GEO'):

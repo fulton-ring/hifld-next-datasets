@@ -23,6 +23,7 @@ import shapely
 from pyproj import CRS
 from shapely.geometry import LineString, MultiLineString
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -215,7 +216,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         raise ValueError("source_population_empty")
     if {"ids_seed", *[name for name, _url in _capture_roster(before)]} != set(captures):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["portal_item"]
     item_url = f"https://gisportal.ibwc.gov/agsportal/home/item.html?id={PORTAL_ITEM_ID}"
     if (item.get("id") != PORTAL_ITEM_ID or item.get("owner") != EXPECTED_ITEM["owner"]
@@ -499,7 +500,7 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
     identity = processing_identity(Path(__file__).parents[3])
     wkid = EXPECTED_PAGE_SR["latestWkid"]
     parquet = _parquet_bytes(fields, features, wkid)
-    capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in sorted(captures.items())}))
+    capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"] = capture_sha
     version = "v" + _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
         "source_geometry_sha256": audit["source_geometry_sha256"],
@@ -523,7 +524,7 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
             "delegation_evidence": {"portal_item_url": PORTAL_ITEM_URL, "portal_item_id": PORTAL_ITEM_ID,
             "portal_item_owner": "ibwcgis", "crosswalk_doi": "10.3886/E241367V1"}}
            if name == "portal_item" else {})}
-        for name, (_body, receipt) in sorted(captures.items())]
+        for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version": 1, "approved": False, "title": "Mexico and US Border (IBWC US_MexicoIB)",
         "description": "Complete observed current official IBWC US–Mexico international boundary feature layer; "
         "unapproved faithful candidate. Observed polyline segments (land, river and maritime) per the 1970 Treaty boundary. "
@@ -570,7 +571,7 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
              "source_feature_count": audit["source_feature_count"],
              "source_record_sha256": audit["source_record_sha256"],
              "source_schema_sha256": audit["source_schema_sha256"],
-             "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+             "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
              "attempts": attempts,
              "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
     outputs = {f"geoparquet/{DATASET_SLUG}.parquet": parquet,
@@ -592,7 +593,7 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
     outputs["metadata/candidate_ready.json"] = _canonical(ready) + b"\n"
     fingerprint = _sha(_canonical(identity))
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     if storage.object_snapshot(state_key) is not None:
         bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
         payload = bundle.get("payload")

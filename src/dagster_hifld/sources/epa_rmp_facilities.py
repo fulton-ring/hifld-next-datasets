@@ -22,6 +22,7 @@ import pyproj
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -99,8 +100,7 @@ def validate_source_captures(captures: Mapping[str, tuple[bytes, Mapping[str, ob
     expected_field_count = SOURCE_FIELD_COUNT if expected_field_count is None else expected_field_count
     if expected_schema_sha256 is _DEFAULT_SCHEMA_PIN:
         expected_schema_sha256 = SOURCE_SCHEMA_SHA256
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()
-            if name != "epa_frs_sources_page"}
+    docs = CaptureDocuments(captures, (name for name in captures if name != 'epa_frs_sources_page'))
     item0 = _plain_object(docs.get("portal_item_before"), "portal_item_before")
     item1 = _plain_object(docs.get("portal_item_after"), "portal_item_after")
     service0 = _plain_object(docs.get("service_before"), "service_before")
@@ -414,7 +414,7 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
                                          audit["source_schema_sha256"], identity)
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version_id}"
     objects = {f"geoparquet/{DATASET_SLUG}.parquet": {"bytes": len(parquet), "sha256": _sha(parquet)}}
-    receipts = {name: receipt for name, (_, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{"input_id": name, "producer": "U.S. Environmental Protection Agency, FRS Support Team; RMP national program",
                "host": urlsplit(str(receipt["url"])).hostname,
                "role": "producer_publication",

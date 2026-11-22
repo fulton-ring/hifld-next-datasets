@@ -132,6 +132,27 @@ class ValidateRetainedCaptureReplayTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CaptureDocuments(captures)
 
+    def test_documents_preserve_custom_decoder_projection_and_selected_names(self):
+        calls = []
+
+        def decode(body):
+            calls.append(body)
+            if body == b"invalid":
+                raise ValueError("strict_decoder_refusal")
+            return json.loads(body)
+
+        captures = {"alpha": b'{"value": 1}', "unused_binary": b"not JSON", "beta": b'{"value": 2}'}
+        documents = CaptureDocuments(captures, ("beta", "alpha"),
+            decode=decode, body_from_capture=lambda body: body)
+        self.assertEqual(list(documents), ["beta", "alpha"])
+        self.assertEqual(calls, [captures["beta"], captures["alpha"]])
+        self.assertEqual(documents["alpha"], {"value": 1})
+        self.assertEqual(calls[-1], captures["alpha"])
+        captures["beta"] = b"invalid"
+        with self.assertRaisesRegex(ValueError, "strict_decoder_refusal"):
+            CaptureDocuments(captures, ("beta",), decode=decode,
+                             body_from_capture=lambda body: body)
+
     def test_symlinked_manifest_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "capture"

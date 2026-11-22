@@ -25,6 +25,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.capture_completeness import validate_capture_witness
@@ -419,7 +420,7 @@ def _validate_request_scope(name: str, receipt: dict, ids: list[int]) -> None:
 
 
 def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, dict]:
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     layer = docs["layer_before"]
     fields = _fields(layer)
     _layer_contract_unchanged(layer, docs["layer_after"])
@@ -679,7 +680,7 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
             layer, audit = _population(captures)
             manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         **_artifact_rosters(root),
-                        "artifact_names": sorted(captures), "receipts": {n:r for n,(_b,r) in sorted(captures.items())}}
+                        "artifact_names": sorted(captures), "receipts": {n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))}}
             (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
             _load(root)
         except Exception as exc:
@@ -728,7 +729,7 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
         "sha256":receipt["sha256"],"wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"],
         "release_date":None,"release_date_unknown_reason":"The service declares no per-snapshot release date (no editingInfo); the observed layer state is dated evidence, not a release date.",
         "license":"Rights review pending.","attribution":"USGS attribution review pending."}
-        for name,(_body,receipt) in sorted(captures.items())]
+        for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version":1,"approved":False,"title":"Trails","description":"Complete observed USGS The National Map Transportation Trails layer candidate; unapproved draft.",
         "publisher":PUBLISHER,"agency":"U.S. Geological Survey","source_url":LAYER_URL,"license":None,
         "source_modified":None,"date_issued":None,"date_modified":None,

@@ -54,6 +54,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPoint
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.http_capture import capture_retention_budget
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -308,8 +309,7 @@ def _validate_value_column(features: list[dict[str, object]], name: str,
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()
-            if not name.startswith("page_") and name != "usgs_gnis_doc_page"}
+    docs = CaptureDocuments(captures, (name for name in captures if not name.startswith('page_') and name != 'usgs_gnis_doc_page'))
     page_names = sorted(name for name in captures if name.startswith("page_"))
     pages = [_parse_page_name(name) for name in page_names]
     position = 0

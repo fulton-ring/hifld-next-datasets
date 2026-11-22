@@ -766,8 +766,8 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                 "release_date_unknown_reason": _unknown_release_reason,
                 "license": _input_license, "attribution": _input_attribution}
 
-    doc_captures = [(n, r) for n, (_, r) in sorted(captures.items()) if not n.startswith("page_")]
-    page_captures = [(n, r) for n, (_, r) in sorted(captures.items()) if n.startswith("page_")]
+    doc_captures = [(n, r) for n, (_, r) in ((name, captures[name]) for name in sorted(captures)) if not n.startswith("page_")]
+    page_captures = [(n, r) for n, (_, r) in ((name, captures[name]) for name in sorted(captures)) if n.startswith("page_")]
     if not page_captures:
         raise ValueError("paged_capture_inputs_missing")
     if {r["status"] for _, r in page_captures} != {200}:
@@ -909,7 +909,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                     "source_geometry_sha256": audit["source_geometry_sha256"],
                     "failed_attempt_count": len(attempt_receipts),
                     "failed_attempt_receipts": attempt_receipts,
-                    "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}) + b"\n")
+                    "receipts": {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))}}) + b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {rel: parquet_body, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
                "metadata/source_audit.json": _canonical(full_audit) + b"\n",

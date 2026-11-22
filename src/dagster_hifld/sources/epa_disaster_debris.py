@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -110,7 +111,7 @@ def _urls(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
-    docs = {n: json.loads(body) for n, (body, _) in captures.items() if n not in ("epa_landing", "epa_document")}
+    docs = CaptureDocuments(captures, (n for n in captures if n not in ('epa_landing', 'epa_document')))
     portal, service, layer = docs["portal_item"], docs["service_before"], docs["layer_before"]
     landing = captures["epa_landing"][0]
     if (b"updated in August 2026" not in landing and b"updated in August" not in landing) or ITEM_ID.encode() not in landing:
@@ -295,14 +296,14 @@ def _build_candidate(storage: StagingStorageResource, version: str, root: Path, 
     objpath=f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects={objpath:{"bytes":len(parquet),"sha256":_sha(parquet)}}
     manifest={"schema_version":1,"approved":False,"title":"EPA Disaster Debris Recovery Data","description":"Exact native EPA_GEO national Disaster Debris Recovery Tool point layer. EPA landing page states August 2026 update; release approval remains pending.","publisher":PUBLISHER,"agency":"Environmental Protection Agency","source_url":LAYER_URL,"license":"https://edg.epa.gov/EPA_Data_License.html","source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(rc["url"]).hostname,"role":"producer_publication","canonical_url":EPA_PAGE if name.startswith("epa_") else LAYER_URL,"retrieval_url":rc["url"],"observed_final_url":rc["final_url"],"retrieved_at":rc["observed_at"],"http_status":rc["status"],"bytes":rc["bytes"],"sha256":rc["sha256"],"license":"https://edg.epa.gov/EPA_Data_License.html","attribution":"U.S. EPA Disaster Debris Recovery Tool; EPA_GEO publishes the linked public layer. Rights review remains pending.","release_date":None,"release_date_unknown_reason":SOURCE_RELEASE_NOTE} for name,(_,rc) in sorted(captures.items())],
+      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(rc["url"]).hostname,"role":"producer_publication","canonical_url":EPA_PAGE if name.startswith("epa_") else LAYER_URL,"retrieval_url":rc["url"],"observed_final_url":rc["final_url"],"retrieved_at":rc["observed_at"],"http_status":rc["status"],"bytes":rc["bytes"],"sha256":rc["sha256"],"license":"https://edg.epa.gov/EPA_Data_License.html","attribution":"U.S. EPA Disaster Debris Recovery Tool; EPA_GEO publishes the linked public layer. Rights review remains pending.","release_date":None,"release_date_unknown_reason":SOURCE_RELEASE_NOTE} for name,(_,rc) in ((name, captures[name]) for name in sorted(captures))],
       "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all source fields and producer-declared physical types, order retained","source_ids":"OBJECTID and GlobalID retained unchanged","geometry":"native point x/y retained in source EPSG:3857; null/invalid geometries are reported and never filtered; no repair/reprojection","candidate_status":"unapproved; release prohibited pending quality, rights, and schema contract acceptance"}}],
       "lineage":f"EPA landing page {EPA_PAGE} links public EPA_GEO item {ITEM_ID}, which links exact FeatureServer layer 0. EPA landing records the August 2026 national update. ArcGIS modified/edit timestamps are preserved as portal edits and are not used as release dates.",
       "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native EPA point properties and IDs retained; approval remains pending.","objects":[{"path":objpath,**source_objects[objpath]}]}}},"unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No approved display transformation."}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     version=content_derived_version(audit["source_record_sha256"],audit["source_geometry_sha256"],audit["source_schema_sha256"],identity)
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version); state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{n:r for n,(_,r) in sorted(captures.items())}})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{n:r for n,(_,r) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     outputs={objpath:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"

@@ -515,7 +515,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
     if offline is None:
         descriptors={}
         receipts_total=0
-        for name,(body,receipt) in sorted(captures.items()):
+        for name,(body,receipt) in ((name, captures[name]) for name in sorted(captures)):
             response_cap = MAX_ID_ROSTER_RESPONSE_BYTES if name in {"ids_before", "ids_after"} else MAX_RESPONSE_BYTES
             body_file=_bounded_read(root/f"{name}.body",response_cap)
             wire_file=_bounded_read(root/f"{name}.wire",response_cap)
@@ -576,7 +576,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
             "http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],
             "wire_bytes":r["wire_bytes"],"wire_sha256":r["wire_sha256"],"release_date":None,
             "release_date_unknown_reason":"The ArcGIS item modified time is not an agency release record."}
-            for n,(_body,r) in sorted(captures.items())],
+            for n,(_body,r) in ((name, captures[name]) for name in sorted(captures))],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
             "feature_layer_id":LAYER_ID,"source_fields":"all 20 declared source attributes including OBJECTID retained in source order",
             "geometry":"native point XY/Z/M ordinates encoded as WKB in EPSG:4326 without reprojection or repair",

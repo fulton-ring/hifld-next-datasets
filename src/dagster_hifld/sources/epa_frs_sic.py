@@ -303,7 +303,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
          "attribution": "EPA FRS; producer metadata states U.S. public domain; rights review remains pending.",
          "release_date": None,
          "release_date_unknown_reason": "ArcGIS service metadata carries no source release date."}
-        for name, (_body, receipt) in sorted(captures.items())]
+        for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))]
     release_manifest = {
         "schema_version": 1, "approved": False,
         "title": "EPA Facility Registry Service - SIC Codes",
@@ -353,7 +353,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
                                  "metadata/source_audit.json": _canonical(audit) + b"\n",
                                  "metadata/processing_identity.json": _canonical(identity) + b"\n",
                                  "metadata/candidate_ready.json": _canonical(ready) + b"\n"}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         for suffix, raw in (("body", body), ("wire", (capture_root / f"{name}.wire").read_bytes()),
                             ("receipt.json", _canonical(receipt) + b"\n")):
             objects[f"raw/{name}.{suffix}"] = raw
@@ -386,7 +386,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
     (capture_root / "capture_manifest.json").write_bytes(_canonical({
         "captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
         "row_count": len(rows), "source_record_sha256": record_sha,
-        "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())}}) + b"\n")
+        "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}}) + b"\n")
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "row_count": len(rows), "source_population_complete": True,
             "source_record_sha256": record_sha, "source_schema_sha256": schema_sha,

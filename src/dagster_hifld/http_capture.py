@@ -128,8 +128,11 @@ def capture_roster_digests(root: Path, *, exclude: set[str] = frozenset()) -> di
 
 class CaptureDocuments(Mapping):
     """Read JSON captures one at a time, preserving eager JSON validity checks."""
-    def __init__(self, captures: Mapping, names=None):
+    def __init__(self, captures: Mapping, names=None, *, decode=json.loads,
+                 body_from_capture=lambda value: value[0]):
         self._captures = captures
+        self._decode = decode
+        self._body = body_from_capture
         self._names = dict.fromkeys(captures if names is None else names)
         for name in self:
             self[name]
@@ -137,7 +140,7 @@ class CaptureDocuments(Mapping):
     def __getitem__(self, name):
         if name not in self._names:
             raise KeyError(name)
-        return json.loads(self._captures[name][0])
+        return self._decode(self._body(self._captures[name]))
 
     def __iter__(self):
         return iter(self._names)

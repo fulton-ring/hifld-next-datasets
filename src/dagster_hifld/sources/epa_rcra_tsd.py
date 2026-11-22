@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -105,9 +106,10 @@ def _stable_item(item: dict) -> dict:
 
 
 def validate_capture_documents(captures: Mapping[str, bytes], *,
-                               expected_schema_sha256: str | None = EXPECTED_SCHEMA_SHA256) -> tuple[dict, list[dict], dict]:
+                               expected_schema_sha256: str | None = EXPECTED_SCHEMA_SHA256,
+                               body_from_capture=lambda body: body) -> tuple[dict, list[dict], dict]:
     """Validate exact item, source identity, schema and complete ordered feature roster."""
-    docs = {name: json.loads(body) for name, body in captures.items()}
+    docs = CaptureDocuments(captures, body_from_capture=body_from_capture)
     required = {"epa_item", "service_before", "layer_before", "count_before", "ids_before",
                 "ids_seed", "layer_after", "service_after", "count_after", "ids_after"}
     if not required.issubset(docs):
@@ -302,8 +304,8 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
                 captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
                 validate_seed=validate_seed, roster=lambda ids: [*_urls(ids), ("epa_item_after", EPA_ITEM_URL)],
                 fetch=lambda client, url, root, name: capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES),
-                on_validation_error=lambda c: validate_capture_documents({n: body for n, (body, receipt) in c.items()}))
-        layer, fields, extracted = validate_capture_documents({name: body for name, (body, _) in captures.items()})
+                on_validation_error=lambda c: validate_capture_documents(c, body_from_capture=lambda value: value[0]))
+        layer, fields, extracted = validate_capture_documents(captures, body_from_capture=lambda value: value[0])
     except Exception as exc:
         (capture_root / "capture_manifest.json").write_bytes(_canonical({"complete":False,"error_code":type(exc).__name__,"receipts":{n:r for n,(_,r) in captures.items()}})+b"\n")
         if captures:
@@ -328,7 +330,7 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
           "http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],
           "license":EPA_PUBLIC_DOMAIN,"attribution":"EPA item accessInformation identifies EPA FRS Support Team and RCRA; license and disclaimer are captured verbatim in the EPA item response.","release_date":None,
           "release_date_unknown_reason":"EPA item modification is an ArcGIS item timestamp, not a source release date; service exposes no verified release date."}
-          for name,(_,r) in sorted(captures.items())],
+          for name,(_,r) in ((name, captures[name]) for name in sorted(captures))],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
           "source_fields":"all published non-geometry attributes in producer order and declared types",
           "source_ids":"OBJECTID retained as int64 and REGISTRY_ID retained verbatim; OBJECTID documented nonpermanent",
@@ -365,7 +367,7 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
     })
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    (capture_root / "capture_manifest.json").write_bytes(_canonical({"complete":True,"source_count":len(records),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"source_id_sha256":audit["source_id_sha256"],"receipts":{n:r for n,(_,r) in sorted(captures.items())}})+b"\n")
+    (capture_root / "capture_manifest.json").write_bytes(_canonical({"complete":True,"source_count":len(records),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"source_id_sha256":audit["source_id_sha256"],"receipts":{n:r for n,(_,r) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     outputs = {relative_file:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
                "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():

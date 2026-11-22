@@ -190,7 +190,7 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
                  "http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Unreviewed; no license claim made.",
                  "attribution":"USACE layer copyright/attribution has not been reviewed.","release_date":None,
                  "release_date_unknown_reason":"USACE service responses do not provide a producer release date."}
-                for n,(_b,r) in sorted(captures.items())],
+                for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))],
             "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
                 "layer_id":LAYER_ID,"attributes":"all query-returned source attributes retained in source order/types/values",
                 "geometry":"Esri rings interpreted as Polygon/MultiPolygon WKB in EPSG:4326; no repair or simplification",

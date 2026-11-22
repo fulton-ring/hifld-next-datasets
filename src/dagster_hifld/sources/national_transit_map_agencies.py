@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import validate_capture_roster
@@ -131,7 +132,7 @@ def _field_profile(fields: object) -> tuple[list[dict[str, object]], str]:
 
 
 def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    docs = {n:json.loads(body) for n,(body,_) in captures.items()}
+    docs = CaptureDocuments(captures)
     if "ids_seed" not in docs:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
     seed = _validate_seed(docs["ids_seed"].get("objectIds"))
@@ -309,7 +310,7 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     version=content_derived_version(record_sha,geometry_sha,schema_sha,identity)
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     source_objects={f"geoparquet/{DATASET_SLUG}.parquet":{"bytes":len(data),"sha256":_sha(data)}}
-    receipts={n:dict(r) for n,(_,r) in sorted(captures.items())}
+    receipts={n:dict(r) for n,(_,r) in ((name, captures[name]) for name in sorted(captures))}
     item = json.loads(captures["item"][0])
     compilation_date = _compilation_date(item)
     attribution = str(item.get("accessInformation") or

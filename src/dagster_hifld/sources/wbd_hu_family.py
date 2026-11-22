@@ -1068,7 +1068,7 @@ def capture_candidate(spec: WbdHuSpec, storage: StagingStorageResource, *, versi
         (root / "capture_manifest.json").write_bytes(_canonical({
             "complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(),
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
             "page_parts": dict(sorted(page_parts.items())),
             "page_refusals": sorted(page_refusals)}) + b"\n")
@@ -1081,7 +1081,7 @@ def capture_candidate(spec: WbdHuSpec, storage: StagingStorageResource, *, versi
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": _capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
@@ -1105,7 +1105,7 @@ def capture_candidate(spec: WbdHuSpec, storage: StagingStorageResource, *, versi
     parquet_path = derived["parquet_path"]
     parquet_bytes = parquet_path.stat().st_size
     parquet_sha = sha256_file(parquet_path)
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     gate_note = (f"{audit['null_geometry_count']} rows gate to null geometry and are "
                  "counted by failure mode: "
                  + json.dumps(audit["unusable_geometry_counts"], sort_keys=True)

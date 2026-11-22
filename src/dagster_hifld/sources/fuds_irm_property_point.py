@@ -22,6 +22,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -64,7 +65,7 @@ def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     service, layer = docs["service_before"], docs["layer_before"]
     if not isinstance(service, dict) or service.get("serviceItemId") != "df5f8412d041469692ff4846c7131a56" or service.get("mapName") != "FUDS Data" or service.get("copyrightText") != "US Army Corps of Engineers":
         raise ValueError("official_usace_service_identity_drift")

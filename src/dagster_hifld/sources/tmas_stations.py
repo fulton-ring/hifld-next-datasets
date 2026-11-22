@@ -24,6 +24,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -181,8 +182,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     required = _capture_names([])
     if not required <= set(captures):
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()
-            if not name.startswith("page_")}
+    docs = CaptureDocuments(captures, (name for name in captures if not name.startswith('page_')))
     ids = validate_capture_witness(docs["count_before"].get("count"),
         docs["ids_before"].get("objectIds"), docs["count_after"].get("count"),
         docs["ids_after"].get("objectIds"))
@@ -632,7 +632,7 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                     "attribution": "BTS NTAD; item metadata states the work is a U.S. "
                                    "government work not protected by copyright, available for "
                                    "unrestricted public use; rights review remains pending."}
-                   for name, (_, receipt) in sorted(captures.items())],
+                   for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "source_fields": "all six source fields retained in "
@@ -700,7 +700,7 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                         "source_record_sha256": audit["source_record_sha256"],
                         "source_geometry_sha256": audit["source_geometry_sha256"],
                         "artifact_roster": capture_roster_digests(capture_root),
-                        "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())},
+                        "receipts": {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))},
                         "evidence": {stem: {"kind": entry["kind"],
                                             "files": {suffix: {"bytes": len(body), "sha256": _sha(body)}
                                                       for suffix, body in sorted(entry["files"].items())}}

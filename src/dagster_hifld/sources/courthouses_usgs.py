@@ -21,6 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
@@ -216,7 +217,7 @@ def _validate_request_scope(name: str, receipt: dict, ids: list[int]) -> None:
 
 
 def _population(captures: dict[str, tuple[bytes, dict]]) -> tuple[dict, list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     layer = docs["layer_before"]
     fields = _fields(layer)
     if _canonical(layer) != _canonical(docs["layer_after"]):
@@ -409,7 +410,7 @@ def capture_courthouses(storage: StagingStorageResource, *, version: str,
                     captures=captures, discovery_documents=requests, roster=roster,
                     validate_seed=validate_seed, fetch=fetch, on_validation_error=_population)
             manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                        "artifact_names": sorted(captures), "receipts": {n:r for n,(_b,r) in sorted(captures.items())}}
+                        "artifact_names": sorted(captures), "receipts": {n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))}}
             (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         except Exception as exc:
             receipts = {}
@@ -432,7 +433,7 @@ def capture_courthouses(storage: StagingStorageResource, *, version: str,
         "sha256":receipt["sha256"],"wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"],
         "release_date":None,"release_date_unknown_reason":"The service does not declare a producer release date; the October 2026 refresh marker is an observation, not a release date.",
         "license":"Rights review pending.","attribution":"USGS attribution review pending."}
-        for name,(_body,receipt) in sorted(captures.items())]
+        for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version":1,"approved":False,"title":"Courthouses","description":"Complete observed USGS National Structures Courthouses layer candidate; unapproved draft.",
         "publisher":PUBLISHER,"agency":"U.S. Geological Survey","source_url":LAYER_URL,"license":None,
         "source_modified":None,"date_issued":None,"date_modified":None,

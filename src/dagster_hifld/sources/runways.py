@@ -63,6 +63,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.http_capture import capture_retention_budget
 from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages, capture_offset_documents
@@ -335,8 +336,7 @@ def _classify_ring_geometries(features: list[dict[str, object]], attr_names: lis
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()
-            if not name.startswith("page_")}
+    docs = CaptureDocuments(captures, (name for name in captures if not name.startswith('page_')))
     page_names = sorted(name for name in captures if name.startswith("page_"))
     pages = [_parse_page_name(name) for name in page_names]
     position = 0

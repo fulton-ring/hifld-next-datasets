@@ -30,6 +30,7 @@ import pyarrow.parquet as pq
 import shapely
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
@@ -252,7 +253,7 @@ def _validate_attributes(attributes: dict, fields: list[dict], label: str) -> No
 
 
 def _population(captures: dict[str, tuple[bytes, dict]], page_size: int = PAGE_SIZE) -> tuple[dict, list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     if _canonical(docs["service_before"]) != _canonical(docs["service_after"]):
         raise ValueError("wfigs_service_changed_during_capture")
     layer, layer_after = docs["layer_before"], docs["layer_after"]
@@ -530,7 +531,7 @@ def capture_wfigs_interagency_fire_perimeters(storage: StagingStorageResource, *
                     validate_seed=validate_seed, fetch=fetch, on_validation_error=_population)
             manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         "artifact_names": sorted(captures),
-                        "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())}}
+                        "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}}
             (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         except Exception as exc:
             receipts = {}
@@ -553,7 +554,7 @@ def capture_wfigs_interagency_fire_perimeters(storage: StagingStorageResource, *
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, resolved_version)
     parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
     inputs = []
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         inputs.append({
             "input_id": name + ":" + receipt["sha256"],
             "producer": PUBLISHER,

@@ -535,7 +535,7 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
     relative = f"geoparquet/{DATASET_SLUG}.parquet"
     objects = {relative:{"bytes":len(parquet),"sha256":_sha(parquet)}}
     manifest_inputs = []
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         observed_at, original_observation = _receipt_timestamp(receipt["observed_at"])
         input_record = {"input_id":name,"producer":PUBLISHER,
             "host":urlsplit(receipt["url"]).hostname,"role":"producer_publication",
@@ -561,12 +561,12 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
     audit.update({"portal_item_id":ITEM_ID,"portal_owner":"aditya_sastry@fws.gov_fws","official_layer_name":LAYER_NAME,"source_release_date":None,"license":"unknown","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
     candidate_version = content_derived_version(audit["source_record_sha256"],audit["source_geometry_sha256"],audit["source_schema_sha256"],identity)
     prefix = candidate_prefix(DATASET_SLUG,FILE_SLUG,candidate_version)
-    receipts = {n:r for n,(_,r) in sorted(captures.items())}
+    receipts = {n:r for n,(_,r) in ((name, captures[name]) for name in sorted(captures))}
     out = {relative:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     out["metadata/source_capture_manifest.json"] = _canonical({"complete":True,"source_feature_count":audit["feature_count"],"receipts":receipts})+b"\n"
     out["metadata/candidate_ready.json"] = _canonical({"approved":False,"version":candidate_version,"objects":objects,"source_record_sha256":audit["source_record_sha256"],"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})+b"\n"
     raw_descriptors: dict[str, dict[str, Any]] = {}
-    for n,(_,r) in sorted(captures.items()):
+    for n,(_,r) in ((name, captures[name]) for name in sorted(captures)):
         wire = (capture_root/f"{n}.wire").read_bytes()
         receipt_bytes = _canonical(r)+b"\n"
         raw_descriptors[f"raw/{n}.wire"] = {"bytes":len(wire),"sha256":_sha(wire)}

@@ -79,6 +79,8 @@ import pyproj
 from shapely.geometry import Polygon
 
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
+from dagster_hifld.http_capture import CaptureDocuments
+
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups, ring_is_ccw
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -168,7 +170,7 @@ def _input_fingerprint(captures: Mapping[str, tuple[bytes, Mapping[str, object]]
     return _sha(_canonical({"bodies": {name: {"bytes": len(body), "sha256": _sha(body),
                                               "wire_bytes": receipt.get("wire_bytes"),
                                               "wire_sha256": receipt.get("wire_sha256")}
-                            for name, (body, receipt) in sorted(captures.items())},
+                            for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures))},
                             "processing_identity": identity}))
 
 
@@ -381,7 +383,7 @@ def _validate_ring_points_all(rings: list) -> None:
 
 def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
         -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
     if (not isinstance(ids_before, list) or not ids_before or sorted(ids_before) != sorted(ids_after or [])
             or len(ids_before) != len(set(ids_before))):
@@ -714,7 +716,7 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
                                               + " (an editing timestamp, not a release date) and "
                                               "the producer description records a 04/16/20 "
                                               "boundary update."}
-              for n, (_, receipt) in sorted(captures.items())]
+              for n, (_, receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version": 1, "approved": False,
                 "title": "US Army Corps of Engineers (USACE) Civil Works Divisions",
                 "description": "Polygons showing USACE Civil Works Division boundaries, as "
@@ -836,7 +838,7 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
             raise ValueError("candidate_physical_readback_failed:" + name)
     payload = {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": {n: r for n, (_, r) in sorted(captures.items())},
+               "capture_receipts": {n: r for n, (_, r) in ((name, captures[name]) for name in sorted(captures))},
                "objects": objects}
     seal_ready_candidate(storage, state_key, version, _sha(_canonical(identity)), payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],

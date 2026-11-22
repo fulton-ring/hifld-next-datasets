@@ -29,6 +29,7 @@ import pyarrow.parquet as pq
 import pyogrio
 import pyproj
 import shapely
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -252,7 +253,7 @@ def acquire(storage,capture_dir=None):
 
 def inspect_originals(captures):
     if set(captures)!=set(URLS):raise FerryRouteQuarantineError('missing_extra_source_publication_roster')
-    docs={name:strict_json(body)for name,(body,_)in captures.items()if name not in ('bts_ntad','official_landing')}
+    docs=CaptureDocuments(captures, (name for name in captures if name not in ('bts_ntad', 'official_landing')), decode=strict_json)
     before=docs['source_layer_before'];after=docs['source_layer_after']
     for layer in [before,after]:
         if (encode(layer.get('fields'))!=encode(FIELD_DECLARATIONS) or layer.get('objectIdField')!='OBJECTID' or layer.get('geometryType')!='esriGeometryPolyline'

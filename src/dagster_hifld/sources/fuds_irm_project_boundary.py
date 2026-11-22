@@ -22,6 +22,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, zero_area_rings
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -91,7 +92,7 @@ def _source_polygon_geometry(rings: list[list[list[object]]]):
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     expected_names = {
         "service_before", "layer_before", "count_before", "ids_before",
         "ids_seed", "layer_after", "service_after", "count_after", "ids_after",
@@ -378,7 +379,7 @@ def capture_fuds_irm_project_boundary(storage: StagingStorageResource, *, versio
       "schema_version":1,"approved":False,"title":LAYER_NAME,"description":"Exact USACE Military/FUDS_Data MapServer layer 7 IRM project-boundary polygons. Layer metadata declares hasZ=true with EGM96_Geoid height-model information and does not declare hasM. Precise source release date is unknown, so currentness and successor decision are pending.",
       "publisher":PUBLISHER,"agency":"U.S. Army Corps of Engineers","source_url":LAYER_URL,"license":None,
       "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":SERVICE_URL if name == "service_before" or name == "service_after" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"unknown_pending_rights_review","attribution":"USACE service copyrightText is U.S. Army Corps of Engineers; downstream license and rights review remain pending.","release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in sorted(captures.items())],
+      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":SERVICE_URL if name == "service_before" or name == "service_after" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"unknown_pending_rights_review","attribution":"USACE service copyrightText is U.S. Army Corps of Engineers; downstream license and rights review remain pending.","release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))],
       "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"feature_layer_id":LAYER_ID,"source_fields":"all source fields preserved in producer order and declared physical types","source_ids":"Preserve each OBJECTID, all source identifiers unchanged","geometry":"Primary GeoParquet Z WKB derives shell/hole grouping from Esri ring winding at source EPSG:4326. The auxiliary source_geometry struct preserves original XYZ coordinate values and ring/vertex order, explicit hasZ=true and hasM=false flags, and returned SRS. Raw response pages preserve the source metadata's absent hasM field and EGM96 height-model metadata. No reprojection, closure, or geometry repair is performed.","candidate_status":"unapproved; production publication prohibited pending source freshness, schema/ID contract, rights and mapping acceptance"}}],
       "lineage":"The USACE Military/FUDS_Data MapServer exposes layer 7, IRM Project Boundary, under group layer 5 Interim Risk Management (IRM). Layers 6 and 8 are distinct IRM property point and property boundary layers. The precise source release date is unknown; service or portal modification timestamps are not treated as source release dates.",
       "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri query values, all attributes, IDs and source polygon Z geometry retained; source vintage and release approvals remain unresolved.","objects":[{"path":next(iter(source_objects)),**next(iter(source_objects.values()))}]}}},
@@ -391,7 +392,7 @@ def capture_fuds_irm_project_boundary(storage: StagingStorageResource, *, versio
                                       audit["source_geometry_sha256"],
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":len(extracted["features"]),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+    (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":len(extracted["features"]),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {
         "geoparquet/interim-risk-management-irm-project-boundary.parquet":parquet_body,

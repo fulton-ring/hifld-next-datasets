@@ -22,6 +22,7 @@ import pyarrow.parquet as pq
 import pyogrio
 import pyproj
 import shapely
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
@@ -210,7 +211,7 @@ def manifest_for(captures,identity):
 
 def inspect_originals(captures):
     if set(captures)!=set(URLS):raise TideStationQuarantineError('missing_extra_source_publication_roster')
-    docs={n:strict_json(body)for n,(body,_)in captures.items()if n not in('ncei_tsunamis','ncei_tide','ncei_map','map_js','map_store')}
+    docs=CaptureDocuments(captures, (n for n in captures if n not in ('ncei_tsunamis', 'ncei_tide', 'ncei_map', 'map_js', 'map_store')), decode=strict_json)
     before=docs['source_layer_before'];after=docs['source_layer_after']
     for layer in [before,after]:
         if (encode(layer.get('fields'))!=encode(FIELD_DECLARATIONS)or layer.get('objectIdField')!='STAT_OBJID'or layer.get('geometryType')!='esriGeometryPoint'

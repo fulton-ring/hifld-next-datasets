@@ -265,7 +265,7 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
                  "license": "Unreviewed; no license claim made.",
                  "attribution": "USACE service attribution and terms have not been reviewed.",
                  "release_date": None, "release_date_unknown_reason": "USACE service metadata gives no producer release date."}
-                for n, (_body, r) in sorted(captures.items())],
+                for n, (_body, r) in ((name, captures[name]) for name in sorted(captures))],
             "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate", "parameters": {
                 "layer_id": LAYER_ID, "attributes": "all returned source attributes in source order and declared Arrow types",
                 "geometry": "ISO WKB MultiPolygon Z is derived for GeoParquet compatibility; exact ordered XY/Z/M tuples with nullable M retained in source_geometry and raw Esri JSON",
@@ -286,7 +286,7 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
                        "source_vertex_count":sum(len(ring) for r in features if r.get("geometry") for ring in r["geometry"]["rings"]),
                        "source_measure_null_count":sum(p[3] is None for r in features if r.get("geometry") for ring in r["geometry"]["rings"] for p in ring),
                        "source_measure_zero_count":sum(p[3] == 0 for r in features if r.get("geometry") for ring in r["geometry"]["rings"] for p in ring)} )+b"\n"}
-        receipts = {n:r for n,(_b,r) in sorted(captures.items())}
+        receipts = {n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))}
         for name,(body,receipt) in captures.items():
             outputs[f"raw/{name}.body"] = body
             outputs[f"raw/{name}.wire"] = (root/f"{name}.wire").read_bytes()

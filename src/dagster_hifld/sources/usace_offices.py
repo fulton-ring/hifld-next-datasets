@@ -520,7 +520,7 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
                 "data-update observation, not a producer release date; release_date stays unset pending acceptance.")
         else:
             release_reason = "This capture exposed no ArcGIS editingInfo timestamps and no producer release-date field."
-        for name, (_body, receipt) in sorted(captures.items()):
+        for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
             decoded_info = receipt["decoded"]
             provenance_inputs.append({"input_id": "usace-offices-" + name, "producer": "U.S. Army Corps of Engineers",
                 "host": "services7.arcgis.com", "canonical_url": BASE, "retrieval_url": receipt["url"],

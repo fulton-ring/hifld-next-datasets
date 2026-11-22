@@ -23,6 +23,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely import wkb
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
@@ -180,7 +181,7 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]], gpkg: bytes)
                 "official_download", "layer_after", "service_after", "count_after", "ids_after"}
     if set(captures) != expected:
         raise ValueError("noaa_capture_roster_incomplete_or_unexpected")
-    docs = {name: json.loads(body) for name, (body, _) in captures.items() if name != "official_download"}
+    docs = CaptureDocuments(captures, (name for name in captures if name != 'official_download'))
     portal = docs["portal_item"]
     if (portal.get("id") != PORTAL_ITEM_ID or portal.get("owner") != "marinecadastre_noaa"
             or portal.get("title") != "Aids to Navigation" or portal.get("url") != SERVICE_URL
@@ -342,7 +343,7 @@ def capture_noaa_nautical_navaids(storage: StagingStorageResource, *, capture_di
             captures[name]=(body,old)
     capture_receipts = {name:receipt for name,(_,receipt) in captures.items()}
     inputs = []
-    for name, (_, receipt) in sorted(captures.items()):
+    for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures)):
         inputs.append({"input_id":name,"producer":"NOAA MarineCadastre; underlying USCG direct producer lineage unconfirmed",
             "host":httpx.URL(receipt["url"]).host,"role":"official_distributor","distributor":"NOAA MarineCadastre",
             "delegation_evidence":{"url":PORTAL_ITEM_URL,"statement":"NOAA-owned public item links this exact download; formal delegation evidence pending"},

@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -150,7 +151,7 @@ def _page_plan(ids: list[int], layer: Mapping[str, object]) -> tuple[str, list[t
 
 
 def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict, list[dict], list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     fields = docs["layer_before"].get("fields")
     if not isinstance(fields, list) or not fields or any(not isinstance(f, dict) for f in fields):
         raise ValueError("source_field_roster_missing")
@@ -408,7 +409,7 @@ def capture_bts_pipeline_terminals(storage: StagingStorageResource, *,
             "http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],
             "license":"https://www.usa.gov/publicdomain/label/1.0/","attribution":"BTS NTAD; producer metadata states U.S. public domain; rights review remains pending.",
             "release_date":None,"release_date_unknown_reason":"ArcGIS modified timestamp is not a source release date."}
-            for name,(_,receipt) in sorted(captures.items())],
+            for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
             "feature_layer_id":LAYER_ID,"source_fields":"all thirty-three source fields retained with declared source types",
             "source_ids":"OBJECTID preserved unchanged; source ID roster is pinned before and after capture","geometry":"source point x/y encoded as WKB at EPSG:4326 without reprojection or repair",
@@ -425,7 +426,7 @@ def capture_bts_pipeline_terminals(storage: StagingStorageResource, *,
     prefix = candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,
         "source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],
-        "receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+        "receipts":{name:receipt for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     outputs = {native_path:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
         "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():

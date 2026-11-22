@@ -499,7 +499,7 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
             payloads[f"raw/{name}.receipt.json"] = _json(receipt)
         parquet_descriptor = {"path": f"geoparquet/{SLUG}.parquet", "bytes": len(payloads[f"geoparquet/{SLUG}.parquet"]), "sha256": hashlib.sha256(payloads[f"geoparquet/{SLUG}.parquet"]).hexdigest()}
         provenance_inputs = []
-        for name, (_body, receipt) in sorted(captures.items()):
+        for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
             decoded_info = receipt["decoded"]
             provenance_inputs.append({"input_id": "fema-state-eoc-" + name, "producer": "Federal Emergency Management Agency",
                 "host": "gis.fema.gov", "canonical_url": BASE, "retrieval_url": receipt["url"],

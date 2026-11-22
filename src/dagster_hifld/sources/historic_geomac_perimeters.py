@@ -36,6 +36,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
@@ -250,7 +251,7 @@ def _page_body(root: Path, name: str, receipt: dict) -> bytes:
 def _population(root: Path, static: dict[str, tuple[bytes, dict]],
                 page_names: list[str], receipts: dict[str, dict],
                 page_size: int = PAGE_SIZE) -> tuple[dict, list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _receipt) in static.items()}
+    docs = CaptureDocuments(static)
     if _canonical(docs["service_before"]) != _canonical(docs["service_after"]):
         raise ValueError("ifph_service_changed_during_capture")
     layer, layer_after = docs["layer_before"], docs["layer_after"]

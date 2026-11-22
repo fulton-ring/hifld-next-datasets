@@ -24,6 +24,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -361,7 +362,7 @@ def _capture_evidence_hash(docs: dict, captures: dict[str, tuple[bytes, dict]]) 
     cosmetic symbology so content-identical captures reuse one version.
     """
     roster = {}
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         doc = docs.get(name)
         if name.startswith("layer_") and isinstance(doc, dict):
             # Layer responses carry server-randomized cosmetic symbology: the
@@ -453,7 +454,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                 capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, BATCH_SIZE, client=client,
                     captures=captures, discovery_documents=_urls([])[:4], roster=_urls,
                     validate_seed=validate_seed, fetch=_capture)
-            docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+            docs = CaptureDocuments(captures)
             _validate_metadata(docs["service_before"], docs["layer_before"])
             _validate_metadata(docs["service_after"], docs["layer_after"])
             if (docs["service_after"] != docs["service_before"]
@@ -463,7 +464,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                 raise ValueError("source_count_drift")
             if docs["ids_after"].get("objectIds") != docs["ids_before"].get("objectIds"):
                 raise ValueError("source_id_roster_changed_during_capture")
-            pages = {name: payload for name, payload in docs.items() if name.startswith("page_")}
+            pages = CaptureDocuments(captures, (name for name in docs if name.startswith("page_")))
             _features, audit = _validate_population(docs["page_000"].get("fields")
                                                     if pages else None,
                                                     docs["ids_before"].get("objectIds"), pages)
@@ -473,7 +474,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                 "source_feature_count": audit["source_feature_count"],
                 "source_record_sha256": audit["source_record_sha256"],
                 "source_schema_sha256": audit["source_schema_sha256"],
-                "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+                "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             }
             (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
             captures = _read_replay(root)
@@ -495,7 +496,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                 quarantine_incomplete_capture(storage, root, DATASET_SLUG, version,
                                               captures, type(exc).__name__)
             raise
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     _validate_metadata(docs["service_before"], docs["layer_before"])
     _validate_metadata(docs["service_after"], docs["layer_after"])
     if (docs["service_after"] != docs["service_before"]
@@ -505,7 +506,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
         raise ValueError("source_count_drift")
     if docs["ids_after"].get("objectIds") != docs["ids_before"].get("objectIds"):
         raise ValueError("source_id_roster_changed_during_capture")
-    pages = {name: payload for name, payload in docs.items() if name.startswith("page_")}
+    pages = CaptureDocuments(captures, (name for name in docs if name.startswith("page_")))
     features, audit = _validate_population(docs["page_000"].get("fields") if pages else None,
                                            docs["ids_before"].get("objectIds"), pages)
     parquet = _parquet_bytes(features)
@@ -533,7 +534,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                   "coverage_accepted": False, "rights_accepted": False,
                   "mapping_approved": False, "release_accepted": False, "baseline_accepted": False})
     if original_payload is None:
-        receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+        receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{
         "input_id": name,
         "producer": PUBLISHER,

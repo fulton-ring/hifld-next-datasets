@@ -17,6 +17,7 @@ import pyarrow.parquet as pq
 from pyproj import CRS
 from shapely import from_wkb
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.arcgis_layer import capture_witness, load_replay, read_ienc_layer_replay
@@ -242,8 +243,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     ids_before = capture_witness(captures)
     if not ids_before or set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()
-            if name not in {"data_gov_landing", "bts_metadata"}}
+    docs = CaptureDocuments(captures, (name for name in captures if name not in {'data_gov_landing', 'bts_metadata'}))
     catalog = captures["data_gov_landing"][0].decode("utf-8", errors="replace")
     source_metadata = captures["bts_metadata"][0].decode("utf-8-sig", errors="replace")
     item = docs["bts_item"]
@@ -425,7 +425,7 @@ def _read_capture(root: Path, storage: StagingStorageResource,
         raise
     (root / "capture_manifest.json").write_bytes(_canonical({
         "captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
-        "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
     }) + b"\n")
     return _read_replay(root)
@@ -477,7 +477,7 @@ def capture_principal_ports(storage: StagingStorageResource, *, version: str,
     capture_sha = _sha(_canonical(capture_evidence))
     audit.update({
         "source_capture_evidence_sha256": capture_sha, "source_capture_evidence": capture_evidence,
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
@@ -495,7 +495,7 @@ def capture_principal_ports(storage: StagingStorageResource, *, version: str,
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, candidate_version)
     parquet = _parquet_bytes(fields, features)
     inputs = []
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         distributor = name == "bts_item"
         catalog_record = name == "data_gov_landing"
         inputs.append({
@@ -592,7 +592,7 @@ def capture_principal_ports(storage: StagingStorageResource, *, version: str,
     seal_ready_candidate(storage, state_key, candidate_version, identity_sha, {
         "processing_identity": identity, "source_record_sha256": record_sha,
         "source_schema_sha256": schema_sha,
-        "capture_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "capture_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "objects": descriptors,
     })
     validate_construction_code_identity(

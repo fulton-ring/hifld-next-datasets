@@ -402,7 +402,7 @@ def _quarantine_failure_evidence(storage: StagingStorageResource, dataset_slug: 
                                  error_code: str, omitted: list[str]) -> str:
     token = uuid4().hex
     base = f"_quarantine/{dataset_slug}/{token}"
-    for name, (body, wire, receipt) in sorted(captures.items()):
+    for name, (body, wire, receipt) in ((name, captures[name]) for name in sorted(captures)):
         write_immutable(storage, f"{base}/raw/{name}.body", body)
         write_immutable(storage, f"{base}/raw/{name}.wire", wire)
         write_immutable(storage, f"{base}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")

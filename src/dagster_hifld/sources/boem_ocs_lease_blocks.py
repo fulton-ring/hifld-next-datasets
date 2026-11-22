@@ -43,6 +43,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.http_capture import validate_capture_roster
 from dagster_hifld.sources.arcgis_layer import (
     capture_layer, RetainedCaptureView, capture_witness, load_replay, offset_layer_capture_roster,
@@ -121,7 +122,7 @@ def _input_fingerprint(captures: Mapping[str, tuple[bytes, Mapping[str, object]]
     return _sha(_canonical({"bodies": {name: {"bytes": len(body), "sha256": _sha(body),
                                               "wire_bytes": receipt.get("wire_bytes"),
                                               "wire_sha256": receipt.get("wire_sha256")}
-                            for name, (body, receipt) in sorted(captures.items())},
+                            for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures))},
                             "processing_identity": identity}))
 
 
@@ -284,7 +285,7 @@ def _validate_rings(rings: object) -> list[list[list[float]]] | None:
 
 def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
         -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     ids_before = capture_witness(captures)
     count = len(ids_before)
     service, layer = docs["service_before"], docs["layer_before"]
@@ -546,7 +547,7 @@ def capture_boem_ocs_lease_blocks(storage: StagingStorageResource, *, version: s
                                               "release for the lease-block grid; per-block "
                                               "BLK_FED_APRV_DT values are per-block effective "
                                               "dates, not a dataset release date."}
-              for n, (_, receipt) in sorted(captures.items())]
+              for n, (_, receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version": 1, "approved": False,
                 "title": "Outer Continental Shelf (OCS) Lease Blocks",
                 "description": "Federal OCS lease-block grid polygons (the leasing cadastre "
@@ -642,7 +643,7 @@ def capture_boem_ocs_lease_blocks(storage: StagingStorageResource, *, version: s
             raise ValueError("candidate_physical_readback_failed:" + name)
     payload = {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": {n: r for n, (_, r) in sorted(captures.items())},
+               "capture_receipts": {n: r for n, (_, r) in ((name, captures[name]) for name in sorted(captures))},
                "objects": objects}
     seal_ready_candidate(storage, state_key, version, _sha(_canonical(identity)), payload)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
