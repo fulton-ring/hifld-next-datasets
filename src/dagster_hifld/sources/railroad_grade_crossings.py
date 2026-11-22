@@ -50,11 +50,11 @@ the producer's nulls.
 from __future__ import annotations
 
 from functools import partial
+
 import hashlib
 import json
 import re
 import shutil
-import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,6 +75,11 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import (
+    capture_with_retry,
+    producer_error_doc as _producer_error_doc,
+    preserve_failed_attempt as _preserve_failed_attempt,
+)
 from dagster_hifld.sources.capture_common import (
     capture_get, candidate_prefix, content_derived_version,
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
@@ -458,23 +463,6 @@ def _code_identity() -> dict[str, object]:
     return processing_identity(Path(__file__).parents[3])
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
 class _CaptureLedger:
     """Cumulative scratch budget shared by documents, pages and failed attempts.
 
@@ -521,34 +509,6 @@ def _capture_with_budget(client: httpx.Client, url: str, capture_root: Path, nam
         raise
 
 
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float,
-                        ledger: _CaptureLedger) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents and
-    incomplete transport captures; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names, charged against the shared budget as
-    their bytes are retained, and never enter the capture roster. The final
-    attempt's body is always returned as captured, so a persistent producer
-    failure surfaces to the caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = _capture_with_budget(client, url, capture_root, name, ledger,
-                                                 max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
 
 
 def _capture_pages(client: httpx.Client, capture_root: Path, total: int,
@@ -571,8 +531,8 @@ def _capture_pages(client: httpx.Client, capture_root: Path, total: int,
         offset, count = pages.popleft()
         name = _page_name(offset, count)
         try:
-            body, receipt = _capture_with_retry(
-                client, _page_query(offset, count), capture_root, name, ledger=ledger,
+            body, receipt = capture_with_retry(
+                client, _page_query(offset, count), capture_root, name, capture=partial(_capture_with_budget, ledger=ledger),
                 max_bytes=MAX_CAPTURE_BYTES,
                 attempts=PAGE_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
                 base_delay=PAGE_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
@@ -677,11 +637,11 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/railroad-grade-crossings-draft"}) as client:
-            seed_body, seed_receipt = _capture_with_retry(
+            seed_body, seed_receipt = capture_with_retry(
                 client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
                 capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
                 attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
-                ledger=ledger)
+                capture=partial(_capture_with_budget, ledger=ledger))
             seed = json.loads(seed_body).get("objectIds")
             if (not isinstance(seed, list) or not seed
                     or any(type(value) is not int for value in seed) or len(set(seed)) != len(seed)):
@@ -689,22 +649,22 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
             seed_count = len(seed)
             captures["ids_seed"] = (seed_body, seed_receipt)
             for name, url in _doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name,
+                body, receipt = capture_with_retry(client, url, capture_root, name,
                                                     max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
-                                                    ledger=ledger)
+                                                    capture=partial(_capture_with_budget, ledger=ledger))
                 captures[name] = (body, receipt)
             layer_doc = json.loads(captures["layer_before"][0])
             if layer_doc.get("maxRecordCount") != 2000 or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
                 raise ValueError("source_record_limit_drift")
             captures.update(_capture_pages(client, capture_root, seed_count, ledger))
             for name, url in _after_doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name,
+                body, receipt = capture_with_retry(client, url, capture_root, name,
                                                     max_bytes=MAX_CAPTURE_BYTES,
                                                     attempts=DOC_CAPTURE_ATTEMPTS,
                                                     base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
-                                                    ledger=ledger)
+                                                    capture=partial(_capture_with_budget, ledger=ledger))
                 captures[name] = (body, receipt)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:

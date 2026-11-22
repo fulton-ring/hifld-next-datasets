@@ -1,6 +1,9 @@
 """Focused contract checks for the FRA Railroad Grade Crossings source adapter."""
 from __future__ import annotations
 
+from functools import partial
+from dagster_hifld.sources import arcgis_layer
+
 import hashlib
 import httpx
 import json
@@ -623,12 +626,12 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep") as sleep_mock:
-                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+                 patch.object(arcgis_layer.time, "sleep") as sleep_mock:
+                body, _receipt = arcgis_layer.capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                             base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS,
-                                                            ledger=source._CaptureLedger(1 << 30))
+                                                            capture=partial(source._capture_with_budget, ledger=source._CaptureLedger(1 << 30)))
             self.assertEqual(body, ok_body)
             self.assertEqual(calls, ["probe", "probe"])
             self.assertEqual((root / "probe.body").read_bytes(), ok_body)
@@ -652,12 +655,12 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
-                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+                 patch.object(arcgis_layer.time, "sleep"):
+                body, _receipt = arcgis_layer.capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                             base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS,
-                                                            ledger=source._CaptureLedger(1 << 30))
+                                                            capture=partial(source._capture_with_budget, ledger=source._CaptureLedger(1 << 30)))
             self.assertEqual(body, error_body)
             self.assertEqual(len(calls), source.DOC_CAPTURE_ATTEMPTS)
             for attempt in range(1, source.DOC_CAPTURE_ATTEMPTS):
@@ -687,18 +690,18 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
-                body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
+                 patch.object(arcgis_layer.time, "sleep"):
+                body, _receipt = arcgis_layer.capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                             base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS,
-                                                            ledger=source._CaptureLedger(1 << 30))
+                                                            capture=partial(source._capture_with_budget, ledger=source._CaptureLedger(1 << 30)))
                 with self.assertRaisesRegex(ValueError, "unrelated_source_capture_failure"):
-                    source._capture_with_retry(None, "https://producer.invalid/other",
+                    arcgis_layer.capture_with_retry(None, "https://producer.invalid/other",
                                                root, "probe2", max_bytes=1024,
                                                attempts=source.DOC_CAPTURE_ATTEMPTS,
                                                base_delay=source.DOC_CAPTURE_BASE_DELAY_SECONDS,
-                                               ledger=source._CaptureLedger(1 << 30))
+                                               capture=partial(source._capture_with_budget, ledger=source._CaptureLedger(1 << 30)))
             self.assertEqual(body, ok_body)
             self.assertEqual(calls.count("probe"), 2)
             self.assertEqual(len(calls), 3)
@@ -730,7 +733,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(arcgis_layer.time, "sleep"):
                 pages = source._capture_pages(None, root, 6, source._CaptureLedger(1 << 30))
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
@@ -766,7 +769,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(arcgis_layer.time, "sleep"):
                 pages = source._capture_pages(None, root, 6, source._CaptureLedger(1 << 30))
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual(calls.count("page_000000_00004"), 1)
@@ -789,7 +792,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
                  patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(arcgis_layer.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
                     source._capture_pages(None, root, 6, source._CaptureLedger(1 << 30))
 
@@ -985,7 +988,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             root = Path(temporary) / "captures"
             root.mkdir()
             ledger = source._CaptureLedger(budget)
-            with patch.multiple(source, PAGE_START_RECORDS=2), patch.object(source.time, "sleep"):
+            with patch.multiple(source, PAGE_START_RECORDS=2), patch.object(arcgis_layer.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_capture_exceeds_scratch_budget"):
                     source._capture_pages(client, root, 6, ledger)
             self.assertEqual(ledger.retained, budget)
@@ -1007,10 +1010,10 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             ledger = source._CaptureLedger(1 << 20)
-            with patch.object(source.time, "sleep"):
-                body, _receipt = source._capture_with_retry(client, "https://producer.invalid/page",
+            with patch.object(arcgis_layer.time, "sleep"):
+                body, _receipt = arcgis_layer.capture_with_retry(client, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=64 * 1024 * 1024,
-                                                            attempts=2, base_delay=0.0, ledger=ledger)
+                                                            attempts=2, base_delay=0.0, capture=partial(source._capture_with_budget, ledger=ledger))
             self.assertEqual(body, ok_body)
             # Wire plus decoded bytes of the rejected attempt are budgeted too.
             self.assertEqual(ledger.retained, 2 * (len(error_body) + len(ok_body)))
@@ -1033,7 +1036,7 @@ class RailroadGradeCrossingsTests(unittest.TestCase):
             root.mkdir()
             ledger = source._CaptureLedger(1 << 30)
             with patch.multiple(source, PAGE_START_RECORDS=4, PAGE_PROBE_ATTEMPTS=1,
-                                DOC_CAPTURE_ATTEMPTS=1), patch.object(source.time, "sleep"):
+                                DOC_CAPTURE_ATTEMPTS=1), patch.object(arcgis_layer.time, "sleep"):
                 pages = source._capture_pages(client, root, 6, ledger)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             accepted = 2 * sum(len(bodies[name]) for name in sorted(pages))

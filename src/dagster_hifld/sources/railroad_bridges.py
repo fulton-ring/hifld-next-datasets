@@ -49,7 +49,6 @@ import hashlib
 import json
 import re
 import shutil
-import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,8 +69,13 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import (
+    capture_with_retry as _capture_with_retry,
+    producer_error_doc as _producer_error_doc,
+    preserve_failed_attempt as _preserve_failed_attempt,
+)
 from dagster_hifld.sources.capture_common import (
-    capture_get, candidate_prefix, content_derived_version,
+    candidate_prefix, content_derived_version,
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable,
 )
@@ -441,50 +445,6 @@ def _parquet_bytes(fields: list[dict[str, object]], features: list[dict[str, obj
 
 def _code_identity() -> dict[str, object]:
     return processing_identity(Path(__file__).parents[3])
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents and
-    incomplete transport captures; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
-    final attempt's body is always returned as captured, so a persistent
-    producer failure surfaces to the caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
 
 
 def _capture_pages(client: httpx.Client, capture_root: Path,

@@ -696,7 +696,8 @@ def capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name:
                        retryable_statuses: tuple[int, ...] | None = None,
                        require_json: bool = False,
                        return_final_error: bool = True,
-                       schedule: tuple[float, ...] = ()) -> tuple[bytes, dict[str, object]]:
+                       schedule: tuple[float, ...] = (),
+                       capture: Callable[..., tuple[bytes, dict]] | None = None) -> tuple[bytes, dict[str, object]]:
     """Own bounded producer retries and retain all failed response evidence.
 
     Family policy controls reservation, status refusal and final error return.
@@ -717,7 +718,7 @@ def capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name:
             if retained + 2 * max_bytes > max_total_bytes:
                 raise budget_error("source_capture_budget_exceeded_before_request")
         try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
+            body, receipt = (capture or capture_get)(client, url, capture_root, name, max_bytes=max_bytes)
         except ValueError as exc:
             if not str(exc).startswith("incomplete_source_capture:"):
                 raise

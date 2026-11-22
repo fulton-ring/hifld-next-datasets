@@ -95,6 +95,7 @@ class RetryOwnershipTests(unittest.TestCase):
             'incorporated_places_civil_gnis', 'landforms_gnis', 'populated_places_gnis',
             'unincorporated_places_census_gnis', 'us_landslide_regions', 'tmas_stations',
             'wbd_hu8_subbasin', 'shipping_fairways', 'pad_us_manager_name', 'nfhl/capture',
+            'railroad_bridges', 'runways', 'nfhl_lomas', 'railroad_grade_crossings',
         )
         forbidden = {'capture_with_retry', 'producer_error_doc', 'preserve_failed_attempt'}
         for name in names:

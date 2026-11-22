@@ -14,6 +14,7 @@ import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.sources import runways as source
+from dagster_hifld.sources import arcgis_layer
 
 
 def _canonical(value):
@@ -556,8 +557,8 @@ class RunwaysTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep") as sleep_mock:
+            with patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch("time.sleep") as sleep_mock:
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
@@ -584,8 +585,8 @@ class RunwaysTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+            with patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch("time.sleep"):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
@@ -618,8 +619,8 @@ class RunwaysTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+            with patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch("time.sleep"):
                 body, _receipt = source._capture_with_retry(None, "https://producer.invalid/page",
                                                             root, "probe", max_bytes=1024,
                                                             attempts=source.DOC_CAPTURE_ATTEMPTS,
@@ -659,8 +660,8 @@ class RunwaysTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch("time.sleep"):
                 pages = source._capture_pages(None, root, 6)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
@@ -695,8 +696,8 @@ class RunwaysTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch("time.sleep"):
                 pages = source._capture_pages(None, root, 6)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual(calls.count("page_000000_00004"), 1)
@@ -718,8 +719,8 @@ class RunwaysTests(unittest.TestCase):
             root.mkdir()
             with patch.multiple(source, PAGE_START_RECORDS=4,
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=2), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
-                 patch.object(source.time, "sleep"):
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch("time.sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
                     source._capture_pages(None, root, 6)
 
@@ -800,7 +801,7 @@ class RunwaysTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)), \
-                 patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_runways(storage, version="vfixture",
                                                    capture_directory=str(root / "captures"))
