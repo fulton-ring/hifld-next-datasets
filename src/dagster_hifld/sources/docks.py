@@ -6,16 +6,19 @@ import math
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
-from uuid import uuid4
+from urllib.parse import urlsplit
 
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 
+from dagster_hifld.sources.arcgis_raw_capture import (
+    RawCapturePolicy, request_raw, capture_exact_id_population,
+    read_staged_response, expected_request as _expected_request,
+)
+
 from dagster_hifld.capture_completeness import validate_capture_witness
-from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.capture_common import (
     processing_identity, safe_candidate_version, write_immutable,
@@ -54,12 +57,6 @@ def _write_target(staging, version, filename, data):
     write_immutable(staging, key, data)
 
 
-def _expected_request(method, url, params):
-    if method == "POST":
-        return url, urlencode(params).encode("ascii")
-    return str(httpx.URL(url).copy_merge_params(params)), b""
-
-
 def _source_modified_date(value):
     if type(value) is not int or value < 0:
         raise ValueError("source_edit_timestamp_missing")
@@ -68,90 +65,13 @@ def _source_modified_date(value):
 
 def _request(client, staging, version, name, url, params, budget, replay_prefix=None):
     method = "POST" if name.startswith("page_") else "GET"
-    expected_url, expected_body = _expected_request(method, url, params)
-    if replay_prefix is not None:
-        body = staging.read_key(f"{replay_prefix}/raw/{name}.body")
-        wire = staging.read_key(f"{replay_prefix}/raw/{name}.wire")
-        receipt_raw = staging.read_key(f"{replay_prefix}/raw/{name}.receipt.json")
-        receipt = json.loads(receipt_raw)
-        if (receipt.get("complete") is not True or receipt.get("status") != 200
-                or receipt.get("sha256") != _sha(body) or receipt.get("bytes") != len(body)
-                or receipt.get("wire_sha256") != _sha(wire) or receipt.get("wire_bytes") != len(wire)
-                or receipt.get("method") != method or receipt.get("url") != expected_url
-                or receipt.get("final_url") != expected_url):
-            raise ValueError("retained_capture_receipt_mismatch:" + name)
-        request_body = b""
-        if method == "POST":
-            request_body = staging.read_key(f"{replay_prefix}/raw/{name}.request.body")
-            if (request_body != expected_body or receipt.get("request_body_sha256") != _sha(expected_body)
-                    or receipt.get("request_body_bytes") != len(expected_body)):
-                raise ValueError("retained_capture_request_mismatch:" + name)
-        for suffix, data in (("body", body), ("wire", wire), ("receipt.json", receipt_raw)):
-            _write_target(staging, version, f"raw/{name}.{suffix}", data)
-        if request_body:
-            _write_target(staging, version, f"raw/{name}.request.body", request_body)
-        budget[0] += len(body) + len(wire)
-        if budget[0] > MAX_BYTES:
-            raise ValueError("source_total_capture_budget_exceeded")
-        parsed = json.loads(body)
-        if not isinstance(parsed, dict) or "error" in parsed:
-            raise ValueError("invalid_arcgis_response:" + name)
-        return parsed
-    body_parts, wire_parts = [], []
-    response_obj = None
-    request_body = expected_body
-    try:
-        with client.stream(method, url, params=params if method == "GET" else None,
-                           data=params if method == "POST" else None,
-                           headers={"Accept-Encoding": "identity"}) as response:
-            response_obj = response
-            final_url = str(response.url)
-            capture = capture_http_response(
-                response, max_wire_bytes=32_000_000, max_decoded_bytes=32_000_000,
-                reserve=lambda progress: _reserve(budget, progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes),
-                retain_wire=wire_parts.append, retain_decoded=body_parts.append,
-            )
-    except Exception as exc:
-        body, wire = b"".join(body_parts), b"".join(wire_parts)
-        attempt = f"{name}.{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}.{uuid4().hex[:8]}"
-        partial_receipt = {"method": method, "url": expected_url,
-            "final_url": str(response_obj.url) if response_obj is not None else expected_url,
-            "request_body_bytes": len(request_body), "request_body_sha256": _sha(request_body) if request_body else None,
-            "status": response_obj.status_code if response_obj is not None else None,
-            "observed_at": datetime.now(timezone.utc).isoformat(), "bytes": len(body), "sha256": _sha(body),
-            "wire_bytes": len(wire), "wire_sha256": _sha(wire), "complete": False,
-            "error_code": "transport_error", "error_type": type(exc).__name__}
-        for suffix, data in (("body", body), ("wire", wire), ("receipt.json", _canonical(partial_receipt))):
-            _write_target(staging, version, f"quarantine/partial/{attempt}.{suffix}", data)
-        if request_body:
-            _write_target(staging, version, f"quarantine/partial/{attempt}.request.body", request_body)
-        raise ValueError("source_transport_error:" + type(exc).__name__) from exc
-    body, wire = b"".join(body_parts), b"".join(wire_parts)
-    receipt = {"method": method, "url": str(response_obj.request.url), "final_url": final_url,
-               "request_body_bytes": len(request_body), "request_body_sha256": _sha(request_body) if request_body else None,
-               "status": capture.status_code, "observed_at": datetime.now(timezone.utc).isoformat(),
-               "bytes": len(body), "sha256": _sha(body), "wire_bytes": len(wire),
-               "wire_sha256": _sha(wire), "content_type": response_obj.headers.get("content-type"),
-               "content_encoding": capture.content_encoding, "complete": capture.complete,
-               "error_code": capture.error_code}
-    budget[0] += len(body) + len(wire)
-    if budget[0] > MAX_BYTES:
-        raise ValueError("source_total_capture_budget_exceeded")
-    for suffix, data in (("body", body), ("wire", wire), ("receipt.json", _canonical(receipt))):
-        _write_target(staging, version, f"raw/{name}.{suffix}", data)
-    if request_body:
-        _write_target(staging, version, f"raw/{name}.request.body", request_body)
-    if not capture.complete or capture.status_code != 200 or final_url != str(response_obj.request.url):
-        raise ValueError("incomplete_source_response:" + name)
-    parsed = json.loads(body)
-    if not isinstance(parsed, dict) or "error" in parsed:
-        raise ValueError("invalid_arcgis_response:" + name)
-    return parsed
-
-
-def _reserve(budget, upcoming):
-    if budget[0] + upcoming > MAX_BYTES:
-        raise ValueError("source_total_capture_budget_exceeded")
+    retained = (lambda name, params: read_staged_response(
+        staging.read_key, replay_prefix, name, method, url, params)) if replay_prefix else None
+    return request_raw(client, url, params, name, budget,
+        write=lambda relative, data: _write_target(staging, version, relative, data),
+        encode=_canonical, method=method, retained=retained,
+        policy=RawCapturePolicy(32_000_000, MAX_BYTES, body_suffix="body",
+            extended_receipt=True, exact_status=True, preserve_transport=True))
 
 
 def _schema(layer):
@@ -274,13 +194,14 @@ def capture(staging, version, client=None, replay_version=None):
         ids = validate_capture_witness(before_count, before_ids, before_count, before_ids)
         if not ids:
             raise ValueError("source_empty_population_requires_review")
-        features, pages = [], []
-        for start in range(0, len(ids), PAGE_SIZE):
-            wanted = ids[start:start + PAGE_SIZE]
+        def fetch_page(start, wanted):
             result = _request(client, staging, version, f"page_{start:07d}", LAYER_URL + "/query", {
                 "f":"json", "objectIds":",".join(map(str, wanted)), "outFields":"*",
                 "returnGeometry":"true", "outSR":"4269", "orderByFields":"OBJECTID ASC"
             }, budget, replay_prefix)
+            return result
+
+        def validate_page(start, wanted, result):
             page = result.get("features")
             if (not isinstance(page, list) or len(page) != len(wanted) or result.get("exceededTransferLimit") is True
                     or result.get("geometryType") != "esriGeometryPoint"):
@@ -303,13 +224,19 @@ def capture(staging, version, client=None, replay_version=None):
                         _validate_crs(geom["spatialReference"])
                     if "LATITUDE" in attrs and "LONGITUDE" in attrs and not _coordinates_agree(attrs, geom):
                         raise ValueError("source_coordinate_attribute_geometry_drift")
-            features.extend(page)
-            pages.append({"offset": start, "requested_ids": wanted, "returned_ids": returned, "count": len(page)})
-        after_count = _request(client, staging, version, "count_after", LAYER_URL + "/query",
-                               {"f":"json", "where":"1=1", "returnCountOnly":"true"}, budget, replay_prefix).get("count")
-        after_result = _request(client, staging, version, "ids_after", LAYER_URL + "/query",
-                                {"f":"json", "where":"1=1", "returnIdsOnly":"true"}, budget, replay_prefix)
-        after_ids = after_result.get("objectIds")
+            return page
+
+        def close_witnesses():
+            after_count = _request(client, staging, version, "count_after", LAYER_URL + "/query",
+                                   {"f":"json", "where":"1=1", "returnCountOnly":"true"}, budget, replay_prefix).get("count")
+            after_result = _request(client, staging, version, "ids_after", LAYER_URL + "/query",
+                                    {"f":"json", "where":"1=1", "returnIdsOnly":"true"}, budget, replay_prefix)
+            after_ids = after_result.get("objectIds")
+            return after_count, after_ids
+
+        features, pages, (after_count, after_ids) = capture_exact_id_population(
+            ids, PAGE_SIZE, fetch_page=fetch_page, validate_page=validate_page,
+            close_witnesses=close_witnesses)
         validate_capture_witness(before_count, before_ids, after_count, after_ids,
                                  [feature.get("attributes", {}).get("OBJECTID") for feature in features])
         source_capture_started_at = (
