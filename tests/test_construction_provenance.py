@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -52,6 +53,97 @@ class ConstructionProvenanceTests(unittest.TestCase):
                 wrong = dict(files); wrong[name] = "0" * 64
                 self.assert_code("construction_processing_blob_hash_mismatch", root, sha, wrong)
             self.assertEqual(before, {name: (root / name).read_bytes() for name in files})
+
+    def test_many_binary_blobs_use_bounded_git_processes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"; fixture(root)
+            files = {}
+            for index in range(64):
+                name = f"src/binary-{index}.py"
+                body = bytes([index]) + b"\0\n blob header-looking bytes \n" * 20
+                (root / name).write_bytes(body)
+                files[name] = hashlib.sha256(body).hexdigest()
+            commit(root, "many binary processing blobs")
+            sha = git(root, "rev-parse", "HEAD")
+            run = subprocess.run
+            with patch("dagster_hifld.construction_provenance.subprocess.run", wraps=run) as calls:
+                validate_construction_code_identity(root, sha, files)
+            cat_file_calls = [call for call in calls.call_args_list
+                              if "cat-file" in call.args[0]]
+            self.assertLessEqual(len(cat_file_calls), 3)
+            # Every claimed file is checked even at the end of a batch.
+            files["src/binary-63.py"] = "0" * 64
+            self.assert_code("construction_processing_blob_hash_mismatch", root, sha, files)
+
+    def test_batch_protocol_corruption_and_changed_sizes_fail_closed(self):
+        from dagster_hifld import construction_provenance as provenance
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"; sha, files = fixture(root)
+            original = provenance._git
+            def corrupt(mode):
+                def run(root, args, env, **kwargs):
+                    result = original(root, args, env, **kwargs)
+                    if args == ["cat-file", "--batch"]:
+                        header, separator, bodies = result.stdout.partition(b"\n")
+                        if mode == "short":
+                            result.stdout = result.stdout[:-1]
+                        elif mode == "extra":
+                            result.stdout += b"unrequested content"
+                        elif mode == "size":
+                            result.stdout = header.rsplit(b" ", 1)[0] + b" 999999\n" + bodies
+                        elif mode == "type":
+                            result.stdout = header.replace(b" blob ", b" tree ") + separator + bodies
+                        elif mode == "oid":
+                            result.stdout = b"0" * 40 + header[40:] + separator + bodies
+                        elif mode == "nonzero":
+                            result.returncode = 1
+                    return result
+                return run
+            for mode in ("short", "extra", "size", "type", "oid", "nonzero"):
+                with self.subTest(mode=mode), patch.object(provenance, "_git", side_effect=corrupt(mode)):
+                    self.assert_code("construction_git_read_failed", root, sha, files)
+
+    def test_batch_chunks_and_limits_preserve_path_ordered_failures(self):
+        from dagster_hifld import construction_provenance as provenance
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"; fixture(root)
+            files = {}
+            for name, body in {"a.py": b"a" * 9, "b.py": b"b" * 9, "c.py": b"c" * 12}.items():
+                (root / name).write_bytes(body)
+                files[name] = hashlib.sha256(body).hexdigest()
+            commit(root, "batch boundaries")
+            sha = git(root, "rev-parse", "HEAD")
+            original = provenance._git
+            with patch.object(provenance, "_MAX_BLOB_BYTES", 16), patch.object(provenance, "_git", wraps=original) as calls:
+                validate_construction_code_identity(root, sha, files)
+            requests = [call.kwargs["input"] for call in calls.call_args_list
+                        if call.args[1] == ["cat-file", "--batch"]]
+            self.assertEqual(len(requests), 3)
+            # Later oversize cannot hide an earlier wrong hash.
+            wrong = dict(files); wrong["a.py"] = "0" * 64
+            with patch.object(provenance, "_MAX_BLOB_BYTES", 10):
+                self.assert_code("construction_processing_blob_hash_mismatch", root, sha, wrong)
+                self.assert_code("construction_processing_blob_size_limit", root, sha, files)
+            with patch.object(provenance, "_MAX_TOTAL_BLOB_BYTES", 18):
+                self.assert_code("construction_processing_blob_size_limit", root, sha, files)
+
+    def test_later_corrupt_git_object_cannot_hide_earlier_hash_failure(self):
+        for corruption in ("header", "footer"):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / "repo"; fixture(root)
+                (root / "a.py").write_bytes(b"a.py")
+                (root / "z.py").write_bytes(b"z.py")
+                commit(root, "ordered corrupt object")
+                sha = git(root, "rev-parse", "HEAD")
+                oid = git(root, "rev-parse", "HEAD:z.py")
+                object_path = root / ".git/objects" / oid[:2] / oid[2:]
+                object_path.chmod(0o600)
+                object_path.write_bytes(b"broken" if corruption == "header" else
+                                        zlib.compress(b"blob 4\0z.py")[:-3])
+                files = {"a.py": "0" * 64, "z.py": hashlib.sha256(b"z.py").hexdigest()}
+                self.assert_code("construction_processing_blob_hash_mismatch", root, sha, files)
+                files["a.py"] = hashlib.sha256(b"a.py").hexdigest()
+                self.assert_code("construction_git_read_failed", root, sha, files)
 
     def test_changed_source_commit_cannot_claim_the_recorded_old_blobs(self):
         with tempfile.TemporaryDirectory() as directory:
