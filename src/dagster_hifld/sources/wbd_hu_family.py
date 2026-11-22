@@ -62,7 +62,7 @@ from dagster_hifld.sources import wbd_capture
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.sources.arcgis_layer import producer_error_doc
+from dagster_hifld.sources.arcgis_layer import producer_error_doc, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -966,7 +966,7 @@ def read_replay(spec: WbdHuSpec, root: Path) -> tuple[dict[str, tuple[bytes, dic
     if roster_files != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
     expected_urls = dict(capture_roster(spec, ids))
-    captures = {}
+    captures = RetainedCaptureView(root)
     for name in sorted(expected_names):
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
@@ -1034,7 +1034,7 @@ def capture_candidate(spec: WbdHuSpec, storage: StagingStorageResource, *, versi
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
-        captures = {}
+        captures = RetainedCaptureView(root)
         page_parts: dict[str, list[str]] = {}
         page_refusals: list[str] = []
         try:
