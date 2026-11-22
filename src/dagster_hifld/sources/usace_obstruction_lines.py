@@ -120,7 +120,7 @@ def _read_replay(root: Path) -> Mapping[str, tuple[bytes, dict]]:
         raise ValueError("retained_capture_name_roster_changed")
     expected_urls = dict(_capture_urls(replay_ids))
     return validated_capture_view(root, receipts=manifest["receipts"],
-        expected_urls=expected_urls, load_capture=_load_capture,
+        expected_urls=expected_urls, load_capture=load_capture,
         validate_request_identity=validate_capture_request_identity)
 
 
