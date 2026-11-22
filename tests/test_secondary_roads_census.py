@@ -451,11 +451,12 @@ class RoadsRetryEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             with httpx.Client(transport=httpx.MockTransport(serve)) as client, \
-                    patch.object(source, '_TRANSIENT_RETRY_DELAYS', (0.0,)):
+                    patch.object(retry_owner.time, 'sleep') as wait:
                 body, receipt = source._capture(client, 'https://producer.test/query', root, 'page_000')
             self.assertEqual(body, accepted)
             self.assertEqual(receipt['status'], 200)
             self.assertEqual(len(calls), 2)
+            wait.assert_called_once_with(5.0)
             self.assertEqual((root / 'page_000.attempt-01.body').read_bytes(), failed)
             self.assertEqual((root / 'page_000.attempt-01.wire').read_bytes(), failed)
             prior = json.loads((root / 'page_000.attempt-01.receipt.json').read_bytes())
