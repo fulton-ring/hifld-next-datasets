@@ -3,7 +3,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import httpx
 
@@ -36,6 +36,32 @@ class NhdTransportTests(unittest.TestCase):
             self.assertEqual((root / "doc.attempt-01.body").read_bytes(), b"1")
             self.assertEqual((root / "doc.attempt-02.body").read_bytes(), b"2")
             self.assertEqual((root / "doc.body").read_bytes(), b"3")
+
+    def test_waterbody_doc_retry_witnesses_do_not_enter_candidate_inputs(self):
+        from dagster_hifld.sources import nhd_waterbody, nhd_waterbody_large_scale
+        for source in (nhd_waterbody, nhd_waterbody_large_scale):
+            with self.subTest(source=source.__name__), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                attempts = []
+
+                def fetch(client, url, root, name, **kwargs):
+                    attempts.append(name)
+                    (root / f"{name}.body").write_bytes(b"{}")
+                    (root / f"{name}.wire").write_bytes(b"{}")
+                    receipt = {"method": "GET", "url": url, "final_url": url,
+                               "status": 200, "complete_body": len(attempts) > 1}
+                    (root / f"{name}.receipt.json").write_text(json.dumps(receipt))
+                    if len(attempts) == 1:
+                        raise ValueError("incomplete_source_capture:doc")
+                    return b"{}", receipt
+
+                with patch.object(source, "capture_get", side_effect=fetch), \
+                        patch.object(source, "DOC_RETRY_BASE_DELAY_SECONDS", 0):
+                    source._capture_doc(None, "url", root, "doc", [0])
+                self.assertEqual(list(source._load_receipt_map(root)), ["doc"])
+                evidence = list(root.glob("doc.error-*.receipt.json"))
+                self.assertEqual(len(evidence), 1)
+                self.assertFalse(json.loads(evidence[0].read_text())["complete_body"])
 
     def test_document_http_retry_policy_preserves_area_exception_behavior(self):
         for retry_http, expected in [(False, 1), (True, 2)]:

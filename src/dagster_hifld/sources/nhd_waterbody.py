@@ -438,7 +438,8 @@ def _capture_doc(client: httpx.Client, url: str, capture_root: Path, name: str,
         client, url, capture_root, name, budget, attempts=DOC_ATTEMPTS,
         base_delay=DOC_RETRY_BASE_DELAY_SECONDS, max_body_bytes=MAX_BODY_BYTES,
         check_budget=_budget_check, retain_budget=_budget_guard, fetch=capture_get,
-        sleep=time.sleep, retry_http_errors=True)
+        sleep=time.sleep, retry_http_errors=True,
+        preserve_attempt=lambda root, name, attempt: _witness_attempt(root, name))
 
 
 def _fetch_page(active: httpx.Client, capture_root: Path, budget: list[int],
