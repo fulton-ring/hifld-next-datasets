@@ -441,3 +441,36 @@ def capture_checkpoint_segments(spec: SliceCaptureSpec, client: httpx.Client,
     capture_slices(spec, client, root, gaps,
         skip=lambda name: name in accepted and (root / f"{name}.body").exists(),
         refused=lambda name: witness(root, name), accept=accept)
+
+
+def capture_document_group(client: httpx.Client, root: Path, requests, *, fetch,
+                           captures: dict | None = None, retained_bytes: int = 0,
+                           max_total_bytes: int | None = None,
+                           client_for=None, validate=None) -> tuple[dict, int]:
+    """Acquire ordered documents and update the native receipt-byte ledger."""
+    captures = {} if captures is None else captures
+    for name, url in requests:
+        active = client if client_for is None else client_for(name)
+        body, receipt = fetch(active, url, root, name)
+        captures[name] = (body, receipt)
+        if max_total_bytes is not None:
+            retained_bytes += receipt["bytes"] + receipt["wire_bytes"]
+            if retained_bytes > max_total_bytes:
+                raise ValueError("source_capture_exceeds_scratch_budget")
+        if validate is not None:
+            validate(name, body)
+    return captures, retained_bytes
+
+
+def capture_offset_documents(spec: SliceCaptureSpec, client: httpx.Client, root: Path,
+                             requests, captures: dict, *, retained_bytes: int = 0,
+                             max_total_bytes: int | None = None) -> int:
+    """Use the layer's native document retry policy and receipt ledger."""
+    def fetch(client, url, root, name):
+        return spec.capture(client, url, root, name,
+                            attempts=spec.doc_attempts, base_delay=spec.doc_delay)
+
+    _captures, retained_bytes = capture_document_group(client, root, requests,
+        fetch=fetch, captures=captures, retained_bytes=retained_bytes,
+        max_total_bytes=max_total_bytes)
+    return retained_bytes

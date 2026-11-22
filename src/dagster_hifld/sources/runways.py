@@ -64,7 +64,7 @@ import pyproj
 from shapely.geometry import MultiPolygon
 
 from dagster_hifld.http_capture import capture_retention_budget
-from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages
+from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages, capture_offset_documents
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
 from dagster_hifld.capture_completeness import validate_capture_witness
@@ -555,15 +555,8 @@ def capture_runways(storage: StagingStorageResource, *, version: str,
             seed_count = len(seed)
             captures["ids_seed"] = (seed_body, seed_receipt)
             captured_total = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
-            for name, url in _doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name,
-                                                    max_bytes=MAX_CAPTURE_BYTES,
-                                                    attempts=DOC_CAPTURE_ATTEMPTS,
-                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                captures[name] = (body, receipt)
-                captured_total += receipt["bytes"] + receipt["wire_bytes"]
-                if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
+            captured_total = capture_offset_documents(_slice_capture_spec(), client, capture_root, _doc_urls(), captures,
+                retained_bytes=captured_total, max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
             layer_doc = json.loads(captures["layer_before"][0])
             if layer_doc.get("maxRecordCount") != 2000 or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
                 raise ValueError("source_record_limit_drift")
@@ -572,15 +565,8 @@ def capture_runways(storage: StagingStorageResource, *, version: str,
                                   for _, receipt in _page_receipts(captures))
             if captured_total > MAX_CAPTURE_TOTAL_BYTES:
                 raise ValueError("source_capture_exceeds_scratch_budget")
-            for name, url in _after_doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name,
-                                                    max_bytes=MAX_CAPTURE_BYTES,
-                                                    attempts=DOC_CAPTURE_ATTEMPTS,
-                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                captures[name] = (body, receipt)
-                captured_total += receipt["bytes"] + receipt["wire_bytes"]
-                if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
+            captured_total = capture_offset_documents(_slice_capture_spec(), client, capture_root, _after_doc_urls(), captures,
+                retained_bytes=captured_total, max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}

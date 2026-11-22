@@ -39,7 +39,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources import arcgis_layer as shared
 from dagster_hifld.sources.arcgis_adaptive import (
-    SliceCaptureSpec, capture_checkpoint_segments, plan_verified_segments,
+    SliceCaptureSpec, capture_checkpoint_segments, plan_verified_segments, capture_document_group,
 )
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.arcgis_layer import capture_with_retry
@@ -493,6 +493,11 @@ def _validate_segment_page(body: bytes, name: str, count: int, expected: list[in
         raise PadUsManagerNameError("source_page_id_slice_incomplete_or_reordered")
 
 
+def _validate_discovery_response(name: str, body: bytes) -> None:
+    if name not in ("sb_item", "agol_item") and _producer_error_doc(body):
+        raise PadUsManagerNameError("source_page_error:" + name)
+
+
 def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client | None = None,
                                     doc_client: httpx.Client | None = None) -> dict[str, object]:
     with capture_retention_budget(capture_root, MAX_CAPTURE_BYTES):
@@ -536,18 +541,14 @@ def _fetch_manager_pages(capture_root: Path, *, client: httpx.Client | None = No
     first_captured_at = (segments[0]["captured_at"] if segments
                          else datetime.now(timezone.utc).isoformat())
     try:
-        for name in METADATA_NAMES:
-            url = {"sb_item": SB_ITEM_URL,
-                   "agol_item": AGOL_ITEM_URL,
-                   "service_before": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url(),
-                   "ids_seed": _ids_url(),
-                   "ids_before": _ids_url()}[name]
-            active_client = docs_active if name in ("sb_item", "agol_item") else active
-            body, _receipt = _retained_or_fetch(active_client, capture_root, name, url)
-            if name not in ("sb_item", "agol_item") and _producer_error_doc(body):
-                raise PadUsManagerNameError("source_page_error:" + name)
+        document_urls = {"sb_item": SB_ITEM_URL, "agol_item": AGOL_ITEM_URL,
+            "service_before": SERVICE_URL + "?f=pjson", "layer_before": LAYER_URL + "?f=pjson",
+            "count_before": _count_url(), "ids_seed": _ids_url(), "ids_before": _ids_url()}
+        capture_document_group(active, capture_root,
+            ((name, document_urls[name]) for name in METADATA_NAMES),
+            fetch=lambda client, url, root, name: _retained_or_fetch(client, root, name, url),
+            validate=_validate_discovery_response,
+            client_for=lambda name: docs_active if name in ("sb_item", "agol_item") else active)
         _validate_corroboration_documents(capture_root)
         seed = json.loads(_read_capture(capture_root, "ids_seed")[0]).get("objectIds")
         ids = _validate_roster(seed, "ids_seed")
@@ -568,14 +569,12 @@ def _fetch_manager_pages(capture_root: Path, *, client: httpx.Client | None = No
             validate_page=partial(_validate_segment_page, capture_root=capture_root),
             witness=_witness_aside, save_state=_save_state)
         segments = list(state["segments"])
-        for name in AFTER_NAMES:
-            url = {"layer_after": LAYER_URL + "?f=pjson",
-                   "service_after": SERVICE_URL + "?f=pjson",
-                   "count_after": _count_url(),
-                   "ids_after": _ids_url()}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            if _producer_error_doc(body):
-                raise PadUsManagerNameError("source_page_error:" + name)
+        document_urls = {"layer_after": LAYER_URL + "?f=pjson", "service_after": SERVICE_URL + "?f=pjson",
+            "count_after": _count_url(), "ids_after": _ids_url()}
+        capture_document_group(active, capture_root,
+            ((name, document_urls[name]) for name in AFTER_NAMES),
+            fetch=lambda client, url, root, name: _retained_or_fetch(client, root, name, url),
+            validate=_validate_discovery_response)
         count_after = json.loads(_read_capture(capture_root, "count_after")[0])
         after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
         if after_ids.get("objectIdFieldName") != "OBJECTID" \

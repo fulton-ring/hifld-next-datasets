@@ -59,9 +59,9 @@ from shapely.geometry import Point
 from dagster_hifld.http_capture import capture_retention_budget
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.http_capture import capture_roster_digests
-from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages
+from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages, capture_offset_documents
 from dagster_hifld.sources.arcgis_layer import (
-    capture_layer_roster, capture_witness, offset_layer_capture_roster, read_adaptive_offset_replay,
+    capture_witness, offset_layer_capture_roster, read_adaptive_offset_replay,
     capture_with_retry as _capture_with_retry, producer_error_doc as _producer_error_doc,
 )
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -469,15 +469,8 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
                 seed_count = len(seed)
                 captures["ids_seed"] = (seed_body, seed_receipt)
                 captured_total = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
-                for name, url in _doc_urls():
-                    body, receipt = _capture_with_retry(client, url, capture_root, name,
-                                                        max_bytes=MAX_CAPTURE_BYTES,
-                                                        attempts=DOC_CAPTURE_ATTEMPTS,
-                                                        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                    captures[name] = (body, receipt)
-                    captured_total += receipt["bytes"] + receipt["wire_bytes"]
-                    if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                        raise ValueError("source_capture_exceeds_scratch_budget")
+                captured_total = capture_offset_documents(_slice_capture_spec(), client, capture_root, _doc_urls(), captures,
+                    retained_bytes=captured_total, max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
                 layer_doc = json.loads(captures["layer_before"][0])
                 if layer_doc.get("maxRecordCount") != 2000 or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
                     raise ValueError("source_record_limit_drift")
@@ -486,22 +479,10 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
                                       for _, receipt in _page_receipts(captures))
                 if captured_total > MAX_CAPTURE_TOTAL_BYTES:
                     raise ValueError("source_capture_exceeds_scratch_budget")
-                def fetch(client, url, root, name):
-                    nonlocal captured_total
-                    if name in captures:
-                        return captures[name]
-                    body, receipt = _capture_with_retry(client, url, capture_root, name,
-                                                        max_bytes=MAX_CAPTURE_BYTES,
-                                                        attempts=DOC_CAPTURE_ATTEMPTS,
-                                                        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                    captures[name] = (body, receipt)
-                    captured_total += receipt["bytes"] + receipt["wire_bytes"]
-                    if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                        raise ValueError("source_capture_exceeds_scratch_budget")
-                    return body, receipt
-                roster = (_doc_urls() + [(name, _page_query(*_parse_page_name(name)))
-                          for name in sorted(captures) if name.startswith('page_')] + _after_doc_urls())
-                captures.update(capture_layer_roster(client, capture_root, roster, fetch))
+                captured_total = capture_offset_documents(_slice_capture_spec(), client, capture_root,
+                    _after_doc_urls(), captures, retained_bytes=captured_total,
+                    max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
+                capture_witness(captures)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}

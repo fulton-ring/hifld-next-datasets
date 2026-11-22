@@ -26,6 +26,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import capture_retention_budget
 from dagster_hifld.sources.nhd_capture import capture_fixed_keyset_layer
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -756,6 +757,15 @@ def _keyset_cursor(features: list[dict], last_objectid: int) -> int:
     return last_objectid
 
 
+def _capture_capacity_budget(root: Path) -> int:
+    free = shutil.disk_usage(root).free
+    if free < MIN_FREE_BYTES:
+        raise PadUsProtectionError("disk_floor_before_acquisition")
+    retained = sum(path.stat().st_size for path in root.iterdir()
+                   if path.is_file() and path.name.endswith((".body", ".wire")))
+    return retained + max(0, free - MIN_FREE_BYTES)
+
+
 def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, client: httpx.Client | None = None,
                              doc_client: httpx.Client | None = None) -> dict[str, object]:
     """Retain every raw response for the pinned layer, resuming earlier progress.
@@ -764,20 +774,21 @@ def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, clie
     """
     capture_root = Path(capture_root).absolute()
     capture_root.mkdir(parents=True, exist_ok=True)
-    pages, tail, first_captured_at = capture_fixed_keyset_layer(
-        capture_root, client=client, doc_client=doc_client,
-        load_state=_load_state, save_state=_save_state,
-        default_client=_default_client, document_client=_doc_client,
-        retained_or_fetch=_retained_or_fetch, reject_error_response=_reject_error_response,
-        witness=_witness_error_response, validate_cursor=_keyset_cursor,
-        page_url=_page_url, read_capture=_read_capture,
-        metadata_urls={name: _metadata_urls()[name] for name in METADATA_NAMES},
-        closing_urls={"layer_after": LAYER_URL + "?f=pjson",
-                      "service_after": SERVICE_URL + "?f=pjson",
-                      "count_after": _count_url(), "ids_after": _ids_url()},
-        error_type=PadUsProtectionError, page_size=PAGE_SIZE,
-        validate_before=_keyset_before,
-        page_count_error="source_page_count_exceeds_reported_population")
+    with capture_retention_budget(capture_root, _capture_capacity_budget(capture_root)):
+        pages, tail, first_captured_at = capture_fixed_keyset_layer(
+            capture_root, client=client, doc_client=doc_client,
+            load_state=_load_state, save_state=_save_state,
+            default_client=_default_client, document_client=_doc_client,
+            retained_or_fetch=_retained_or_fetch, reject_error_response=_reject_error_response,
+            witness=_witness_error_response, validate_cursor=_keyset_cursor,
+            page_url=_page_url, read_capture=_read_capture,
+            metadata_urls={name: _metadata_urls()[name] for name in METADATA_NAMES},
+            closing_urls={"layer_after": LAYER_URL + "?f=pjson",
+                          "service_after": SERVICE_URL + "?f=pjson",
+                          "count_after": _count_url(), "ids_after": _ids_url()},
+            error_type=PadUsProtectionError, page_size=PAGE_SIZE,
+            validate_before=_keyset_before,
+            page_count_error="source_page_count_exceeds_reported_population")
 
     last_captured_at = str(tail["captured_at"])
     # Construction happens once at seal time (capture_pad_us_protection_mechanism_category);
