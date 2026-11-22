@@ -44,6 +44,7 @@ Latitude/Longitude attributes (the producer publishes them separately; the
 """
 from __future__ import annotations
 
+from functools import partial
 import hashlib
 import json
 import re
@@ -62,6 +63,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -208,13 +210,8 @@ def _after_doc_urls() -> list[tuple[str, str]]:
     ]
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_missing")
-    for key in ("wkid", "latestWkid"):
-        wkid = value.get(key)
-        if wkid is not None and wkid != SOURCE_CRS_WKID:
-            raise ValueError(label + "_crs_drift")
+_validate_spatial_reference = partial(
+    crs_validation.validate_advertised_wkids, native_wkid=SOURCE_CRS_WKID)
 
 
 def _collect_page(offset: int, count: int, total_count: int, page: object, ids: list[int],

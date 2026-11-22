@@ -59,10 +59,10 @@ from uuid import uuid4
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pyproj
 from shapely import from_wkb, is_valid_reason
 from shapely.geometry import LinearRing, MultiPolygon
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
@@ -382,45 +382,7 @@ def is_attrs_part_name(spec: WbdHuSpec, name: str, *, page_count: int | None = N
         spec, name[:-len("_attrs")], page_count=page_count)
 
 
-def validate_spatial_reference(value: object, label: str, *, required: bool = True,
-                               native_wkid: int = 102100, native_latest_wkid: int = 3857,
-                               source_crs_wkid: int = 3857) -> bool:
-    """Validate every advertised ArcGIS CRS representation against the layer's
-    native web-mercator CRS.
-
-    ArcGIS may return either/both WKID properties (102100 aliases 3857) and
-    optional WKT strings; all present representations must identify the
-    layer's native CRS; a missing feature-level spatial reference inherits only
-    after its page CRS has been validated.
-    """
-    if value is None:
-        if required:
-            raise ValueError(f"{label}_crs_drift")
-        return False
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid not in (native_wkid, native_latest_wkid):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = pyproj.CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(pyproj.CRS.from_epsg(source_crs_wkid), ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
+validate_spatial_reference = crs_validation.validate_native_spatial_reference
 
 
 def validate_service(spec: WbdHuSpec, service: dict, label: str) -> None:

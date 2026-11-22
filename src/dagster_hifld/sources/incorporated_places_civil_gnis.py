@@ -47,6 +47,7 @@ is stopped.
 """
 from __future__ import annotations
 
+from functools import partial
 import hashlib
 import json
 import re
@@ -65,6 +66,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -254,14 +256,11 @@ def _validate_roster(roster: object, label: str) -> list[int]:
     return sorted(roster)
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise IncorporatedPlacesCivilError(
-            "source_spatial_reference_missing:" + label)
-    if (value.get("latestWkid") != NATIVE_LAYER_SR["latestWkid"]
-            or value.get("wkid") not in (None, NATIVE_LAYER_SR["wkid"])):
-        raise IncorporatedPlacesCivilError(
-            "source_spatial_reference_drift:" + label)
+_validate_spatial_reference = partial(
+    crs_validation.validate_native_wkid_pair,
+    native_wkid=NATIVE_LAYER_SR["wkid"], native_latest_wkid=NATIVE_LAYER_SR["latestWkid"],
+    error_type=IncorporatedPlacesCivilError, missing_error="source_spatial_reference_missing:{label}",
+    drift_error="source_spatial_reference_drift:{label}")
 
 
 def _validate_service_document(service: object, label: str) -> None:

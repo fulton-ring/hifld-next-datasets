@@ -52,6 +52,7 @@ draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
+from functools import partial
 import hashlib
 import json
 import math
@@ -65,9 +66,9 @@ from uuid import uuid4
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pyproj
 from shapely import from_wkb
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.sources.esri_geometry import esri_polyline_wkb
 from shapely.geometry import MultiLineString
 
@@ -386,42 +387,10 @@ def _assemble_geometry(paths: list) -> bytes:
     return wkb
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Validate every advertised ArcGIS CRS representation against EPSG:3857.
-
-    ArcGIS may return either/both WKID properties (102100 aliases 3857) and
-    optional WKT strings; all present representations must identify the
-    layer's native web-mercator CRS; a missing feature-level spatial reference
-    inherits only after its page CRS has been validated.
-    """
-    if value is None:
-        if required:
-            raise ValueError(f"{label}_crs_drift")
-        return False
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid not in (NATIVE_WKID, NATIVE_LATEST_WKID):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = pyproj.CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(pyproj.CRS.from_epsg(SOURCE_CRS_WKID), ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
+_validate_spatial_reference = partial(
+    crs_validation.validate_native_spatial_reference,
+    native_wkid=NATIVE_WKID, native_latest_wkid=NATIVE_LATEST_WKID,
+    source_crs_wkid=SOURCE_CRS_WKID)
 
 
 def _layer_stability_view(layer: dict) -> dict:

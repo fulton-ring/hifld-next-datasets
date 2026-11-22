@@ -37,6 +37,7 @@ the producer's nulls.
 """
 from __future__ import annotations
 
+from functools import partial
 import hashlib
 import json
 import math
@@ -56,6 +57,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.sources.arcgis_layer import (
     capture_layer_roster, capture_witness, offset_layer_capture_roster, read_adaptive_offset_replay,
@@ -182,13 +184,9 @@ def _after_doc_urls() -> list[tuple[str, str]]:
     return [(name, url) for name, url in _capture_roster(0) if name.endswith('_after')]
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_missing")
-    for key in ("wkid", "latestWkid"):
-        wkid = value.get(key)
-        if wkid is not None and wkid != SOURCE_CRS_WKID:
-            raise ValueError(label + "_crs_drift")
+_validate_spatial_reference = partial(
+    crs_validation.validate_advertised_wkids,
+    native_wkid=SOURCE_CRS_WKID)
 
 
 def _collect_page(offset: int, count: int, total_count: int, page: object, ids: list[int],

@@ -36,6 +36,7 @@ geometry digests prove that nothing was skipped, duplicated, or reordered.
 """
 from __future__ import annotations
 
+from functools import partial
 import hashlib
 import json
 import math
@@ -54,6 +55,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPoint
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -209,13 +211,9 @@ def _after_doc_urls() -> list[tuple[str, str]]:
     ]
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    """The producer's native web-Mercator pair (wkid 102100, latestWkid 3857)."""
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_missing")
-    if value.get("wkid") not in (None, NATIVE_LAYER_SR["wkid"]) \
-            or value.get("latestWkid") != NATIVE_LAYER_SR["latestWkid"]:
-        raise ValueError(label + "_crs_drift")
+_validate_spatial_reference = partial(
+    crs_validation.validate_native_wkid_pair,
+    native_wkid=NATIVE_LAYER_SR["wkid"], native_latest_wkid=NATIVE_LAYER_SR["latestWkid"])
 
 
 def _collect_page(offset: int, count: int, page: object, ids: list[int],

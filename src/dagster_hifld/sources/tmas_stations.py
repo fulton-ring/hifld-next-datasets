@@ -7,6 +7,7 @@ their coordinate attributes. Candidates remain unapproved.
 """
 from __future__ import annotations
 
+from functools import partial
 import hashlib
 import json
 import math
@@ -24,6 +25,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.capture_completeness import validate_capture_witness
@@ -151,18 +153,9 @@ def _capture_names(page_roster: list[tuple[int, int]]) -> set[str]:
     return names | {_page_name(offset, count) for offset, count in page_roster}
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_missing")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        wkid = value.get(key)
-        if wkid is not None:
-            if wkid != SOURCE_CRS_WKID:
-                raise ValueError(label + "_crs_drift")
-            found = True
-    if not found:
-        raise ValueError(label + "_crs_drift")
+_validate_spatial_reference = partial(
+    crs_validation.validate_advertised_wkids,
+    native_wkid=SOURCE_CRS_WKID, required=True)
 
 
 def _producer_error_doc(body: bytes) -> bool:

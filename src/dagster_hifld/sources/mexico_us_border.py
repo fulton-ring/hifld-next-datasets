@@ -24,6 +24,7 @@ import shapely
 from pyproj import CRS
 from shapely.geometry import LineString, MultiLineString
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
@@ -107,28 +108,7 @@ COVERAGE_TOLERANCE = 1e-9
 SOURCE_CRS = CRS.from_epsg(4326)
 
 
-def _validate_spatial_reference(value: object, label: str, expected: dict[str, int]) -> None:
-    """Require every advertised ArcGIS CRS representation to agree with the pinned EPSG pair."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    for key, code in expected.items():
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != code:
-                raise ValueError(f"{label}_crs_drift")
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(CRS.from_epsg(expected["latestWkid"]), ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-    if not {"wkid", "latestWkid"} & set(value):
-        raise ValueError(f"{label}_crs_drift")
+_validate_spatial_reference = crs_validation.validate_pinned_spatial_reference
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):

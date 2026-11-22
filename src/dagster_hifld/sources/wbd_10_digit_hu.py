@@ -66,6 +66,7 @@ the bounded-memory replay that returns receipts instead of retaining every body.
 """
 from __future__ import annotations
 
+from functools import partial
 import struct
 import hashlib
 import json
@@ -85,6 +86,7 @@ import pyarrow.parquet as pq
 from shapely import from_wkb, is_valid_reason
 from shapely.geometry import LinearRing, MultiPolygon
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_state import load_first_construction
@@ -740,11 +742,10 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
 
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    return family.validate_spatial_reference(value, label, required=required,
-                                             native_wkid=NATIVE_WKID,
-                                             native_latest_wkid=NATIVE_LATEST_WKID,
-                                             source_crs_wkid=SOURCE_CRS_WKID)
+_validate_spatial_reference = partial(
+    crs_validation.validate_native_spatial_reference,
+    native_wkid=NATIVE_WKID, native_latest_wkid=NATIVE_LATEST_WKID,
+    source_crs_wkid=SOURCE_CRS_WKID)
 
 
 def _validate_service(service: dict, label: str) -> None:

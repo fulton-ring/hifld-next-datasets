@@ -1,6 +1,7 @@
 """Immutable native-CRS capture and typed GeoParquet candidate for official USGS plates."""
 from __future__ import annotations
 
+from functools import partial
 import json
 import math
 import shutil
@@ -16,6 +17,7 @@ import pyarrow.parquet as pq
 from pyproj import CRS
 from shapely import from_wkb
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -64,24 +66,9 @@ def _urls(ids: list[int]) -> list[tuple[str,str]]:
         page_params={"returnZ": "true", "returnM": "true"})
 
 
-def _validate_spatial_reference(value: object,label: str,*,required: bool=True) -> bool:
-    if not isinstance(value,dict): raise ValueError(label+"_crs_drift")
-    found=[]
-    for key in ("wkid","latestWkid"):
-        if key in value:
-            val=value[key]
-            if type(val) is not int or val not in {3857,102100}: raise ValueError(label+"_crs_drift")
-            found.append(3857 if val==102100 else val)
-    for key in ("wkt","wkt2"):
-        if key in value:
-            raw=value[key]
-            if not isinstance(raw,str) or not raw.strip(): raise ValueError(label+"_crs_drift")
-            try: crs=CRS.from_wkt(raw)
-            except Exception as exc: raise ValueError(label+"_crs_drift") from exc
-            if not crs.equals(EXPECTED_CRS,ignore_axis_order=True): raise ValueError(label+"_crs_drift")
-            found.append(3857)
-    if (required and not found) or len(set(found))>1: raise ValueError(label+"_crs_drift")
-    return bool(found)
+_validate_spatial_reference = partial(
+    crs_validation.validate_spatial_reference,
+    wkids=(3857, 102100), source_crs=EXPECTED_CRS)
 
 
 def _capture(client: httpx.Client,url: str,root: Path,name: str):

@@ -14,6 +14,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -55,24 +56,7 @@ EXPECTED_EXTENT = {"xmin":-96.41946399999995,"ymin":29.69832880000007,
 EXPECTED_CRS = CRS.from_epsg(4326)
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool=True) -> bool:
-    if not isinstance(value,dict): raise ValueError(label+"_crs_drift")
-    found=[]
-    for key in ("wkid","latestWkid"):
-        if key in value:
-            wkid=value[key]
-            if type(wkid) is not int or wkid != 4326: raise ValueError(label+"_crs_drift")
-            found.append(4326)
-    for key in ("wkt","wkt2"):
-        if key in value:
-            raw=value[key]
-            if not isinstance(raw,str) or not raw.strip(): raise ValueError(label+"_crs_drift")
-            try: parsed=CRS.from_wkt(raw)
-            except Exception as exc: raise ValueError(label+"_crs_drift") from exc
-            if not parsed.equals(EXPECTED_CRS,ignore_axis_order=True): raise ValueError(label+"_crs_drift")
-            found.append(4326)
-    if (required and not found) or len(set(found))>1: raise ValueError(label+"_crs_drift")
-    return bool(found)
+_validate_spatial_reference = crs_validation.validate_spatial_reference
 
 
 def _query(params: dict[str,object]) -> str:

@@ -18,6 +18,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 from pyproj import CRS
 from shapely.geometry import mapping
@@ -71,24 +72,7 @@ EXPECTED_FIELD_DECLARATIONS = [
 ATTRIBUTE_FIELDS = [field for field in EXPECTED_FIELD_DECLARATIONS if field["name"] != "SHAPE"]
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            if type(value[key]) is not int or value[key] != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            if not isinstance(value[key], str) or not CRS.from_wkt(value[key]).equals(
-                SOURCE_CRS, ignore_axis_order=True
-            ):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if not found:
-        raise ValueError(f"{label}_crs_missing")
+_validate_spatial_reference = crs_validation.validate_spatial_reference_with_raw_wkt
 
 
 def _query(params: dict[str, object]) -> str:

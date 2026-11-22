@@ -8,6 +8,7 @@ coverage, rights, or release.
 """
 from __future__ import annotations
 
+from functools import partial
 import io
 import json
 import math
@@ -23,6 +24,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -104,30 +106,9 @@ def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_drift")
-    found = set()
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            number = value[key]
-            if type(number) is not int or number not in {3857, 102100}:
-                raise ValueError(label + "_crs_drift")
-            found.add(3857)
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            raw = value[key]
-            if not isinstance(raw, str) or not raw.strip():
-                raise ValueError(label + "_crs_drift")
-            try:
-                crs = CRS.from_wkt(raw)
-            except Exception as exc:
-                raise ValueError(label + "_crs_drift") from exc
-            if not crs.equals(EXPECTED_CRS, ignore_axis_order=True):
-                raise ValueError(label + "_crs_drift")
-            found.add(3857)
-    if not found or len(found) != 1:
-        raise ValueError(label + "_crs_drift")
+_validate_spatial_reference = partial(
+    crs_validation.validate_required_spatial_reference,
+    wkids=(3857, 102100), source_crs=EXPECTED_CRS)
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str, retained: int) -> tuple[bytes, dict]:

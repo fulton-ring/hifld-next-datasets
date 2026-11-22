@@ -12,6 +12,7 @@ drift quarantines; historical published IDs remain separately preserved.
 """
 from __future__ import annotations
 
+from functools import partial
 import io
 import json
 import math
@@ -27,6 +28,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -149,31 +151,9 @@ def _validate_capture_request_binding(name: str, receipt: dict, url: str) -> Non
         raise ValueError("capture_redirect_not_allowed:" + name)
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_drift")
-    found = []
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid not in (3857, 102100):
-                raise ValueError(label + "_crs_drift")
-            found.append(3857)
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            raw = value[key]
-            if not isinstance(raw, str) or not raw.strip():
-                raise ValueError(label + "_crs_drift")
-            try:
-                parsed = CRS.from_wkt(raw)
-            except Exception as exc:
-                raise ValueError(label + "_crs_drift") from exc
-            if not parsed.equals(EXPECTED_CRS, ignore_axis_order=True):
-                raise ValueError(label + "_crs_drift")
-            found.append(3857)
-    if (required and not found) or len(set(found)) > 1:
-        raise ValueError(label + "_crs_drift")
-    return bool(found)
+_validate_spatial_reference = partial(
+    crs_validation.validate_spatial_reference,
+    wkids=(3857, 102100), source_crs=EXPECTED_CRS)
 
 
 def _query(params: dict[str, object]) -> str:
