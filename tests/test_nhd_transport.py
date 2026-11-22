@@ -15,6 +15,88 @@ class TransportError(ValueError):
 
 
 class NhdTransportTests(unittest.TestCase):
+    def run_real_rescue(self, root, limit, *, prefix=b"", budget=None):
+        from dagster_hifld.sources.capture_common import capture_get
+        body = b'{"features":[{"attributes":{"OBJECTID":7}}]}'
+        if prefix:
+            (root / "retained.body").write_bytes(prefix)
+        budget = [0] if budget is None else budget
+        pages, checkpoints = [], []
+        with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(
+                200, stream=httpx.ByteStream(body)))) as client:
+            result = nhd_transport.rescue_single_record(
+                client, root, budget, 6, pages, lambda: checkpoints.append(True),
+                attrs_url="https://agency.test/attrs",
+                geometry_hosts=lambda oid: [("primary", client, "https://agency.test/geo")],
+                capture_attrs=lambda *args: None,
+                retained_or_fetch=lambda *args, **kwargs: (body, {}),
+                page_name_for=lambda *args: "accepted", attempts=1, base_delay=0,
+                max_body_bytes=1000,
+                check_budget=lambda current: nhd_transport.budget_check(current, limit, TransportError),
+                retain_budget=lambda current: nhd_transport.budget_guard(current, limit, TransportError),
+                fetch=capture_get, witness=Mock(), producer_error=lambda body: False,
+                sleep=Mock(), error_type=TransportError)
+        return result, budget, pages, checkpoints
+
+    def test_real_rescue_refuses_complete_copy_before_any_accepted_slot_is_written(self):
+        body = b'{"features":[{"attributes":{"OBJECTID":7}}]}'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            budget = [0]
+            with self.assertRaisesRegex(TransportError, "source_capture_budget_exceeded"):
+                self.run_real_rescue(root, 2 * len(body), budget=budget)
+            self.assertEqual(budget, [2 * len(body)])
+            self.assertEqual((root / "refused_probe_000000007_geo_primary.body").read_bytes(), body)
+            self.assertEqual(list(root.glob("accepted.*")), [])
+
+    def test_real_rescue_counts_retained_prefix_and_copy_exactly_once(self):
+        body = b'{"features":[{"attributes":{"OBJECTID":7}}]}'
+        prefix = b"prior-data"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            expected = len(prefix) + 4 * len(body)
+            result, budget, pages, checkpoints = self.run_real_rescue(root, expected, prefix=prefix)
+            self.assertEqual(result, (7, True))
+            self.assertEqual(budget, [expected])
+            self.assertEqual(sum(path.stat().st_size for path in root.iterdir()
+                                 if path.name.endswith((".body", ".wire"))), expected)
+            self.assertEqual((root / "accepted.body").read_bytes(), body)
+            self.assertEqual((root / "accepted.receipt.json").read_bytes(),
+                             (root / "refused_probe_000000007_geo_primary.receipt.json").read_bytes())
+            self.assertEqual(len(pages), 1)
+            self.assertEqual(checkpoints, [True])
+            nhd_transport.copy_capture_slots(
+                root, "refused_probe_000000007_geo_primary", "accepted", budget,
+                check_budget=lambda current: nhd_transport.budget_check(current, expected, TransportError))
+            self.assertEqual(budget, [expected])
+
+    def test_rescue_copy_honors_stricter_enclosing_retention_scope(self):
+        from dagster_hifld.http_capture import capture_retention_budget
+        body = b'{"features":[{"attributes":{"OBJECTID":7}}]}'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
+                with capture_retention_budget(root, 2 * len(body)):
+                    self.run_real_rescue(root, 4 * len(body))
+            self.assertEqual(list(root.glob("accepted.*")), [])
+
+    def test_keyset_entrypoints_reject_over_cap_retained_prefix_before_requests(self):
+        from dagster_hifld.sources import nhd_waterbody, nhd_waterbody_large_scale
+        for source in (nhd_waterbody, nhd_waterbody_large_scale):
+            with self.subTest(source=source.__name__), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "retained.body").write_bytes(b"over")
+                hits = []
+                def respond(request):
+                    hits.append(str(request.url))
+                    raise AssertionError("request must not start")
+                fetch = getattr(source, "fetch_" + source.__name__.rsplit(".", 1)[1] + "_pages")
+                with httpx.Client(transport=httpx.MockTransport(respond)) as client, \
+                        patch.object(source, "MAX_CAPTURE_BYTES", 1):
+                    with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
+                        fetch(root, client=client, doc_client=client, alias_client=client)
+                self.assertEqual(hits, [])
+
     def test_document_retry_retains_every_previous_attempt(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

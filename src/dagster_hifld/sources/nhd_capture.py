@@ -8,11 +8,28 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import deque
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
 import httpx
+
+from dagster_hifld.http_capture import capture_retention_budget, reserve_capture_retention
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+
+
+@contextmanager
+def _bounded_acquisition(capture_root: Path, byte_budget: int, error_type: type[Exception]):
+    capture_root.mkdir(parents=True, exist_ok=True)
+    try:
+        with capture_retention_budget(capture_root, byte_budget):
+            reserve_capture_retention(capture_root, 0)
+            yield
+    except ValueError as exc:
+        if str(exc) == "source_capture_budget_exceeded":
+            raise error_type("source_capture_budget_exceeded") from exc
+        raise
 
 
 def _sha(body: bytes) -> str:
@@ -164,78 +181,79 @@ def capture_roster_layer(capture_root: Path, *, client, doc_client,
                          producer_error: Callable, validate_roster: Callable,
                          fetch_segments: Callable, metadata_names, after_names,
                          urls: dict[str, str], error_type: type[Exception],
-                         max_body_bytes: int, refresh_witnesses: bool):
+                         max_body_bytes: int, refresh_witnesses: bool, byte_budget: int):
     """Own the before/page/after acquisition cycle and retained resume contract."""
-    capture_root.mkdir(parents=True, exist_ok=True)
-    state = load_state(capture_root)
-    segments = list(state.get("segments", []))
-    first = segments[0]["captured_at"] if segments else datetime.now(timezone.utc).isoformat()
-    active = client or default_client()
-    docs = doc_client or document_client()
-    try:
-        for name in metadata_names:
-            body, _ = retained_or_fetch(docs if name == "service_doc" else active,
-                                        capture_root, name, urls[name])
-            if name != "service_doc" and producer_error(body):
-                raise error_type("source_page_error:" + name)
-        ids = validate_roster(json.loads(read_capture(capture_root, "ids_seed")[0]).get("objectIds"), "ids_seed")
-        before = json.loads(read_capture(capture_root, "ids_before")[0])
-        if before.get("objectIdFieldName") != "OBJECTID":
-            raise error_type("source_id_field_changed")
-        roster = validate_roster(before.get("objectIds"), "ids_before")
-        if sorted(roster) != ids:
-            raise error_type("source_id_population_drift:ids_seed_vs_before")
-        count = json.loads(read_capture(capture_root, "count_before")[0]).get("count")
-        if type(count) is not int or (count != len(roster) if refresh_witnesses else count <= 0):
-            raise error_type("source_count_drift")
-        if not refresh_witnesses and len(roster) != count:
-            raise error_type("source_count_or_id_roster_drift")
-        refreshed = fetch_segments(active, capture_root, roster, state)
-        segments = list(state["segments"])
-        if refresh_witnesses:
-            refresh = refreshed or state.get("complete") is not True
-            if not refresh:
-                for name in after_names:
-                    try:
-                        document = json.loads(read_capture(capture_root, name)[0])
-                        if not isinstance(document, dict) or "error" in document:
+    with _bounded_acquisition(capture_root, byte_budget, error_type):
+        capture_root.mkdir(parents=True, exist_ok=True)
+        state = load_state(capture_root)
+        segments = list(state.get("segments", []))
+        first = segments[0]["captured_at"] if segments else datetime.now(timezone.utc).isoformat()
+        active = client or default_client()
+        docs = doc_client or document_client()
+        try:
+            for name in metadata_names:
+                body, _ = retained_or_fetch(docs if name == "service_doc" else active,
+                                            capture_root, name, urls[name])
+                if name != "service_doc" and producer_error(body):
+                    raise error_type("source_page_error:" + name)
+            ids = validate_roster(json.loads(read_capture(capture_root, "ids_seed")[0]).get("objectIds"), "ids_seed")
+            before = json.loads(read_capture(capture_root, "ids_before")[0])
+            if before.get("objectIdFieldName") != "OBJECTID":
+                raise error_type("source_id_field_changed")
+            roster = validate_roster(before.get("objectIds"), "ids_before")
+            if sorted(roster) != ids:
+                raise error_type("source_id_population_drift:ids_seed_vs_before")
+            count = json.loads(read_capture(capture_root, "count_before")[0]).get("count")
+            if type(count) is not int or (count != len(roster) if refresh_witnesses else count <= 0):
+                raise error_type("source_count_drift")
+            if not refresh_witnesses and len(roster) != count:
+                raise error_type("source_count_or_id_roster_drift")
+            refreshed = fetch_segments(active, capture_root, roster, state)
+            segments = list(state["segments"])
+            if refresh_witnesses:
+                refresh = refreshed or state.get("complete") is not True
+                if not refresh:
+                    for name in after_names:
+                        try:
+                            document = json.loads(read_capture(capture_root, name)[0])
+                            if not isinstance(document, dict) or "error" in document:
+                                raise error_type("source_page_error:" + name)
+                        except (OSError, ValueError):
+                            refresh = True
+                            break
+                if refresh:
+                    state["complete"] = False
+                    save_state(capture_root, state)
+                    for name in after_names:
+                        witness(capture_root, name)
+                    for name in after_names:
+                        body, _ = capture_get(active, urls[name], capture_root, name, max_bytes=max_body_bytes)
+                        if producer_error(body):
                             raise error_type("source_page_error:" + name)
-                    except (OSError, ValueError):
-                        refresh = True
-                        break
-            if refresh:
-                state["complete"] = False
-                save_state(capture_root, state)
+            else:
                 for name in after_names:
-                    witness(capture_root, name)
-                for name in after_names:
-                    body, _ = capture_get(active, urls[name], capture_root, name, max_bytes=max_body_bytes)
+                    body, _ = retained_or_fetch(active, capture_root, name, urls[name])
                     if producer_error(body):
                         raise error_type("source_page_error:" + name)
-        else:
-            for name in after_names:
-                body, _ = retained_or_fetch(active, capture_root, name, urls[name])
-                if producer_error(body):
-                    raise error_type("source_page_error:" + name)
-        count_after = json.loads(read_capture(capture_root, "count_after")[0]).get("count")
-        if type(count_after) is not int or count_after != count:
-            raise error_type("source_metadata_or_count_changed_during_capture")
-        after = json.loads(read_capture(capture_root, "ids_after")[0])
-        if after.get("objectIdFieldName") != "OBJECTID" or sorted(validate_roster(after.get("objectIds"), "ids_after")) != (ids if refresh_witnesses else roster):
-            raise error_type("source_id_population_drift:ids_after")
-    except error_type:
-        raise
-    except Exception as exc:
-        raise error_type("source_capture_failed:" + type(exc).__name__) from exc
-    finally:
-        if client is None:
-            active.close()
-        if doc_client is None:
-            docs.close()
-    if not refresh_witnesses:
-        save_state(capture_root, {"segments": segments, "complete": True})
-    last = max((str(entry.get("captured_at", "")) for entry in segments), default=first)
-    return segments, count, first, last
+            count_after = json.loads(read_capture(capture_root, "count_after")[0]).get("count")
+            if type(count_after) is not int or count_after != count:
+                raise error_type("source_metadata_or_count_changed_during_capture")
+            after = json.loads(read_capture(capture_root, "ids_after")[0])
+            if after.get("objectIdFieldName") != "OBJECTID" or sorted(validate_roster(after.get("objectIds"), "ids_after")) != (ids if refresh_witnesses else roster):
+                raise error_type("source_id_population_drift:ids_after")
+        except error_type:
+            raise
+        except Exception as exc:
+            raise error_type("source_capture_failed:" + type(exc).__name__) from exc
+        finally:
+            if client is None:
+                active.close()
+            if doc_client is None:
+                docs.close()
+        if not refresh_witnesses:
+            save_state(capture_root, {"segments": segments, "complete": True})
+        last = max((str(entry.get("captured_at", "")) for entry in segments), default=first)
+        return segments, count, first, last
 
 def capture_keyset_layer(capture_root: Path, *, client, doc_client, alias_client,
                          load_state: Callable, save_state: Callable,
@@ -246,128 +264,129 @@ def capture_keyset_layer(capture_root: Path, *, client, doc_client, alias_client
                          page_name: Callable, read_capture: Callable,
                          metadata_urls: dict[str, str],
                          closing_urls: dict[str, str], error_type: type[Exception],
-                         page_size: int, clear_rescued_refusal: bool):
+                         page_size: int, clear_rescued_refusal: bool, byte_budget: int):
     """Capture a resumable adaptive keyset walk, including refusal rescue and tail."""
-    state = dict(load_state(capture_root))
-    pages: list[dict[str, object]] = list(state.get("pages", []))
-    tail: dict[str, object] | None = state.get("tail")
-    refused: dict[str, object] = dict(state.get("refused", {}))
+    with _bounded_acquisition(capture_root, byte_budget, error_type):
+        state = dict(load_state(capture_root))
+        pages: list[dict[str, object]] = list(state.get("pages", []))
+        tail: dict[str, object] | None = state.get("tail")
+        refused: dict[str, object] = dict(state.get("refused", {}))
 
-    def persist() -> None:
-        save_state(capture_root, {"pages": pages, "tail": tail, "refused": refused,
-                                   "complete": False})
+        def persist() -> None:
+            save_state(capture_root, {"pages": pages, "tail": tail, "refused": refused,
+                                       "complete": False})
 
-    owner_client = client is None
-    owner_doc = doc_client is None
-    owner_alias = alias_client is None
-    active = client or default_client()
-    docs_active = doc_client or document_client()
-    alias = alias_client or default_client()
-    budget = [0]
-    first_captured_at = pages[0]["captured_at"] if pages else datetime.now(timezone.utc).isoformat()
-    try:
-        retained = capture_documents(
-            active, docs_active, capture_root, metadata_urls,
-            retained_or_fetch=retained_or_fetch, reject_error_response=reject_error_response,
-            budget=budget)
-        count_before = json.loads(retained["count_before"][0]).get("count")
-        if type(count_before) is not int or count_before <= 0:
-            raise error_type("source_count_drift")
-        last_objectid = pages[-1]["last_objectid"] if pages else 0
-        while not (capture_root / "page_tail.body").exists():
-            size = page_size
-            while True:
-                try:
-                    body, receipt = fetch_page(active, capture_root, budget,
-                                                last_objectid, size)
-                except error_type as exc:
-                    bisectable = (exc.code == "source_page_error"
-                                  or exc.code.startswith("source_page_error:")
-                                  or exc.code == "source_page_body_limit"
-                                  or exc.code.startswith("source_page_body_limit:"))
-                    if not bisectable:
-                        raise
-                    if size > 1:
-                        size = bisect_page_size(size)
-                        continue
-                    oid, rescued = refuse_single_record(
-                        active, alias, capture_root, budget, last_objectid, pages, persist)
-                    if not rescued:
-                        refused[str(oid)] = {"attrs_name": f"refused_attrs_{oid:09d}",
-                                             "captured_at": datetime.now(timezone.utc).isoformat()}
+        owner_client = client is None
+        owner_doc = doc_client is None
+        owner_alias = alias_client is None
+        active = client or default_client()
+        docs_active = doc_client or document_client()
+        alias = alias_client or default_client()
+        budget = [0]
+        first_captured_at = pages[0]["captured_at"] if pages else datetime.now(timezone.utc).isoformat()
+        try:
+            retained = capture_documents(
+                active, docs_active, capture_root, metadata_urls,
+                retained_or_fetch=retained_or_fetch, reject_error_response=reject_error_response,
+                budget=budget)
+            count_before = json.loads(retained["count_before"][0]).get("count")
+            if type(count_before) is not int or count_before <= 0:
+                raise error_type("source_count_drift")
+            last_objectid = pages[-1]["last_objectid"] if pages else 0
+            while not (capture_root / "page_tail.body").exists():
+                size = page_size
+                while True:
+                    try:
+                        body, receipt = fetch_page(active, capture_root, budget,
+                                                    last_objectid, size)
+                    except error_type as exc:
+                        bisectable = (exc.code == "source_page_error"
+                                      or exc.code.startswith("source_page_error:")
+                                      or exc.code == "source_page_body_limit"
+                                      or exc.code.startswith("source_page_body_limit:"))
+                        if not bisectable:
+                            raise
+                        if size > 1:
+                            size = bisect_page_size(size)
+                            continue
+                        oid, rescued = refuse_single_record(
+                            active, alias, capture_root, budget, last_objectid, pages, persist)
+                        if not rescued:
+                            refused[str(oid)] = {"attrs_name": f"refused_attrs_{oid:09d}",
+                                                 "captured_at": datetime.now(timezone.utc).isoformat()}
+                            persist()
+                        elif clear_rescued_refusal and refused.pop(str(oid), None) is not None:
+                            # A record a producer host now serves must not keep a
+                            # stale refusal entry from an earlier attempt: the
+                            # refusal state has to match the actually retained
+                            # walk (served record, no null-geometry gate).
+                            persist()
+                        last_objectid = oid
+                        break
+                    page = json.loads(body)
+                    if not isinstance(page, dict) or "error" in page:
+                        raise error_type("source_page_error")
+                    features = page.get("features")
+                    if not isinstance(features, list):
+                        raise error_type("source_page_missing_features")
+                    if not features:
+                        if last_objectid == 0:
+                            raise error_type("source_page_population_incomplete")
+                        # The population ends here: retain the canonical empty tail
+                        # page (same walk position, producer page size) as the
+                        # completeness witness.
+                        tail = capture_tail(
+                            active, capture_root, page_url(last_objectid, page_size), last_objectid,
+                            retained_or_fetch=retained_or_fetch, reject_error_response=reject_error_response,
+                            error_type=error_type, budget=budget)
                         persist()
-                    elif clear_rescued_refusal and refused.pop(str(oid), None) is not None:
-                        # A record a producer host now serves must not keep a
-                        # stale refusal entry from an earlier attempt: the
-                        # refusal state has to match the actually retained
-                        # walk (served record, no null-geometry gate).
+                        break
+                    cursor = last_objectid
+                    cursor = validate_cursor(features, cursor)
+                    more = page.get("exceededTransferLimit")
+                    if len(features) < size and more is True:
+                        raise error_type("source_page_transfer_truncated")
+                    pages.append({"name": page_name(last_objectid, size),
+                                  "start_after": last_objectid, "size": size,
+                                  "last_objectid": cursor, "features": len(features),
+                                  "exceeded_transfer_limit": more,
+                                  "captured_at": receipt["observed_at"],
+                                  "body_sha256": _sha(body)})
+                    last_objectid = cursor
+                    persist()
+                    if len(pages) > count_before:
+                        raise error_type("source_page_count_exceeds_reported_count")
+                    if len(features) < size and more is not True:
+                        # The accepted short page is the final data page: retain the
+                        # canonical empty tail witness at the producer page size.
+                        tail = capture_tail(
+                            active, capture_root, page_url(last_objectid, page_size), last_objectid,
+                            retained_or_fetch=retained_or_fetch, reject_error_response=reject_error_response,
+                            error_type=error_type, budget=budget)
                         persist()
-                    last_objectid = oid
+                        break
                     break
-                page = json.loads(body)
-                if not isinstance(page, dict) or "error" in page:
-                    raise error_type("source_page_error")
-                features = page.get("features")
-                if not isinstance(features, list):
-                    raise error_type("source_page_missing_features")
-                if not features:
-                    if last_objectid == 0:
-                        raise error_type("source_page_population_incomplete")
-                    # The population ends here: retain the canonical empty tail
-                    # page (same walk position, producer page size) as the
-                    # completeness witness.
-                    tail = capture_tail(
-                        active, capture_root, page_url(last_objectid, page_size), last_objectid,
-                        retained_or_fetch=retained_or_fetch, reject_error_response=reject_error_response,
-                        error_type=error_type, budget=budget)
-                    persist()
-                    break
-                cursor = last_objectid
-                cursor = validate_cursor(features, cursor)
-                more = page.get("exceededTransferLimit")
-                if len(features) < size and more is True:
-                    raise error_type("source_page_transfer_truncated")
-                pages.append({"name": page_name(last_objectid, size),
-                              "start_after": last_objectid, "size": size,
-                              "last_objectid": cursor, "features": len(features),
-                              "exceeded_transfer_limit": more,
-                              "captured_at": receipt["observed_at"],
-                              "body_sha256": _sha(body)})
-                last_objectid = cursor
-                persist()
-                if len(pages) > count_before:
-                    raise error_type("source_page_count_exceeds_reported_count")
-                if len(features) < size and more is not True:
-                    # The accepted short page is the final data page: retain the
-                    # canonical empty tail witness at the producer page size.
-                    tail = capture_tail(
-                        active, capture_root, page_url(last_objectid, page_size), last_objectid,
-                        retained_or_fetch=retained_or_fetch, reject_error_response=reject_error_response,
-                        error_type=error_type, budget=budget)
-                    persist()
-                    break
-                break
-        if tail is None and (capture_root / "page_tail.body").exists():
-            tail_receipt = json.loads((capture_root / "page_tail.receipt.json").read_bytes())
-            tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                    "captured_at": tail_receipt["observed_at"]}
-        if tail is None or not (capture_root / "page_tail.body").exists():
-            raise error_type("source_tail_page_not_empty")
-        for name, url in closing_urls.items():
-            body, _receipt = retained_or_fetch(active, capture_root, name, url, budget=budget)
-            reject_error_response(capture_root, name, body)
-            retained[name] = (body, read_capture(capture_root, name)[1])
-        if json.loads(retained["count_after"][0]).get("count") != count_before:
-            raise error_type("source_metadata_or_count_changed_during_capture")
-    except error_type:
+            if tail is None and (capture_root / "page_tail.body").exists():
+                tail_receipt = json.loads((capture_root / "page_tail.receipt.json").read_bytes())
+                tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
+                        "captured_at": tail_receipt["observed_at"]}
+            if tail is None or not (capture_root / "page_tail.body").exists():
+                raise error_type("source_tail_page_not_empty")
+            for name, url in closing_urls.items():
+                body, _receipt = retained_or_fetch(active, capture_root, name, url, budget=budget)
+                reject_error_response(capture_root, name, body)
+                retained[name] = (body, read_capture(capture_root, name)[1])
+            if json.loads(retained["count_after"][0]).get("count") != count_before:
+                raise error_type("source_metadata_or_count_changed_during_capture")
+        except error_type:
+            close_owned(owner_client, owner_doc, owner_alias, active, docs_active, alias)
+            raise
+        except Exception as exc:
+            close_owned(owner_client, owner_doc, owner_alias, active, docs_active, alias)
+            raise error_type("source_capture_failed:" + type(exc).__name__) from exc
         close_owned(owner_client, owner_doc, owner_alias, active, docs_active, alias)
-        raise
-    except Exception as exc:
-        close_owned(owner_client, owner_doc, owner_alias, active, docs_active, alias)
-        raise error_type("source_capture_failed:" + type(exc).__name__) from exc
-    close_owned(owner_client, owner_doc, owner_alias, active, docs_active, alias)
 
-    return pages, tail, refused, first_captured_at
+        return pages, tail, refused, first_captured_at
 
 
 def capture_fixed_keyset_layer(capture_root: Path, *, client, doc_client,
@@ -528,7 +547,7 @@ def capture_id_windows(client: httpx.Client, roster: list[int], capture_root: Pa
     The source's refusal policy retains a single refused record for a separate
     attributes-only capture; it never silently removes it from the population.
     """
-    pages: dict[str, tuple[bytes, dict[str, object]]] = {}
+    pages = RetainedCaptureView(capture_root)
     refused: dict[str, list[int]] = {}
     plan: deque[tuple[int, int]] = deque((start, page_size) for start in range(0, len(roster), page_size))
     while plan:
@@ -621,3 +640,27 @@ def load_keyset_state(capture_root: Path, *, error_type: type[Exception],
             or (with_refused and not isinstance(state.get("refused"), dict))):
         raise error_type("capture_state_invalid")
     return state
+
+def capture_id_window_layer(client, capture_root: Path, budget: list[int], captures, *,
+                            document_urls: list[tuple[str, str]], ids_url: str,
+                            capture_doc: Callable, capture_windows: Callable,
+                            capture_refused_attrs: Callable, error_type: type[ValueError]) -> None:
+    """Bracket exact-ID acquisition and refused-record attributes with producer witnesses."""
+    for name, url in document_urls:
+        captures[name] = capture_doc(client, url, capture_root, name, budget)
+    seed_body, seed_receipt = capture_doc(client, ids_url, capture_root, "ids_seed", budget)
+    captures["ids_seed"] = (seed_body, seed_receipt)
+    count = json.loads(captures["count_before"][0]).get("count")
+    if type(count) is not int or count <= 0:
+        raise error_type("source_count_drift")
+    seed = json.loads(seed_body).get("objectIds")
+    if (not isinstance(seed, list) or len(seed) != count
+            or any(type(value) is not int or value <= 0 for value in seed)
+            or len(set(seed)) != count):
+        raise error_type("source_seed_id_population_drift")
+    pages, refused = capture_windows(client, sorted(seed), capture_root, budget)
+    captures.update(pages)
+    capture_refused_attrs(client, capture_root, budget, captures, refused)
+    for name, url in document_urls[2:]:
+        captures[name.replace("_before", "_after")] = capture_doc(
+            client, url, capture_root, name.replace("_before", "_after"), budget)

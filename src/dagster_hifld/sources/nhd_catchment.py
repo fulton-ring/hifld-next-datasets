@@ -453,7 +453,7 @@ def fetch_nhd_catchment_pages(capture_root: Path, *, client: httpx.Client | None
         "layer_after": LAYER_URL + "?f=pjson", "service_after": SERVICE_URL + "?f=pjson",
         "count_after": _count_url(), "ids_after": _ids_url()},
         error_type=NhdCatchmentError, max_body_bytes=MAX_BODY_BYTES,
-        refresh_witnesses=False)
+        refresh_witnesses=False, byte_budget=MAX_CAPTURE_BYTES)
     extracted = _stream_validate(capture_root, parquet_sink=None)
     (capture_root / "computed_baseline.json").write_bytes(_canonical({
         "source_record_sha256": extracted["record_sha"],

@@ -13,6 +13,7 @@ from typing import Callable
 import httpx
 
 from dagster_hifld.sources import arcgis_layer
+from dagster_hifld.http_capture import reserve_capture_retention
 
 
 def budget_guard(budget: list[int], limit: int, error_type: type[ValueError]):
@@ -113,14 +114,7 @@ def capture_attributes(active, capture_root: Path, budget: list[int], oid: int, 
     else:
         body, receipt = capture_doc(active, record_url,
                                      capture_root, name, budget)
-    doc = json.loads(body)
-    rows = doc.get("features") if isinstance(doc, dict) else None
-    if (not isinstance(rows, list) or len(rows) != 1
-            or not isinstance(rows[0], dict) or not isinstance(rows[0].get("attributes"), dict)
-            or rows[0].get("geometry") is not None
-            or rows[0]["attributes"].get("OBJECTID") != oid):
-        raise error_type("source_refused_attrs_record_drift:" + name)
-    attrs = rows[0]["attributes"]
+    attrs = _attribute_response(body, oid, name, error_type)
     validate_attrs(attrs)
     return attrs, receipt
 
@@ -163,9 +157,8 @@ def rescue_single_record(active, capture_root: Path, budget: list[int], last_obj
                 witness(capture_root, probe_geo_name)
                 continue
             page_name = page_name_for(last_objectid, 1)
-            for suffix in ("body", "wire", "receipt.json"):
-                (capture_root / f"{page_name}.{suffix}").write_bytes(
-                    (capture_root / f"{probe_geo_name}.{suffix}").read_bytes())
+            copy_capture_slots(capture_root, probe_geo_name, page_name, budget,
+                               check_budget=check_budget)
             pages.append({"name": page_name, "start_after": last_objectid, "size": 1,
                           "last_objectid": oid, "features": 1,
                           "exceeded_transfer_limit": None,
@@ -176,3 +169,44 @@ def rescue_single_record(active, capture_root: Path, budget: list[int], last_obj
         if attempt < attempts:
             sleep(base_delay * (3 ** (attempt - 1)))
     return oid, False
+
+def copy_capture_slots(capture_root: Path, source: str, target: str, budget: list[int], *,
+                       check_budget: Callable) -> None:
+    """Copy accepted bytes only after reserving both body and wire destinations."""
+    retained = sum(path.stat().st_size for path in capture_root.iterdir()
+                   if path.is_file() and path.name.endswith((".body", ".wire")))
+    copied = sum((capture_root / f"{source}.{suffix}").stat().st_size for suffix in ("body", "wire"))
+    replaced = sum(path.stat().st_size for suffix in ("body", "wire")
+                   if (path := capture_root / f"{target}.{suffix}").exists())
+    budget[0] = retained
+    check_budget([retained - replaced + copied])
+    reserve_capture_retention(capture_root, copied, replaced_bytes=replaced)
+    try:
+        for suffix in ("body", "wire", "receipt.json"):
+            (capture_root / f"{target}.{suffix}").write_bytes(
+                (capture_root / f"{source}.{suffix}").read_bytes())
+    finally:
+        budget[0] = sum(path.stat().st_size for path in capture_root.iterdir()
+                        if path.is_file() and path.name.endswith((".body", ".wire")))
+
+def _attribute_response(body: bytes, oid: int, name: str, error_type: type[ValueError]):
+    doc = json.loads(body)
+    rows = doc.get("features") if isinstance(doc, dict) else None
+    if (not isinstance(rows, list) or len(rows) != 1
+            or not isinstance(rows[0], dict) or not isinstance(rows[0].get("attributes"), dict)
+            or rows[0].get("geometry") is not None
+            or rows[0]["attributes"].get("OBJECTID") != oid):
+        raise error_type("source_refused_attrs_record_drift:" + name)
+    return rows[0]["attributes"]
+
+
+def capture_refused_attributes(client, capture_root: Path, budget: list[int], captures, refused, *,
+                               attributes_url: Callable, capture_doc: Callable,
+                               name_for_id: Callable, error_type: type[ValueError]) -> None:
+    """Acquire each refused record through the attributes-only channel without buffering pages."""
+    for name in sorted(refused):
+        for oid in refused[name]:
+            attrs_name = name_for_id(oid)
+            body, receipt = capture_doc(client, attributes_url(oid), capture_root, attrs_name, budget)
+            _attribute_response(body, oid, attrs_name, error_type)
+            captures[attrs_name] = (capture_root / f"{attrs_name}.body", receipt)

@@ -542,7 +542,7 @@ def fetch_nhd_waterbody_pages(capture_root: Path, *, client: httpx.Client | None
             "count_before": _count_url()}, closing_urls={
             "layer_after": LAYER_URL + "?f=pjson", "service_after": SERVICE_URL + "?f=pjson",
             "count_after": _count_url()}, error_type=NhdWaterbodyError, page_size=PAGE_SIZE,
-        clear_rescued_refusal=True)
+        clear_rescued_refusal=True, byte_budget=MAX_CAPTURE_BYTES)
     last_captured_at = str(tail["captured_at"])
     # Construction happens once at seal time (capture_nhd_waterbody); retention
     # and validation stay the only fetch-time side effects.

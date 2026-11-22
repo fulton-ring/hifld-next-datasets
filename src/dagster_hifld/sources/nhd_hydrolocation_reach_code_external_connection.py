@@ -500,7 +500,7 @@ def fetch_nhd_hydrolocation_reach_code_external_connection_pages(
         fetch_segments=_fetch_segments, metadata_names=METADATA_NAMES,
         after_names=AFTER_NAMES, urls=_document_urls(),
         error_type=NhdHydrolocationReachCodeExternalConnectionError, max_body_bytes=MAX_BODY_BYTES,
-        refresh_witnesses=True)
+        refresh_witnesses=True, byte_budget=MAX_CAPTURE_BYTES)
     extracted = _stream_validate(capture_root, parquet_sink=None)
     _save_state(capture_root, {"segments": segments, "complete": True})
     (capture_root / "computed_baseline.json").write_bytes(_canonical({

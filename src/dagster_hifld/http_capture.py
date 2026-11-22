@@ -94,6 +94,30 @@ def capture_retention_budget(root: Path, limit: int):
         _retention_budget.reset(token)
 
 
+def reserve_capture_retention(root: Path, additional_bytes: int, *, replaced_bytes: int = 0) -> None:
+    """Refuse a planned non-HTTP body/wire write before modifying retained slots.
+
+    This is a reservation against physical retained bytes, not a cumulative
+    charge: subsequent HTTP responses rescan those files after persistence.
+    """
+    applicable = []
+    budget = _retention_budget.get()
+    root = Path(root).resolve()
+    while budget is not None:
+        if budget.root == root:
+            applicable.append(budget)
+        budget = budget.parent
+    if not applicable:
+        return
+    retained = sum(path.stat().st_size for path in root.iterdir()
+                   if path.is_file() and path.name.endswith((".body", ".wire")))
+    projected = retained - replaced_bytes + additional_bytes
+    if any(budget.exceeded or projected > budget.limit for budget in applicable):
+        for budget in applicable:
+            budget.exceeded = True
+        raise ValueError("source_capture_budget_exceeded")
+
+
 def validate_capture_roster(root: Path, expected: set[str] | dict[str, dict[str, object]]) -> None:
     """Require an exact flat roster of regular, non-symlink capture files.
 

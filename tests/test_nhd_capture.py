@@ -4,6 +4,8 @@ import json
 import re
 import tempfile
 import unittest
+import weakref
+import gc
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -19,6 +21,34 @@ def page(ids):
 
 
 class NhdCaptureTests(unittest.TestCase):
+    def test_id_windows_retain_paths_and_release_every_acquired_body(self):
+        from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+        class Body(bytearray):
+            pass
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            refs = []
+            def fetch(client, url, root, name, **kwargs):
+                gc.collect()
+                self.assertLessEqual(sum(ref() is not None for ref in refs), 1)
+                body = Body(b'{"features":[],"exceededTransferLimit":false}')
+                refs.append(weakref.ref(body))
+                (root / f"{name}.body").write_bytes(body)
+                return body, {"url": url}
+            pages, refused = nhd_capture.capture_id_windows(
+                None, list(range(1, 11)), root, [0], page_size=1, attempts=1,
+                base_delay=0, max_body_bytes=1000, window_url=lambda ids: str(ids[0]),
+                budget_check=lambda budget: None, budget_guard=lambda budget: None,
+                failed_receipt_error_code=lambda *args: None,
+                preserve_failed_attempt=lambda *args: None, producer_error_doc=lambda body: False,
+                fetch=fetch, sleep=lambda *args: None)
+            gc.collect()
+            self.assertIsInstance(pages, RetainedCaptureView)
+            self.assertEqual(sum(ref() is not None for ref in refs), 0)
+            self.assertEqual(len(pages), 10)
+            self.assertEqual(refused, {})
+            self.assertEqual(pages["page_0000001"][0], b'{"features":[],"exceededTransferLimit":false}')
+
     def test_corrupt_retained_capture_remains_untouched_in_offline_replay(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

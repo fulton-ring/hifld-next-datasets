@@ -44,6 +44,8 @@ import pyproj
 import shapely
 
 from dagster_hifld.http_capture import CaptureDocuments
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources import nhd_capture, nhd_transport
 from dagster_hifld.sources.nhd_transport import failed_receipt_error_code as _failed_receipt_error_code
 from dagster_hifld.capture_completeness import validate_capture_witness
@@ -59,7 +61,7 @@ from dagster_hifld.sources.arcgis_layer import (
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
-    write_immutable,
+    write_immutable, write_immutable_file,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -599,33 +601,13 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
 
 
 def _capture_refused_attrs(client: httpx.Client, capture_root: Path, budget: list[int],
-                           captures: dict[str, tuple[bytes, dict[str, object]]],
-                           refused: Mapping[str, list[int]]) -> None:
-    """Capture producer-refused records' attributes through the attributes-only channel.
-
-    The producer refuses to serve some records' geometry (persistent Esri 500
-    error document on both of its own hosts, dated on the capture manifest) but
-    serves the same records' attributes with ``returnGeometry=false``. Each
-    refused id gets one attributes-only capture named ``refused_attrs_<OID>``
-    validated to exactly that record. Completeness is enforced by the before/after
-    count and ID witnesses, so no refused-ID roster is pinned.
-    """
-    for name in sorted(refused):
-        for oid in refused[name]:
-            attrs_name = f"refused_attrs_{oid:07d}"
-            body, receipt = _capture_doc(
-                client,
-                _query({"objectIds": str(oid), "outFields": "*", "returnGeometry": "false",
-                        "f": "json"}),
-                capture_root, attrs_name, budget)
-            doc = json.loads(body)
-            rows = doc.get("features") if isinstance(doc, dict) else None
-            if (not isinstance(rows, list) or len(rows) != 1
-                    or not isinstance(rows[0], dict) or not isinstance(rows[0].get("attributes"), dict)
-                    or rows[0].get("geometry") is not None
-                    or rows[0]["attributes"].get("OBJECTID") != oid):
-                raise ValueError("source_refused_attrs_record_drift:" + attrs_name)
-            captures[attrs_name] = (body, receipt)
+                           captures, refused: Mapping[str, list[int]]) -> None:
+    nhd_transport.capture_refused_attributes(
+        client, capture_root, budget, captures, refused, capture_doc=_capture_doc,
+        name_for_id=lambda oid: f"refused_attrs_{oid:07d}",
+        attributes_url=lambda oid: _query({"objectIds": str(oid), "outFields": "*",
+                                           "returnGeometry": "false", "f": "json"}),
+        error_type=ValueError)
 
 
 def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: str,
@@ -648,7 +630,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures = RetainedCaptureView(capture_root)
     budget = [0]
     try:
         with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(300, connect=30),
@@ -661,26 +643,11 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                 ("count_before", _query({"where": POPULATION_WHERE, "returnCountOnly": "true", "f": "json"})),
                 ("ids_before", _query({"where": POPULATION_WHERE, "returnIdsOnly": "true", "f": "json"})),
             ]
-            for name, url in doc_urls:
-                captures[name] = _capture_doc(client, url, capture_root, name, budget)
-            seed_body, seed_receipt = _capture_doc(
-                client, _query({"where": POPULATION_WHERE, "returnIdsOnly": "true", "f": "json"}),
-                capture_root, "ids_seed", budget)
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            count_before = json.loads(captures["count_before"][0]).get("count")
-            if type(count_before) is not int or count_before <= 0:
-                raise ValueError("source_count_drift")
-            seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or len(seed) != count_before
-                    or any(type(value) is not int or value <= 0 for value in seed)
-                    or len(set(seed)) != count_before):
-                raise ValueError("source_seed_id_population_drift")
-            pages, refused = _capture_windows(client, sorted(seed), capture_root, budget)
-            captures.update(pages)
-            _capture_refused_attrs(client, capture_root, budget, captures, refused)
-            for name, url in doc_urls[2:]:
-                after_name = name.replace("_before", "_after")
-                captures[after_name] = _capture_doc(client, url, capture_root, after_name, budget)
+            nhd_capture.capture_id_window_layer(
+                client, capture_root, budget, captures, document_urls=doc_urls,
+                ids_url=_query({"where": POPULATION_WHERE, "returnIdsOnly": "true", "f": "json"}),
+                capture_doc=_capture_doc, capture_windows=_capture_windows,
+                capture_refused_attrs=_capture_refused_attrs, error_type=ValueError)
         fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}
@@ -692,14 +659,20 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
         (capture_root / "capture_manifest.json").write_bytes(
             _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                         "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        retained = dict(captures)
+        retained = RetainedCaptureView(capture_root)
+        for name, receipt in captures.receipts.items():
+            path = capture_root / f"{name}.body"
+            if path.is_file():
+                retained[name] = (path, receipt)
         for receipt_path in capture_root.glob("*.receipt.json"):
             name = receipt_path.name.removesuffix(".receipt.json")
             if name in retained:
                 continue
             try:
-                retained[name] = ((capture_root / f"{name}.body").read_bytes(),
-                                  json.loads(receipt_path.read_bytes()))
+                body_path = capture_root / f"{name}.body"
+                with body_path.open("rb") as stream:
+                    stream.read(0)
+                retained[name] = (body_path, json.loads(receipt_path.read_bytes()))
             except (OSError, ValueError):
                 continue
         if retained:
@@ -714,7 +687,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
     # producer's actual refusal responses. Attempt receipts are
     # listed in the capture manifest but stay out of the bounded
     # source-manifest input roster.
-    attempt_evidence: dict[str, bytes] = {}
+    attempt_evidence: dict[str, Path] = {}
     attempt_receipts: dict[str, dict[str, object]] = {}
     attempt_names = sorted({path.name.removesuffix(suffix) for suffix in _ATTEMPT_SUFFIXES
                             for path in capture_root.glob(f"*.attempt-*{suffix}")})
@@ -723,11 +696,10 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
             path = capture_root / f"{name}{suffix}"
             if not path.is_file():
                 raise ValueError("source_attempt_evidence_incomplete:" + name)
-            body = path.read_bytes()
-            attempt_evidence[f"raw/{name}{suffix}"] = body
+            attempt_evidence[f"raw/{name}{suffix}"] = path
             if suffix == ".receipt.json":
                 try:
-                    receipt = json.loads(body)
+                    receipt = json.loads(path.read_bytes())
                 except ValueError as exc:
                     raise ValueError("source_attempt_evidence_incomplete:" + name) from exc
                 if not isinstance(receipt, dict) or not isinstance(receipt.get("url"), str):
@@ -915,8 +887,8 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                "metadata/source_audit.json": _canonical(full_audit) + b"\n",
                "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in captures.items():
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (capture_root / f"{name}.wire").read_bytes()
+        outputs[f"raw/{name}.body"] = capture_root / f"{name}.body"
+        outputs[f"raw/{name}.wire"] = capture_root / f"{name}.wire"
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     outputs.update(attempt_evidence)
     outputs["metadata/candidate_ready.json"] = _canonical(
@@ -948,9 +920,15 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                 "schema_contract_accepted": False, "id_contract_accepted": False,
                 "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
                 "release_accepted": False}
-    for relative, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-    descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
+    descriptors = {name: ({"bytes": value.stat().st_size, "sha256": sha256_file(value)}
+                          if isinstance(value, Path) else {"bytes": len(value), "sha256": _sha(value)})
+                   for name, value in outputs.items()}
+    for relative, value in outputs.items():
+        key = f"{prefix}/{relative}"
+        if isinstance(value, Path):
+            write_immutable_file(storage, key, value, descriptors[relative])
+        else:
+            write_immutable(storage, key, value)
     for name, descriptor in descriptors.items():
         key = f"{prefix}/{name}"
         snap = storage.object_snapshot(key)
