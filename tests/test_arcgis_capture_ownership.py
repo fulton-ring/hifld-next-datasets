@@ -38,7 +38,8 @@ def _qualified_imports(tree, module, *, is_package=False):
     return imports
 
 
-def _capture_analysis(source, *, module='', is_package=False, known_network=frozenset()):
+def _capture_analysis(source, *, module='', is_package=False,
+                      known_network=frozenset(), known_planners=frozenset()):
     """Resolve static callable aliases and lexical helpers, without executing source."""
     tree = ast.parse(source)
     bindings, functions, parents, parameters, annotations = {'': {}}, {}, {}, {}, {}
@@ -171,6 +172,60 @@ def _capture_analysis(source, *, module='', is_package=False, known_network=froz
             break
         network.update(more)
 
+    def callable_targets(expr, scope, seen=frozenset()):
+        """Resolve producer/driver identity, including stored iterators and partials."""
+        if isinstance(expr, ast.Call):
+            if qualified_name(expr.func, scope) in {'partial', 'functools.partial'} and expr.args:
+                return callable_targets(expr.args[0], scope, seen)
+            return callable_targets(expr.func, scope, seen)
+        if isinstance(expr, (ast.BoolOp, ast.IfExp)):
+            values = expr.values if isinstance(expr, ast.BoolOp) else [expr.body, expr.orelse]
+            return set().union(*(callable_targets(value, scope, seen) for value in values))
+        if isinstance(expr, ast.Name):
+            current = scope
+            while True:
+                token = (current, expr.id)
+                if token in seen:
+                    return set()
+                if expr.id in parameters.get(current, set()):
+                    return set()
+                if expr.id in bindings.get(current, {}):
+                    return set().union(*(callable_targets(value, current, seen | {token})
+                                         for value in bindings[current][expr.id]))
+                candidate = f'{current}.{expr.id}' if current else expr.id
+                if candidate in functions:
+                    return {candidate}
+                if not current:
+                    return {imported_target(expr.id, scope)}
+                current = parents.get(current, '')
+        target = qualified_name(expr, scope)
+        return {target} if target else set()
+
+    planners = {name for name in functions if f'{module}.{name}' in known_planners}
+    for name, node in functions.items():
+        for call in _own_nodes(node.body):
+            if not isinstance(call, ast.Call):
+                continue
+            arguments = call.args
+            targets = callable_targets(call.func, name)
+            # A bound driver may itself store the producer argument.
+            if qualified_name(call.func, name) in {'partial', 'functools.partial'} and arguments:
+                targets = callable_targets(arguments[0], name)
+                arguments = arguments[1:]
+            if any(target.rsplit('.', 1)[-1] == 'capture_request_steps' for target in targets):
+                producer = arguments[0] if arguments else next((kw.value for kw in call.keywords if kw.arg == 'steps'), None)
+                if producer is not None:
+                    planners.update(callable_targets(producer, name))
+    while True:
+        more = set()
+        for name in planners & functions.keys():
+            for node in _own_nodes(functions[name].body):
+                if isinstance(node, ast.YieldFrom):
+                    more.update(callable_targets(node.value, name))
+        if more <= planners:
+            break
+        planners.update(more)
+
     violations = []
     for name, node in functions.items():
         for loop in _own_nodes(node.body):
@@ -187,19 +242,20 @@ def _capture_analysis(source, *, module='', is_package=False, known_network=froz
                 nodes = list(_own_nodes(values))
             else:
                 continue
-            if any(callable_network(call.func, name) for call in nodes if isinstance(call, ast.Call)):
+            if (name in planners and any(isinstance(item, (ast.Yield, ast.YieldFrom)) for item in nodes)
+                    or any(callable_network(call.func, name) for call in nodes if isinstance(call, ast.Call))):
                 violations.append((name, loop.lineno))
-    return sorted(set(violations)), network, imports
+    return sorted(set(violations)), network, imports, planners
 
 
 def capture_loops(source):
-    """Find requests inside loops through callbacks, aliases and lexical helpers."""
+    """Find HTTP sends and driver-consumed request planning inside loops."""
     return _capture_analysis(source)[0]
 
 
 # Shared source modules are scanned, never exempted as whole files.
 ARCGIS_OWNERS = frozenset({
-    'arcgis_adaptive', 'arcgis_capture', 'arcgis_capture_sequence', 'arcgis_filegdb',
+    'arcgis_adaptive', 'arcgis_capture', 'arcgis_capture_sequence', 'arcgis_count_capture', 'arcgis_filegdb',
     'arcgis_layer', 'arcgis_raw_capture', 'capture_common', 'epa_capture',
     'epa_frs_arcgis_table', 'epa_frs_national_archive', 'epa_icis_wastewater_common',
     'epa_regions_common', 'esri_common', 'esri_geometry', 'nhd_capture', 'nhd_transport',
@@ -270,23 +326,29 @@ def corpus_capture_loops(corpus):
     """Propagate actual shared acquisition callees across source-module imports."""
     modules = {name: 'dagster_hifld.sources.' + name.removesuffix('.py').replace('/', '.').removesuffix('.__init__')
                for name in corpus}
-    known = set()
+    known, known_planners = set(), set()
     while True:
-        analyses = {name: _capture_analysis(text, module=modules[name], is_package=name.endswith('__init__.py'), known_network=known,
-                                           )
+        analyses = {name: _capture_analysis(text, module=modules[name], is_package=name.endswith('__init__.py'),
+                                           known_network=known, known_planners=known_planners)
                     for name, text in corpus.items()}
-        more = {f'{modules[name]}.{function}' for name, (_loops, network, _imports) in analyses.items()
+        more = {f'{modules[name]}.{function}' for name, (_loops, network, _imports, _planners) in analyses.items()
                 for function in network}
-        more.update(f'{modules[name]}.{alias}' for name, (_loops, _network, imports) in analyses.items()
+        more.update(f'{modules[name]}.{alias}' for name, (_loops, _network, imports, _planners) in analyses.items()
                     for alias, target in imports.items() if target in known)
-        if more <= known:
-            return {name: loops for name, (loops, _network, _imports) in analyses.items() if loops}
+        more_planners = {target if target.startswith('dagster_hifld.sources.') else f'{modules[name]}.{target}'
+                         for name, (_loops, _network, _imports, planners) in analyses.items() for target in planners}
+        more_planners.update(target for name, (_loops, _network, imports, _planners) in analyses.items()
+                             for alias, target in imports.items() if f'{modules[name]}.{alias}' in known_planners)
+        if more <= known and more_planners <= known_planners:
+            return {name: loops for name, (loops, _network, _imports, _planners) in analyses.items() if loops}
         known.update(more)
+        known_planners.update(more_planners)
 
 
 # Approval is attached to a specific function, never an entire source file.
 # Adding another loop owner requires a reviewed protocol boundary and tests.
 REVIEWED_PROTOCOL_OWNERS = {
+    ('arcgis_count_capture.py', 'capture_observed_count_population'): 'Observed-count windows, reusable receipt prefix and fresh closing witnesses under one capture budget.',
     ('arcgis_adaptive.py', '_capture_adaptive_layer'): 'Before/page/closing witnesses and resumable family policy.',
     ('arcgis_adaptive.py', '_capture_slices'): 'Ordered refusal bisection and accepted-page checkpoints.',
     ('arcgis_adaptive.py', 'capture_document_group'): 'Ordered native-receipt document acquisition.',
@@ -419,6 +481,79 @@ def validate_pages(shared_capture):
         assert page.get('features')
 '''
         self.assertEqual(capture_loops(code), [])
+
+
+class RequestPlanningOwnershipTests(unittest.TestCase):
+    def test_response_driven_generator_owns_local_paging(self):
+        source = """
+from shared import capture_request_steps
+def acquire(fetch):
+    def pages():
+        count = yield ('count', '/count')
+        for offset in range(count):
+            yield ('page', '/query?offset=' + str(offset))
+    return capture_request_steps(pages(), fetch)
+"""
+        self.assertEqual(capture_loops(source), [('acquire.pages', 6)])
+
+    def test_generator_and_driver_aliases_partials_and_yield_from_are_traced(self):
+        source = """
+from shared import capture_request_steps as drive
+from functools import partial
+def pages(urls):
+    for url in urls:
+        yield ('page', url)
+def forwarded(urls):
+    yield from pages(urls)
+producer = partial(forwarded, ['/page'])
+steps = producer()
+runner = drive
+runner(steps, fetch)
+"""
+        self.assertEqual(capture_loops(source), [('pages', 5)])
+
+    def test_partial_bound_driver_and_keyword_steps_are_traced(self):
+        for invocation in ('runner = bind(drive, pages(urls)); runner(fetch)',
+                           'drive(steps=pages(urls), fetch=fetch)'):
+            with self.subTest(invocation=invocation):
+                source = ("from shared import capture_request_steps as drive\n"
+                          "from functools import partial as bind\n"
+                          "def pages(urls):\n    while urls:\n        yield ('page', urls.pop())\n" + invocation)
+                self.assertEqual(capture_loops(source), [('pages', 4)])
+
+    def test_cross_module_generator_consumption_is_traced(self):
+        corpus = {
+            'plan.py': 'def pages(urls):\n    for url in urls:\n        yield ("page", url)\n',
+            'adapter.py': 'from shared import capture_request_steps\nfrom dagster_hifld.sources.plan import pages as plan\ncapture_request_steps(plan(urls), fetch)\n',
+        }
+        self.assertEqual(corpus_capture_loops(corpus), {'plan.py': [('pages', 2)]})
+
+    def test_producer_package_reexport_is_traced(self):
+        corpus = {
+            'pkg/plan.py': 'def pages(urls):\n    for url in urls:\n        yield ("page", url)\n',
+            'pkg/__init__.py': 'from .plan import pages as public_pages\n',
+            'adapter.py': 'from shared import capture_request_steps\nfrom dagster_hifld.sources.pkg import public_pages\ncapture_request_steps(public_pages(urls), fetch)\n',
+        }
+        self.assertEqual(corpus_capture_loops(corpus), {'pkg/plan.py': [('pages', 2)]})
+
+    def test_fixed_inline_request_roster_remains_a_declaration(self):
+        source = """
+from shared import capture_request_steps
+URLS = {'service': '/service', 'layer': '/layer'}
+capture_request_steps(((name, url) for name, url in URLS.items()), fetch)
+"""
+        self.assertEqual(capture_loops(source), [])
+
+    def test_unconsumed_feature_iterator_and_native_url_builder_are_not_acquisition(self):
+        source = """
+def features(rows):
+    for row in rows:
+        yield row['geometry']
+def urls(ids):
+    for oid in ids:
+        yield '/query?id=' + str(oid)
+"""
+        self.assertEqual(capture_loops(source), [])
 
 
 class CaptureCallbackRegressionTests(unittest.TestCase):
