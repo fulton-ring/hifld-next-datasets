@@ -17,7 +17,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 
-from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
+from dagster_hifld.sources.esri_geometry import _validate_spatial_reference, esri_polygon_wkb
 from pyproj import CRS
 from shapely.geometry import Polygon
 
@@ -80,39 +80,6 @@ ATTRIBUTE_FIELDS = [{"name": name, "type": kind, "alias": name, "domain": None,
                     **({"length": 254} if kind == "esriFieldTypeString" else {})}
                    for name, kind in EXPECTED_FIELDS]
 SOURCE_CRS = CRS.from_epsg(4326)
-
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Validate every advertised ArcGIS CRS representation without guessing.
-
-    ArcGIS may return either/both WKID properties and optional WKT strings.
-    All present representations must identify EPSG:4326; missing feature-level
-    spatial references inherit only after their page CRS has been validated.
-    """
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
 
 
 def _query(params: dict[str, object]) -> str:

@@ -28,6 +28,7 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
 from dagster_hifld.sources.arcgis_layer import capture_witness, read_ienc_layer_replay, ienc_layer_capture_roster
 
 DATASET_SLUG = "terminal-points-usace-ienc"
@@ -76,39 +77,6 @@ def _capture_names(ids: list[int]) -> set[str]:
         f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
 
 SOURCE_CRS = CRS.from_epsg(4326)
-
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Validate every advertised ArcGIS CRS representation without guessing.
-
-    ArcGIS may return either/both WKID properties and optional WKT strings.
-    All present representations must identify EPSG:4326; missing feature-level
-    spatial references inherit only after their page CRS has been validated.
-    """
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
 
 
 def _query(params: dict[str, object]) -> str:
