@@ -247,7 +247,9 @@ def capture_exact_id_population(ids, page_size, *, fetch_page, validate_page,
         requested = ids[offset:offset + size]
         result = fetch_page(offset, requested)
         page = validate_page(offset, requested, result)
-        returned = [feature.get('attributes', {}).get('OBJECTID') for feature in page]
+        returned = [feature['attributes'].get('OBJECTID')
+                    if isinstance(feature, dict) and isinstance(feature.get('attributes'), dict)
+                    else None for feature in page]
         body = read_page(offset)
         projected = list(project(json.loads(body))) if page else []
         if json.dumps(projected, sort_keys=True) != json.dumps(page, sort_keys=True):

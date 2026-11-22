@@ -317,3 +317,14 @@ class RawCaptureTests(unittest.TestCase):
                 validate_page=lambda *args: [], close_witnesses=lambda: closed.append(True),
                 read_page=lambda offset: b'{}')
         self.assertEqual(closed, [])
+
+    def test_deferred_native_row_shapes_do_not_fail_during_metadata_projection(self):
+        raw = json.dumps({'features': [None, 'source row', {'attributes': None}, {'attributes': {}}]}).encode()
+        calls = []
+        rows, pages, _ = capture_exact_id_population([1, 2, 3, 4], 4,
+            fetch_page=lambda offset, requested: json.loads(raw),
+            validate_page=lambda offset, requested, document: document['features'],
+            close_witnesses=lambda: calls.append('after'), read_page=lambda offset: raw)
+        self.assertEqual(calls, ['after'])
+        self.assertEqual(pages[0]['returned_ids'], [None, None, None, None])
+        self.assertEqual(list(rows), json.loads(raw)['features'])
