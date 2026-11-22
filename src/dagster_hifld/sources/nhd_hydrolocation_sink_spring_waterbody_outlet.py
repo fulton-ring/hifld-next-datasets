@@ -424,8 +424,7 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
     return nhd_capture.retained_capture(
         client, capture_root, name, url, read_capture=_read_capture,
         fetch=lambda client, url, root, name: capture_get(
-            client, url, root, name, max_bytes=MAX_BODY_BYTES,
-            before_retain=_budget_guard(budget) if budget is not None else None),
+            client, url, root, name, max_bytes=MAX_BODY_BYTES),
         discard=_witness_aside, error_type=NhdHydrolocationSinkSpringWaterbodyOutletError)
 
 
