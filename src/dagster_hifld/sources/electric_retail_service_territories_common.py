@@ -496,6 +496,16 @@ CANDIDATE_OBJECT_NAMES = (
     "metadata/processing_identity.json",
     "metadata/candidate_ready.json",
 )
+# On-disk file stems of the capture_get evidence; the retained capture
+# directory holds one <stem>.body, <stem>.wire and <stem>.receipt.json per name.
+_CAPTURE_FILE_STEMS = {
+    "eia861_page": "eia861_page",
+    "eia861_zip": "eia861_zip",
+    "eia_reuse_policy": "eia_reuse_policy",
+    "tiger_annual_listing": "county-annual-listing",
+    "tiger_product_listing": "county-product-listing",
+    "tiger_county_zip": "tiger_county_zip",
+}
 # Exact key set of the receipts capture_get stages for this adapter's GETs; a
 # retained receipt with any other shape is not original evidence.
 _RECEIPT_KEYS = frozenset((
@@ -750,6 +760,70 @@ def _validate_retained_capture(name: str, body: bytes, wire: bytes, receipt_raw:
     return receipt
 
 
+def _retained_expected_urls(page_body: bytes, annual_body: bytes,
+                            product_body: bytes) -> tuple[int, str, dict[str, str], dict[str, str]]:
+    """Derive the producer endpoints that bind one retained capture set."""
+    year, eia_url = latest_release(page_body.decode("utf-8"))
+    tiger = census_latest.annual_zip_release_from_listings(
+        annual_body, product_body, product=TIGER_PRODUCT)
+    return year, eia_url, {
+        "eia861_page": PAGE_URL,
+        "eia861_zip": eia_url,
+        "eia_reuse_policy": REUSE_URL,
+        "tiger_annual_listing": TIGER_ROOT,
+        "tiger_product_listing": tiger["listing_url"],
+        "tiger_county_zip": tiger["source_url"],
+    }, tiger
+
+
+def _load_retained_capture(root: Path) -> dict[str, tuple[bytes, bytes, bytes]] | None:
+    """Load one complete retained capture from a directory, or None when it holds none.
+
+    A directory holding some but not all retained capture objects is partial
+    evidence and fails closed; nothing in the directory is rewritten.
+    """
+    if not root.is_dir() or root.is_symlink():
+        return None
+    expected = {f"{stem}.{suffix}"
+                for stem in _CAPTURE_FILE_STEMS.values()
+                for suffix in ("body", "wire", "receipt.json")}
+    present = {path.name for path in root.iterdir()
+               if path.is_file() and path.name in expected}
+    if not present:
+        return None
+    if present != expected:
+        raise ValueError("incomplete_retained_capture:" + ",".join(sorted(expected - present)))
+    return {
+        name: ((root / f"{stem}.body").read_bytes(),
+               (root / f"{stem}.wire").read_bytes(),
+               (root / f"{stem}.receipt.json").read_bytes())
+        for name, stem in _CAPTURE_FILE_STEMS.items()
+    }
+
+
+def _replay_retained_directory(root: Path) -> tuple[bytes, bytes, bytes,
+                                                    dict[str, dict[str, object]],
+                                                    dict[str, str]] | None:
+    """Replay one retained capture directory with zero network, or None when it holds none.
+
+    Validates every retained body, wire and receipt against the exact producer
+    endpoints named by the retained page and TIGER listings and returns the
+    bytes plus the original receipts for candidate construction.
+    """
+    retained = _load_retained_capture(root)
+    if retained is None:
+        return None
+    _year, _eia_url, expected_urls, tiger = _retained_expected_urls(
+        retained["eia861_page"][0], retained["tiger_annual_listing"][0],
+        retained["tiger_product_listing"][0])
+    receipts = {
+        name: _validate_retained_capture(name, body, wire, receipt_raw, expected_urls[name])
+        for name, (body, wire, receipt_raw) in retained.items()
+    }
+    return (retained["eia861_page"][0], retained["eia861_zip"][0],
+            retained["tiger_county_zip"][0], receipts, tiger)
+
+
 def _replay_retained_candidate(storage: StagingStorageResource,
                                replay_version: str) -> dict[str, object]:
     """Replay one retained original acquisition with zero network and zero writes.
@@ -780,17 +854,8 @@ def _replay_retained_candidate(storage: StagingStorageResource,
             _stable_read(storage, f"{prefix}/raw/{name}.wire"),
             _stable_read(storage, f"{prefix}/raw/{name}.receipt.json"),
         )
-    year, eia_url = latest_release(raw["eia861_page"][0].decode("utf-8"))
-    tiger = census_latest.annual_zip_release_from_listings(
-        raw["tiger_annual_listing"][0], raw["tiger_product_listing"][0], product=TIGER_PRODUCT)
-    expected_urls = {
-        "eia861_page": PAGE_URL,
-        "eia861_zip": eia_url,
-        "eia_reuse_policy": REUSE_URL,
-        "tiger_annual_listing": TIGER_ROOT,
-        "tiger_product_listing": tiger["listing_url"],
-        "tiger_county_zip": tiger["source_url"],
-    }
+    year, eia_url, expected_urls, tiger = _retained_expected_urls(
+        raw["eia861_page"][0], raw["tiger_annual_listing"][0], raw["tiger_product_listing"][0])
     receipts = {}
     for name in CAPTURE_NAMES:
         body, wire, receipt_raw = raw[name]
@@ -851,6 +916,106 @@ def _replay_retained_candidate(storage: StagingStorageResource,
                              year, tiger["edition"], id_sha, ready_key)
 
 
+def _construct_candidate(storage: StagingStorageResource, root: Path,
+                         page_body: bytes, eia_body: bytes, tiger_body: bytes,
+                         receipts: dict[str, dict[str, object]],
+                         tiger_release: dict[str, str]) -> dict[str, object]:
+    """Build the draft candidate from validated capture bytes and stage it.
+
+    A first construction immutably stages the raw capture evidence and the
+    candidate objects. An identical re-run keeps the original staged receipts,
+    manifest and seal bytes and only verifies the staged objects, never
+    rewriting them, so replayed observation times stay the original ones.
+    """
+    year, eia_url = latest_release(page_body.decode("utf-8"))
+    with zipfile.ZipFile(io.BytesIO(eia_body)) as archive:
+        members = archive.infolist()
+        if (len(members) > 200 or len({member.filename for member in members}) != len(members)
+                or sum(member.file_size for member in members) > MAX_EIA_UNCOMPRESSED_BYTES):
+            raise ValueError("eia861_zip_expansion_limit")
+        service_name = f"Service_Territory_{year}.xlsx"
+        frame_name = f"Frame_{year}.xlsx"
+        names = {member.filename for member in members}
+        if service_name not in names or frame_name not in names:
+            raise ValueError("eia861_workbook_members_missing")
+        service_body = archive.read(service_name)
+        frame_body = archive.read(frame_name)
+    territory_rows = read_service_territory_workbook(service_body, year)
+    frame = read_frame_workbook(frame_body, year)
+    counties = _read_counties(tiger_body, tiger_release["edition"])
+    records, join_audit = join_territories(territory_rows, frame, counties)
+    features = aggregate_territories(records, counties, year)
+    if not features:
+        raise ValueError("empty_electric_retail_population")
+    identity = processing_identity(Path(__file__).parents[3])
+    output = _geoparquet(features)
+    id_sha, record_sha, geometry_sha, schema_sha = _candidate_hashes(features, year, tiger_release["edition"])
+    version = content_derived_version(record_sha, geometry_sha, schema_sha, identity)
+    prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
+    parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
+    ready_key = f"{prefix}/metadata/candidate_ready.json"
+    ready_snapshot = storage.object_snapshot(ready_key)
+    if ready_snapshot is not None:
+        for name, fresh in receipts.items():
+            original = json.loads(storage.read_key(f"{prefix}/raw/{name}.receipt.json"))
+            if (not isinstance(original, dict) or not isinstance(original.get("observed_at"), str)
+                    or original != {**fresh, "observed_at": original["observed_at"]}):
+                raise ValueError("electric_territory_capture_changed:" + name)
+            receipts[name] = original
+    elif storage.list_prefix(prefix + "/"):
+        raise ValueError("electric_territory_candidate_incomplete:" + version)
+
+    def stage(name: str, body: bytes, *, verify_write: bool = True) -> None:
+        key = f"{prefix}/{name}"
+        if ready_snapshot is None:
+            write_immutable(storage, key, body)
+        if (ready_snapshot is not None or verify_write) and storage.read_key(key) != body:
+            raise ValueError("candidate_readback_mismatch:" + name)
+
+    utility_count, county_count, state_count = _candidate_counts(records, features)
+    coverage = _candidate_coverage(year, tiger_release["edition"], territory_rows,
+                                   join_audit, features, utility_count, county_count, state_count)
+    manifest = _candidate_manifest(receipts, year, eia_url, tiger_release, identity,
+                                   features, output, coverage, parquet_path)
+    validate_provenance(manifest)
+    validate_output_policy(manifest)
+    validate_release_provenance(manifest)
+    audit = _candidate_audit(receipts, year, eia_url, tiger_release, territory_rows, frame,
+                             join_audit, records, features, utility_count, county_count,
+                             state_count, id_sha, identity)
+    for name, receipt in receipts.items():
+        stem = _CAPTURE_FILE_STEMS[name]
+        for suffix, size_field, hash_field in (
+            ("body", "bytes", "sha256"),
+            ("wire", "wire_bytes", "wire_sha256"),
+        ):
+            relative = f"raw/{name}.{suffix}"
+            if ready_snapshot is None:
+                stage(relative, (root / f"{stem}.{suffix}").read_bytes(), verify_write=False)
+            else:
+                key = f"{prefix}/{relative}"
+                snapshot = storage.object_snapshot(key)
+                if (snapshot is None or snapshot.size != receipt[size_field]
+                        or storage.sha256_key(key) != receipt[hash_field]
+                        or storage.object_snapshot(key) != snapshot):
+                    raise ValueError("candidate_readback_mismatch:" + relative)
+        stage(f"raw/{name}.receipt.json", _canonical(receipt) + b"\n", verify_write=False)
+    _ready, ready_body = _candidate_ready(version, output, parquet_path)
+    for name, body in (
+        (parquet_path, output),
+        ("metadata/source_manifest.json", _canonical(manifest) + b"\n"),
+        ("metadata/source_audit.json", _canonical(audit) + b"\n"),
+        ("metadata/processing_identity.json", _canonical(identity) + b"\n"),
+        ("metadata/candidate_ready.json", ready_body),
+    ):
+        stage(name, body)
+    if ready_snapshot is not None and storage.object_snapshot(ready_key) != ready_snapshot:
+        raise ValueError("electric_territory_candidate_changed:" + version)
+    return _candidate_result(version, prefix, output, features, records, join_audit,
+                             territory_rows, utility_count, county_count, state_count,
+                             year, tiger_release["edition"], id_sha, ready_key)
+
+
 def capture_electric_retail_service_territories(
     storage: StagingStorageResource, *, capture_directory: str | None = None,
     client: httpx.Client | None = None, replay_version: str | None = None,
@@ -858,8 +1023,10 @@ def capture_electric_retail_service_territories(
     """Capture the current EIA-861 and TIGER county inputs and stage one draft candidate.
 
     With ``replay_version`` set, replay that retained candidate from its staged
-    raw evidence with zero network access and zero staged writes; without it the
-    run fetches a fresh snapshot.
+    raw evidence with zero network access and zero staged writes. With a
+    ``capture_directory`` holding a complete retained capture, replay it with
+    zero network access and leave the directory untouched; otherwise the run
+    fetches a fresh snapshot into that directory.
     """
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource):
         raise ValueError("explicit_staging_resource_required")
@@ -871,12 +1038,16 @@ def capture_electric_retail_service_territories(
         root = Path(capture_directory).absolute()
         if ".." in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
+        retained = _replay_retained_directory(root)
+        if retained is not None:
+            page_body, eia_body, tiger_body, receipts, tiger_release = retained
+            return _construct_candidate(storage, root, page_body, eia_body, tiger_body,
+                                        receipts, tiger_release)
         try:
             root.mkdir(parents=True)
         except FileExistsError:
             if not root.is_dir() or root.is_symlink():
                 raise ValueError("unsafe_capture_directory") from None
-            root = Path(tempfile.mkdtemp(prefix=f"{root.name}-refresh-", dir=root.parent))
     else:
         root = Path(tempfile.mkdtemp(prefix="hifld-electric-retail-"))
     owned_client = client is None
@@ -888,7 +1059,7 @@ def capture_electric_retail_service_territories(
         page_body, page_receipt = capture_get(
             client, PAGE_URL, root, "eia861_page", max_bytes=MAX_PAGE_BYTES,
         )
-        year, eia_url = latest_release(page_body.decode("utf-8"))
+        _year, eia_url = latest_release(page_body.decode("utf-8"))
         eia_body, eia_receipt = capture_get(
             client, eia_url, root, "eia861_zip", max_bytes=MAX_EIA_ZIP_BYTES,
         )
@@ -900,102 +1071,14 @@ def capture_electric_retail_service_territories(
             client, tiger_release["source_url"], root, "tiger_county_zip",
             max_bytes=MAX_TIGER_ZIP_BYTES,
         )
-        with zipfile.ZipFile(io.BytesIO(eia_body)) as archive:
-            members = archive.infolist()
-            if (len(members) > 200 or len({member.filename for member in members}) != len(members)
-                    or sum(member.file_size for member in members) > MAX_EIA_UNCOMPRESSED_BYTES):
-                raise ValueError("eia861_zip_expansion_limit")
-            service_name = f"Service_Territory_{year}.xlsx"
-            frame_name = f"Frame_{year}.xlsx"
-            names = {member.filename for member in members}
-            if service_name not in names or frame_name not in names:
-                raise ValueError("eia861_workbook_members_missing")
-            service_body = archive.read(service_name)
-            frame_body = archive.read(frame_name)
-        territory_rows = read_service_territory_workbook(service_body, year)
-        frame = read_frame_workbook(frame_body, year)
-        counties = _read_counties(tiger_body, tiger_release["edition"])
-        records, join_audit = join_territories(territory_rows, frame, counties)
-        features = aggregate_territories(records, counties, year)
-        if not features:
-            raise ValueError("empty_electric_retail_population")
-        identity = processing_identity(Path(__file__).parents[3])
-        output = _geoparquet(features)
-        id_sha, record_sha, geometry_sha, schema_sha = _candidate_hashes(features, year, tiger_release["edition"])
-        version = content_derived_version(record_sha, geometry_sha, schema_sha, identity)
-        prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version}"
-        parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
-        ready_key = f"{prefix}/metadata/candidate_ready.json"
-        ready_snapshot = storage.object_snapshot(ready_key)
         receipts = {
             "eia861_page": page_receipt, "eia861_zip": eia_receipt,
             "eia_reuse_policy": reuse_receipt, "tiger_county_zip": tiger_receipt,
             "tiger_annual_listing": tiger_release["evidence_receipts"][0],
             "tiger_product_listing": tiger_release["evidence_receipts"][1],
         }
-        if ready_snapshot is not None:
-            for name, fresh in receipts.items():
-                original = json.loads(storage.read_key(f"{prefix}/raw/{name}.receipt.json"))
-                if (not isinstance(original, dict) or not isinstance(original.get("observed_at"), str)
-                        or original != {**fresh, "observed_at": original["observed_at"]}):
-                    raise ValueError("electric_territory_capture_changed:" + name)
-                receipts[name] = original
-        elif storage.list_prefix(prefix + "/"):
-            raise ValueError("electric_territory_candidate_incomplete:" + version)
-
-        def stage(name: str, body: bytes, *, verify_write: bool = True) -> None:
-            key = f"{prefix}/{name}"
-            if ready_snapshot is None:
-                write_immutable(storage, key, body)
-            if (ready_snapshot is not None or verify_write) and storage.read_key(key) != body:
-                raise ValueError("candidate_readback_mismatch:" + name)
-
-        utility_count, county_count, state_count = _candidate_counts(records, features)
-        coverage = _candidate_coverage(year, tiger_release["edition"], territory_rows,
-                                       join_audit, features, utility_count, county_count, state_count)
-        manifest = _candidate_manifest(receipts, year, eia_url, tiger_release, identity,
-                                       features, output, coverage, parquet_path)
-        validate_provenance(manifest)
-        validate_output_policy(manifest)
-        validate_release_provenance(manifest)
-        audit = _candidate_audit(receipts, year, eia_url, tiger_release, territory_rows, frame,
-                                 join_audit, records, features, utility_count, county_count,
-                                 state_count, id_sha, identity)
-        source_files = {
-            "tiger_annual_listing": "county-annual-listing",
-            "tiger_product_listing": "county-product-listing",
-        }
-        for name, receipt in receipts.items():
-            stem = source_files.get(name, name)
-            for suffix, size_field, hash_field in (
-                ("body", "bytes", "sha256"),
-                ("wire", "wire_bytes", "wire_sha256"),
-            ):
-                relative = f"raw/{name}.{suffix}"
-                if ready_snapshot is None:
-                    stage(relative, (root / f"{stem}.{suffix}").read_bytes(), verify_write=False)
-                else:
-                    key = f"{prefix}/{relative}"
-                    snapshot = storage.object_snapshot(key)
-                    if (snapshot is None or snapshot.size != receipt[size_field]
-                            or storage.sha256_key(key) != receipt[hash_field]
-                            or storage.object_snapshot(key) != snapshot):
-                        raise ValueError("candidate_readback_mismatch:" + relative)
-            stage(f"raw/{name}.receipt.json", _canonical(receipt) + b"\n", verify_write=False)
-        _ready, ready_body = _candidate_ready(version, output, parquet_path)
-        for name, body in (
-            (parquet_path, output),
-            ("metadata/source_manifest.json", _canonical(manifest) + b"\n"),
-            ("metadata/source_audit.json", _canonical(audit) + b"\n"),
-            ("metadata/processing_identity.json", _canonical(identity) + b"\n"),
-            ("metadata/candidate_ready.json", ready_body),
-        ):
-            stage(name, body)
-        if ready_snapshot is not None and storage.object_snapshot(ready_key) != ready_snapshot:
-            raise ValueError("electric_territory_candidate_changed:" + version)
-        return _candidate_result(version, prefix, output, features, records, join_audit,
-                                 territory_rows, utility_count, county_count, state_count,
-                                 year, tiger_release["edition"], id_sha, ready_key)
+        return _construct_candidate(storage, root, page_body, eia_body, tiger_body,
+                                    receipts, tiger_release)
     finally:
         if owned_client:
             client.close()

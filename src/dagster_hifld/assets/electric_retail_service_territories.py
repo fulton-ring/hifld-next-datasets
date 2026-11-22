@@ -27,8 +27,9 @@ class ElectricRetailServiceTerritoriesConfig(Config):
         "Census TIGER county equivalents. This is an approximation, not a legal "
         "boundary or a historical HIFLD equivalence; all acceptance and release "
         "gates remain closed. Optional replay_version config replays one retained "
-        "candidate from its staged raw evidence with zero network access; omitted "
-        "runs fetch a fresh snapshot."
+        "candidate from its staged raw evidence with zero network access; a "
+        "capture_directory holding a complete retained capture replays from the "
+        "directory the same way; omitted runs fetch a fresh snapshot."
     ),
 )
 def electric_retail_service_territories_eia861_candidate(
