@@ -42,14 +42,13 @@ and 897, valid under Esri semantics) are minimally repaired with
   unaccepted repair gate. Publication stays blocked pending succession,
   freshness, schema/ID contract, coverage, rights and release decisions.
 
-The offset-segment checkpoint acquisition here (resumable
-``capture_state.json`` segment tiling, cross-checked attributes-only
-extraction, refreshed closing brackets) is a deliberately distinct policy from
-the keyset-window layers of the same service; it shares only the byte-equivalent
-primitives in ``dagster_hifld.sources.wbd_hu_family`` (query URL building,
-producer error detection, per-field value validation).
+The offset-segment checkpoint acquisition uses shared ``wbd_capture`` and
+``arcgis_adaptive`` owners for resumable segment tiling, independent attributes
+extraction and refreshed closing brackets. Native source validation remains here.
 """
 from __future__ import annotations
+
+from functools import partial
 
 import hashlib
 import json
@@ -69,6 +68,8 @@ import shapely
 from shapely import from_wkb
 from shapely.validation import explain_validity
 
+from dagster_hifld.sources import wbd_capture
+from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.output_policy import validate_output_policy
@@ -819,29 +820,12 @@ def _segment_gaps(spans: list[tuple[int, int]], population_count: int) -> list[t
 
 def _fetch_doc_group(client: httpx.Client, urls: list[tuple[str, str]], capture_root: Path,
                      *, refresh: bool = False) -> None:
-    """Capture one ordered document group, retaining already-captured members.
-
-    With ``refresh`` the group's retained bodies/wires/receipts are discarded
-    first so every member is re-captured now (used for the closing brackets of
-    a resumed acquisition, which must postdate the most recent segment read).
-    """
-    if refresh:
-        for name, _url in urls:
-            for suffix in (".body", ".wire", ".receipt.json"):
-                (capture_root / f"{name}{suffix}").unlink(missing_ok=True)
-    for name, url in urls:
-        if (capture_root / f"{name}.body").exists():
-            validate_capture_request_identity(name, _read_capture(capture_root, name)[1], url)
-            continue
-        body, _receipt = capture_with_retry(client, url, capture_root, name,
-            max_bytes=MAX_BODY_BYTES,
-            attempts=CAPTURE_ATTEMPTS,
-            base_delay=CAPTURE_RETRY_BASE_DELAY_SECONDS,
-            max_total_bytes=MAX_CAPTURE_BYTES,
-            budget_error=WbdHu8SubbasinError,
-            preserve_final_failure=True)
-        if _producer_error_doc(body):
-            raise WbdHu8SubbasinError("source_document_error_envelope:" + name)
+    wbd_capture.capture_document_group(client, urls, capture_root,
+        capture=partial(capture_with_retry, max_bytes=MAX_BODY_BYTES, attempts=CAPTURE_ATTEMPTS,
+            base_delay=CAPTURE_RETRY_BASE_DELAY_SECONDS, max_total_bytes=MAX_CAPTURE_BYTES,
+            budget_error=WbdHu8SubbasinError, preserve_final_failure=True),
+        read=_read_capture, producer_error=_producer_error_doc,
+        error_type=WbdHu8SubbasinError, refresh=refresh)
 
 
 def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
@@ -868,64 +852,23 @@ def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
         raise WbdHu8SubbasinError("disk_floor_before_acquisition")
     state = _load_state(capture_root)
     with _default_client() as client:
-        _fetch_doc_group(client, _before_doc_urls(), capture_root)
-        seed = _roster(json.loads(_read_capture(capture_root, "ids_before")[0]), "ids_seed")
-        population_count = len(seed)
-        count_before = json.loads(_read_capture(capture_root, "count_before")[0]).get("count")
-        validate_capture_witness(count_before, seed, count_before, seed)
-        segments = list(state.get("segments") or [])
-        filled_gaps = False
-        work: list[tuple[int, int]] = []
-        while True:
-            spans = _covered_tiling({"segments": segments}, population_count)
-            gaps = _segment_gaps(spans, population_count)
-            if not gaps:
-                state["segments"] = segments
-                break
-            filled_gaps = True
-            state["complete"] = False
-            _save_state(capture_root, state)
-            if not work:
-                offset, length = gaps[0]
-                work.append((offset, min(PAGE_SIZE, length)))
-            offset, count = work.pop(0)
-            if any(start <= offset and offset + count <= end for start, end in spans):
-                continue
-            body, _receipt = capture_with_retry(client, _segment_url(offset, count), capture_root, name := _segment_name(offset, count),
-                max_bytes=MAX_BODY_BYTES,
-                attempts=CAPTURE_ATTEMPTS,
-                base_delay=CAPTURE_RETRY_BASE_DELAY_SECONDS,
-                max_total_bytes=MAX_CAPTURE_BYTES,
-                budget_error=WbdHu8SubbasinError,
-                preserve_final_failure=True)
-            if _producer_error_doc(body):
-                if count > 1:
-                    half = count // 2
-                    work = [(offset, half), (offset + half, count - half), *work]
-                    continue
-                raise WbdHu8SubbasinError("source_segment_error_envelope:" + name)
-            page = json.loads(body)
-            features = page.get("features") if isinstance(page, dict) else None
-            if (not isinstance(features, list) or len(features) != count
-                    or [feature.get("attributes", {}).get("objectid")
-                        for feature in features] != seed[offset:offset + count]):
-                raise WbdHu8SubbasinError("source_segment_roster_incomplete:" + name)
-            if any(start <= offset and offset + count <= end for start, end in spans):
-                raise WbdHu8SubbasinError("source_segment_roster_duplicate:" + name)
-            segments.append({"offset": offset, "count": count, "name": name,
-                             "features": count,
-                             "captured_at": datetime.now(timezone.utc).isoformat()})
-            state["segments"] = segments
-            _save_state(capture_root, state)
-        attrs_urls = _attrs_doc_urls(population_count)
-        if any(not (capture_root / f"{name}.body").exists() for name, _url in attrs_urls):
-            state["complete"] = False
-            _save_state(capture_root, state)
-        _fetch_doc_group(client, attrs_urls, capture_root)
-        _fetch_doc_group(client, _after_doc_urls(), capture_root,
-                         refresh=filled_gaps or state.get("complete") is not True)
-        state["complete"] = True
-        _save_state(capture_root, state)
+        wbd_capture.capture_segmented_layer(
+            SliceCaptureSpec(byte_budget=MAX_CAPTURE_BYTES,
+                page_name=_segment_name, page_url=_segment_url,
+                capture=partial(capture_with_retry, max_bytes=MAX_BODY_BYTES,
+                    max_total_bytes=MAX_CAPTURE_BYTES, budget_error=WbdHu8SubbasinError,
+                    preserve_final_failure=True),
+                producer_error=_producer_error_doc, page_attempts=CAPTURE_ATTEMPTS,
+                page_delay=CAPTURE_RETRY_BASE_DELAY_SECONDS, doc_attempts=CAPTURE_ATTEMPTS,
+                doc_delay=CAPTURE_RETRY_BASE_DELAY_SECONDS, error=WbdHu8SubbasinError,
+                bisect_incomplete=False),
+            client, capture_root, state,
+            documents=wbd_capture.SegmentDocuments(before=_before_doc_urls(),
+                attributes=_attrs_doc_urls, after=_after_doc_urls(), fetch_group=_fetch_doc_group,
+                read=_read_capture, validate_roster=_roster),
+            checkpoints=wbd_capture.SegmentCheckpoints(page_size=PAGE_SIZE, oid_field="objectid",
+                covered=_covered_tiling, gaps=_segment_gaps, save=_save_state,
+                parse_name=lambda name: tuple(map(int, name[4:].split("_")))))
 
 
 def _receipt_map(capture_root: Path, segment_names: list[str], population_count: int) -> dict[str, dict[str, object]]:

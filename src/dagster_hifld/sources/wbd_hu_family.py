@@ -28,27 +28,23 @@ Two acquisition policies coexist deliberately:
   parameterize the one-level 2-digit bisection versus the 12-digit recursive
   bisection with bounded single-feature retries and the attributes-only
   fallback part for permanently unservable rows.
-- The offset-segment checkpoint policy of ``wbd_hu8_subbasin`` (offset-paged
-  segments tiling an enumerated roster, resumable ``capture_state.json``,
-  cross-checked attributes-only extraction, refreshed closing brackets,
-  producer-error retry/backoff, server-reprojected EPSG:4326 rings validated
-  and repaired through ``levee_areas_usace_ienc._esri_polygon_wkb``) is a
-  distinct policy that this module does not absorb; the HU8 module keeps its
-  own capture flow and reuses only the small primitives that are byte
-  equivalent (query URL building, producer error detection, per-field value
-  validation).
+- The HU8 offset-segment checkpoint policy uses ``wbd_capture`` and
+  ``arcgis_adaptive`` for resumable segments, independent attributes extraction
+  and refreshed closing brackets. Its native schema and geometry validation
+  remain in its source adapter.
 
 Every candidate stays unapproved: the level modules keep the runtime approval
 flags false and the draft schedules stopped.
 """
 from __future__ import annotations
 
+from functools import partial
+
 import hashlib
 import json
 import math
 import shutil
 import struct
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,6 +58,7 @@ import pyarrow.parquet as pq
 from shapely import from_wkb, is_valid_reason
 from shapely.geometry import LinearRing, MultiPolygon
 
+from dagster_hifld.sources import wbd_capture
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -244,13 +241,7 @@ def is_refusal(body: bytes) -> bool:
 
 
 def retain_refusal(root: Path, name: str, body: bytes, receipt: dict) -> tuple[bytes, dict]:
-    """Rename a refused window's retained response to its refusal evidence name."""
-    for suffix in (".body", ".wire", ".receipt.json"):
-        source = root / f"{name}{suffix}"
-        target = root / f"{name}_refusal{suffix}"
-        if target.exists():
-            raise ValueError("source_refusal_evidence_name_collision:" + target.name)
-        source.replace(target)
+    wbd_capture.retain_refusal_files(root, name)
     return body, receipt
 
 
@@ -278,60 +269,19 @@ def record_attrs_url(spec: WbdHuSpec, oid: int) -> str:
 
 
 def capture_page_window(spec: WbdHuSpec, client: httpx.Client, roster: list[int],
-                        index: int, root: Path, *,
-                        capture: Callable) -> tuple[dict[str, tuple[bytes, dict]], list[str]]:
-    """Capture one nominal page window, bisecting refused windows per policy.
-
-    The producer deterministically refuses some full-size windows (content-
-    dependent server-side failure); the refusal document is retained as
-    evidence and the window is re-fetched as half-size parts whose URLs are
-    derived from the pinned roster. ``max_bisection_depth`` bounds the
-    recursion (the 2-digit layer bisects exactly once and fails on a refusing
-    half; the 12-digit layer recurses until every part is served). A single-
-    feature window is retried bounded times first when
-    ``single_refusal_retries`` is positive; when its geometry stays refused and
-    ``attrs_parts`` is set its attributes are captured through the producer's
-    working attributes-only channel and staged as a named ``_attrs`` part (the
-    row's geometry gates to null at validation time) so a permanently
-    unservable row cannot block the complete capture. The refusal evidence and
-    the attributes document are both retained.
-    """
-    name = f"page_{index:04d}"
-    parts: dict[str, tuple[bytes, dict]] = {}
-    refusals: list[str] = []
-
-    def walk(part_name: str, sub: list[int], last: int, depth: int) -> None:
-        body, receipt = capture(client, page_window_url(spec, last, len(sub)),
-                                root, part_name)
-        if is_refusal(body) and len(sub) == 1 and spec.single_refusal_retries:
-            for _attempt in range(spec.single_refusal_retries):
-                time.sleep(spec.single_refusal_retry_seconds)
-                body, receipt = capture(client, page_window_url(spec, last, len(sub)),
-                                        root, part_name)
-                if not is_refusal(body):
-                    break
-        if not is_refusal(body):
-            parts[part_name] = (body, receipt)
-            return
-        refusals.append(f"{part_name}_refusal")
-        parts[f"{part_name}_refusal"] = retain_refusal(root, part_name, body, receipt)
-        if len(sub) == 1:
-            if spec.attrs_parts:
-                attrs_name = f"{part_name}_attrs"
-                attrs_body, attrs_receipt = capture(client, record_attrs_url(spec, sub[0]),
-                                                    root, attrs_name)
-                parts[attrs_name] = (attrs_body, attrs_receipt)
-                return
-            raise ValueError("source_page_window_refused_after_bisection:" + part_name)
-        if depth + 1 > spec.max_bisection_depth:
-            raise ValueError("source_page_window_refused_after_bisection:" + part_name)
-        half = (len(sub) + 1) // 2
-        walk(part_name + "a", sub[:half], sub[0] - 1 if sub[0] > 1 else 0, depth + 1)
-        walk(part_name + "b", sub[half:], sub[half] - 1, depth + 1)
-
-    walk(name, roster[index * spec.page_size:(index + 1) * spec.page_size],
-         roster[index * spec.page_size - 1] if index > 0 else 0, 0)
-    return parts, refusals
+                        index: int, root: Path, *, capture: Callable):
+    at_floor = (partial(wbd_capture.capture_attributes_fallback,
+                         attrs_url=lambda oid: record_attrs_url(spec, oid))
+                if spec.attrs_parts else wbd_capture.fail_refused_window)
+    receipts, refusals = wbd_capture.capture_window_receipts(client, roster, index, root,
+        policy=wbd_capture.WindowPolicy(page_size=spec.page_size, byte_budget=spec.capture_max_bytes,
+            max_depth=spec.max_bisection_depth, single_refusal_retries=spec.single_refusal_retries,
+            single_refusal_retry_seconds=spec.single_refusal_retry_seconds,
+            refuse_evidence_collision=True),
+        window_url=lambda ids, idx, path: page_part_url(spec, ids, idx, f"page_{idx:04d}" + path),
+        capture=capture, is_refusal=is_refusal, at_floor=at_floor)
+    return {name: ((root / (name + ".body")).read_bytes(), receipt)
+            for name, receipt in receipts.items()}, refusals
 
 
 def _effective_page_count(spec: WbdHuSpec, page_count: int | None) -> int:
@@ -1091,34 +1041,16 @@ def capture_candidate(spec: WbdHuSpec, storage: StagingStorageResource, *, versi
             with httpx.Client(follow_redirects=False,
                               timeout=httpx.Timeout(120, connect=20, read=600),
                               headers={"User-Agent": spec.user_agent}) as client:
-                ids_body, ids_receipt = capture_budgeted(root, spec.page_max_bytes,
-                                                         spec.capture_max_bytes,
-                                                         client, ids_url(spec), "ids_before")
-                roster = validate_roster_document(spec, json.loads(ids_body), "seed")
-                captures["ids_before"] = (ids_body, ids_receipt)
-                doc_client = httpx.Client(follow_redirects=True,
-                                          timeout=httpx.Timeout(60, connect=20, read=300),
-                                          headers={"Connection": "close",
-                                                   "User-Agent": spec.doc_user_agent})
-                try:
-                    for name, url in capture_roster(spec, roster):
-                        if name in captures:
-                            continue
-                        if name.startswith("page_"):
-                            window, refusals = capture_page_window(
-                                spec, client, roster, int(name[5:9]), root, capture=capture)
-                            captures.update(window)
-                            page_parts[name] = [part for part in sorted(window)
-                                                if not part.endswith("_refusal")]
-                            page_refusals.extend(refusals)
-                            continue
-                        active = doc_client if name == "service_doc" else client
-                        captures[name] = capture(active, url, root, name,
-                                                 max_bytes=spec.doc_max_bytes
-                                                 if name == "service_doc"
-                                                 else spec.page_max_bytes)
-                finally:
-                    doc_client.close()
+                page_parts, page_refusals = wbd_capture.capture_ordered_windows(
+                    wbd_capture.OrderedWindowPolicy(byte_budget=spec.capture_max_bytes,
+                        seed_url=ids_url(spec), page_max_bytes=spec.page_max_bytes,
+                        doc_max_bytes=spec.doc_max_bytes, doc_user_agent=spec.doc_user_agent),
+                    client, root, captures, capture=capture,
+                    validate_seed=lambda document, label: validate_roster_document(spec, document, label),
+                    roster=lambda ids: capture_roster(spec, ids),
+                    window_capture=lambda active, ids, index, path: capture_page_window(
+                        spec, active, ids, index, path, capture=capture),
+                    project=wbd_capture.body_and_receipt)
         except Exception as exc:
             receipts = {}
             for path in sorted(root.glob("*.receipt.json")):

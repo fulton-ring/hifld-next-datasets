@@ -68,6 +68,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
+from dagster_hifld.sources import wbd_capture
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.sources.esri_geometry import esri_polyline_wkb
 from shapely.geometry import MultiLineString
@@ -310,45 +311,11 @@ def _part_url(roster: list[int], index: int, part_name: str) -> str:
 
 def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
                          root: Path) -> tuple[dict[str, dict], list[str]]:
-    """Capture one nominal page window, bisecting refusing windows recursively.
-
-    The producer persistently refuses some windows (content-dependent
-    server-side budget, observed 2026-11-14/15); each refusal document is
-    retained as evidence and the window is re-fetched as two half-size parts
-    whose URLs are derived from the captured roster, recursively, until every
-    leaf part serves. A single-feature window that still refuses fails the
-    capture: the producer cannot serve that feature's native fidelity and no
-    simplified or re-encoded substitute is acceptable (fail-closed floor,
-    never a repair loop).
-    """
-    name = f"page_{index:04d}"
-    page_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
-    parts: dict[str, dict] = {}
-    refusals: list[str] = []
-
-    def walk(window_name: str, ids: list[int]) -> None:
-        body, receipt = _capture(client, _window_url(roster, index, window_name[9:]),
-                                 root, window_name)
-        if not _is_refusal(body):
-            parts[window_name] = receipt
-            return
-        # Persist the refusing document under its evidence artifact name; the
-        # receipt describes the request/response, not the retained file name.
-        for suffix in (".body", ".wire", ".receipt.json"):
-            (root / (window_name + suffix)).replace(root / (f"{window_name}_refusal" + suffix))
-        refusals.append(f"{window_name}_refusal")
-        parts[f"{window_name}_refusal"] = receipt
-        del body
-        if len(ids) == 1:
-            raise ValueError(
-                "source_page_window_refused_single_feature:"
-                + f"{window_name}:objectid={ids[0]}")
-        half = (len(ids) + 1) // 2
-        walk(window_name + "a", ids[:half])
-        walk(window_name + "b", ids[half:])
-
-    walk(name, page_ids)
-    return parts, refusals
+    return wbd_capture.capture_window_receipts(client, roster, index, root,
+        policy=wbd_capture.WindowPolicy(page_size=PAGE_SIZE, byte_budget=CAPTURE_MAX_BYTES,
+                                       minimum_ids=1),
+        window_url=_window_url, capture=_capture, is_refusal=_is_refusal,
+        at_floor=wbd_capture.fail_single_feature)
 
 
 class _GeometryGate(Exception):
@@ -922,35 +889,12 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
             with httpx.Client(follow_redirects=False,
                               timeout=httpx.Timeout(120, connect=20, read=600),
                               headers={"User-Agent": USER_AGENT}) as client:
-                ids_body, ids_receipt = _capture(client, _ids_url(), root, "ids_before")
-                roster = _validate_roster_document(json.loads(ids_body), "seed")
-                captures["ids_before"] = ids_receipt
-                del ids_body
-                doc_client = httpx.Client(follow_redirects=True,
-                                          timeout=httpx.Timeout(60, connect=20, read=300),
-                                          headers={"Connection": "close",
-                                                   "User-Agent": DOC_USER_AGENT})
-                page_parts: dict[str, list[str]] = {}
-                page_refusals: list[str] = []
-                try:
-                    for name, url in _capture_roster(roster):
-                        if name in captures:
-                            continue
-                        if name.startswith("page_"):
-                            window, window_refusals = _capture_page_window(
-                                client, roster, int(name[5:9]), root)
-                            captures.update(window)
-                            page_parts[name] = [part for part in sorted(window)
-                                                if not part.endswith("_refusal")]
-                            page_refusals.extend(window_refusals)
-                            continue
-                        active = doc_client if name == "service_doc" else client
-                        body, captures[name] = _capture(active, url, root, name,
-                                                  max_bytes=DOC_MAX_BYTES
-                                                  if name == "service_doc" else PAGE_MAX_BYTES)
-                        del body
-                finally:
-                    doc_client.close()
+                page_parts, page_refusals = wbd_capture.capture_ordered_windows(
+                    wbd_capture.OrderedWindowPolicy(byte_budget=CAPTURE_MAX_BYTES,
+                        seed_url=_ids_url(), page_max_bytes=PAGE_MAX_BYTES,
+                        doc_max_bytes=DOC_MAX_BYTES, doc_user_agent=DOC_USER_AGENT),
+                    client, root, captures, capture=_capture, validate_seed=_validate_roster_document,
+                    roster=_capture_roster, window_capture=_capture_page_window)
         except Exception as exc:
             receipts = {}
             for path in sorted(root.glob("*.receipt.json")):
