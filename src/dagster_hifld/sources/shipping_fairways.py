@@ -1,7 +1,10 @@
 """Bounded, source-faithful capture for the NOAA OCS ENCDirect shipping fairways layer."""
 from __future__ import annotations
 
+
 from functools import partial
+
+from collections.abc import Mapping
 
 import json
 import math
@@ -16,6 +19,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
@@ -129,12 +133,11 @@ def _validate_inport_item(body: bytes) -> None:
             raise ValueError("inport_lineage_record_drift:" + marker)
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     ids_before = capture_witness(captures)
     if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()
-            if not name.startswith("inport")}
+    docs = CaptureDocuments(captures, (name for name in captures if not name.startswith('inport')))
     _validate_inport_item(captures["inport_item"][0])
     directory = docs["service_directory"]
     if not any(service.get("name") == "NavigationChartData/MarineTransportation"
@@ -280,7 +283,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
+def _capture_identity_hash(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> str:
     return _sha(_canonical(capture_identity(captures, root)))
 
 
@@ -352,7 +355,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         (root / "capture_manifest.json").write_bytes(_canonical({"complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(), "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
 
@@ -361,7 +364,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False, "baseline_accepted": False})
@@ -371,7 +374,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{"input_id": name, "producer": PUBLISHER,
         "host": urlsplit(receipt["url"]).hostname,
         "role": "producer_publication",
@@ -413,7 +416,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
                   "source_population_complete": True})
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"

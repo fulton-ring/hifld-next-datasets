@@ -5,10 +5,13 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
 import struct
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -20,6 +23,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -82,7 +86,7 @@ def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
 
-def _capture_started_at(captures: dict[str, tuple[bytes, dict]]) -> str:
+def _capture_started_at(captures: Mapping[str, tuple[bytes, dict]]) -> str:
     """Use the first request receipt as capture time, including on replay."""
     receipt = captures.get("ids_seed", (b"", {}))[1]
     observed_at = receipt.get("observed_at")
@@ -115,9 +119,9 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     )
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     layer = docs["layer_before"]
     fields = layer.get("fields")
     projected=[{key:f[key] for key in ("name","type","alias","length","domain","nullable") if key in f}
@@ -371,13 +375,13 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
-    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in sorted(captures.items())}))
+    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"]=capture_sha
     version="v"+_sha(_canonical({"source_record_sha256":audit["source_record_sha256"],
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"official_distributor" if name=="bts_item" else "producer_publication","delegation_evidence":{"distributor":"USDOT BTS","item_id":BTS_ITEM_ID,"item_url":BTS_ITEM_URL,"service_directory_url":SERVICE_DIRECTORY_URL,"basis":"Captured USDOT BTS item identifies the IENC dataset as a USACE/AGC product and links the official IENC Feature Classes service; this supports distribution provenance only, not edition, freshness, rights, or release acceptance."} if name=="bts_item" else None,"canonical_url":BTS_ITEM_URL if name=="bts_item" else SERVICE_DIRECTORY_URL if name=="service_directory" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"BTS describes bi-monthly IENC updates but does not identify this layer snapshot's edition date."} for name,(_body,receipt) in sorted(captures.items())]
+    inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"official_distributor" if name=="bts_item" else "producer_publication","delegation_evidence":{"distributor":"USDOT BTS","item_id":BTS_ITEM_ID,"item_url":BTS_ITEM_URL,"service_directory_url":SERVICE_DIRECTORY_URL,"basis":"Captured USDOT BTS item identifies the IENC dataset as a USACE/AGC product and links the official IENC Feature Classes service; this supports distribution provenance only, not edition, freshness, rights, or release acceptance."} if name=="bts_item" else None,"canonical_url":BTS_ITEM_URL if name=="bts_item" else SERVICE_DIRECTORY_URL if name=="service_directory" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"BTS describes bi-monthly IENC updates but does not identify this layer snapshot's edition date."} for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest={"schema_version":1,"approved":False,"title":"Crane Locations (USACE IENC)","description":"Complete observed CRANES_POINT feature class from the official USACE IENC service; unapproved faithful candidate. The inland IENC chart extent is not a nationwide crane inventory. Historical HIFLD equivalence, source edition/freshness, schema/ID contract, rights, baseline and release decisions remain pending.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Native point x/y retained in captured raw Esri JSON and WKB at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":{"distribution_attestation":{"item_id":BTS_ITEM_ID,"owner":"USDOT_BTS","url":BTS_ITEM_URL,"description":"BTS item describes bi-monthly USACE/AGC IENC updates and links the official service."},"official_service_directory":SERVICE_DIRECTORY_URL,"official_service":SERVICE_URL,"layer":LAYER_URL,"scope":"This candidate represents only the complete observed CRANES_POINT layer, not every USACE crane or a nationwide inventory."},"prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Only native fields, IDs and point coordinates are represented in the candidate; output mapping, source rights and release decisions remain pending.","objects":[{"path":"geoparquet/crane-locations-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":UNSUPPORTED_OUTPUT_FORMATS}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"source_fields":fields,"official_layer_name":"CRANES_POINT","official_source_item":f"USDOT_BTS {BTS_ITEM_ID}","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
@@ -385,7 +389,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":_capture_started_at(captures),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":_capture_started_at(captures),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/crane-locations-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"

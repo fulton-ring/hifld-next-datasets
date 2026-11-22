@@ -8,6 +8,8 @@ shared candidate-construction module is not part of this branch.
 from __future__ import annotations
 
 from functools import partial
+from collections.abc import Mapping
+
 
 import hashlib
 import json
@@ -19,6 +21,7 @@ import stat
 import struct
 import subprocess
 import time
+
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -31,6 +34,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import (
     canonical_construction_bundle,
@@ -335,11 +339,11 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
     return body, receipt
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
     if not {"ids_seed", *[name for name, _url in _capture_roster(before)]} <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS":
         raise ValueError("bts_ienc_item_identity_drift")
@@ -793,7 +797,7 @@ def capture_lock_gate_lines_usace_ienc(storage: StagingStorageResource, *, versi
     identity = processing_identity(Path(__file__).parents[3])
     wkid = 4326
     parquet = _parquet_bytes(fields, features, wkid)
-    capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in sorted(captures.items())}))
+    capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"] = capture_sha
     fingerprint = _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
         "source_geometry_sha256": audit["source_geometry_sha256"],
@@ -820,7 +824,7 @@ def capture_lock_gate_lines_usace_ienc(storage: StagingStorageResource, *, versi
                    "official_service_directory": SERVICE_DIRECTORY_URL,
                    "linked_feature_classes_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"}}
                   if name == "bts_item" else {})}
-              for name, (_body, receipt) in sorted(captures.items())]
+              for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version": 1, "approved": False, "title": "Lock Gate Lines (USACE IENC)",
         "description": "Complete official USACE IENC LOCK_GATE_LINE feature class; unapproved faithful candidate. Inland chart coverage only; HIFLD historical equivalence and nationwide lock-gate-line completeness are not asserted.",
         "publisher": PUBLISHER, "agency": "US Army Corps of Engineers, Army Geospatial Center",
@@ -859,7 +863,7 @@ def capture_lock_gate_lines_usace_ienc(storage: StagingStorageResource, *, versi
             "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {n: r for n, (_b, r) in sorted(captures.items())},
+            "receipts": {n: r for n, (_b, r) in ((name, captures[name]) for name in sorted(captures))},
             "attempts": attempts,
             "artifact_roster": _capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
     outputs = {"geoparquet/lock-gate-lines-usace-ienc.parquet": parquet,

@@ -6,9 +6,12 @@ HIFLD equivalence, a dated source release, rights, or publication acceptance.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
+
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -18,6 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
@@ -183,12 +187,12 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
     return body, receipt
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     required = {"service_before", "layer_before", "count_before", "ids_before",
                 "layer_after", "service_after", "count_after", "ids_after"}
     if not required <= set(captures):
         raise ValueError("source_capture_required_responses_missing")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     service, layer = docs["service_before"], docs["layer_before"]
     if docs["service_after"] != service or docs["layer_after"] != layer:
         raise ValueError("source_metadata_changed_during_capture")
@@ -388,7 +392,7 @@ def _live_capture(root: Path, storage: StagingStorageResource):
                                           version="unassigned", captures=captures,
                                           reason_code=type(exc).__name__)
         raise
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     (root / "capture-manifest.json").write_bytes(_canonical({
         "schema_version": 1, "complete": True, "source_url": LAYER_URL,
         "capture_scope": "bounded official REST capture; before/after service, layer, count and full object ID roster; all feature pages retained; per-response observed timestamps preserved in receipts",
@@ -454,7 +458,7 @@ def capture_usace_data_coverage_areas(
     version = "v" + version_hash[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     inputs = []
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         inputs.append({
             "input_id": name, "producer": PUBLISHER, "host": urlsplit(receipt["url"]).hostname,
             "role": "producer_publication", "canonical_url": LAYER_URL,
@@ -527,7 +531,7 @@ def capture_usace_data_coverage_areas(
         }) + b"\n",
         "raw/capture-manifest.json": capture_manifest_bytes,
     }
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = (root / f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"

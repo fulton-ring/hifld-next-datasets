@@ -6,8 +6,11 @@ source attribute and every source identifier unchanged.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -17,6 +20,7 @@ import httpx
 import shapely
 from shapely import from_wkb
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -88,10 +92,10 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     )
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]]) -> str:
+def _capture_identity_hash(captures: Mapping[str, tuple[bytes, dict]]) -> str:
     """Bind versions to immutable decoded and wire bytes, never retrieval time."""
     digests = {}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         if (receipt.get("complete_body") is not True or receipt.get("status") != 200
                 or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
                 or type(receipt.get("wire_bytes")) is not int
@@ -102,8 +106,8 @@ def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]]) -> str:
     return _sha(_canonical(digests))
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     description = item.get("description")
     if (item.get("id") != CURRENT_BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
@@ -219,7 +223,7 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: Mapping[str, tuple[bytes, dict]] = {}
     try:
         if replay:
             retained = json.loads((root / "capture_manifest.json").read_bytes())

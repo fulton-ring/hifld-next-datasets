@@ -12,6 +12,8 @@ unapproved. The producer-declared EPSG:4019 unknown datum is preserved as-is.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import hashlib
 import json
 import math
@@ -316,7 +318,7 @@ def validate_native_table(table: pa.Table, metadata: dict, expected_oids: list[i
     return table, audit
 
 
-def _validate_service_bundle(captures: dict[str, tuple[bytes, dict]], *,
+def _validate_service_bundle(captures: Mapping[str, tuple[bytes, dict]], *,
                              expected_replica_name: str | None = None) -> tuple[dict, dict, list[int], bytes, dict]:
     required={"metadata_before","count_before","ids_before","create_replica","result_head","archive","metadata_after","count_after","ids_after"}
     if not required <= captures.keys():
@@ -805,7 +807,7 @@ def _capture_live(root: Path, *, resume_from: Path | None = None) -> tuple[dict[
         raise LocksQuarantineError("capture_bundle_over_limit")
     manifest={"schema_version":1,"complete":True,"captured_at":datetime.now(timezone.utc).isoformat(),
         "replica_name":request_params["replicaName"],"create_replica_request":request_info,
-        "receipts":{name:receipt for name,(_body,receipt) in sorted(captures.items())},
+        "receipts":{name:receipt for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))},
         "artifact_roster":artifact_roster}
     if continued is not None:manifest["continued_completed_replica"]=continued
     _write_artifact(root/"capture_manifest.json",canonical(manifest))
@@ -1016,7 +1018,7 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
             "wire_sha256":receipt["wire_sha256"],"license":"Publicly available without use restrictions per ArcGIS item; national-scale mapping caveat; acceptance pending.",
             "attribution":"U.S. Army Corps of Engineers, Navigation Data Center.","release_date":None,
             "release_date_unknown_reason":"Fetch/edit timestamp is not a producer release date."}
-            for name,(_body,receipt) in sorted(captures.items())],
+            for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))],
         "lineage":"The HIFLD inventory description for issue 151 exactly matches the USACE Locks service layer metadata, which names NDC, LPMS, the Lock Characteristics database, and NDC surveys. The current official source is the public USACE ArcGIS item 78ef8693f30b40b980737c561ce6b103. The separate USACE IENC master chart service has lock gate/basin classes and no LOCK_POINT class; no IENC equivalence is claimed. The DataLumos historical archive bytes/FGDC metadata have not been compared.",
         "transformations":[{"operation":"native_filegdb_to_geoparquet_candidate","parameters":{"source_format":"Official anonymous createReplica syncModel=none FileGDB export","source_layer":"Lock","record_population":"complete capture-time OBJECTID roster, exact match to before/after service IDs","source_fields":"All 48 service-declared fields including OBJECTID OID, all 47 attributes and SE_ANNO_CAD_DATA Binary field retained.","binary_blob":"All 234 current BLOB values are non-null zero-length bytes. Refresh validation requires the field, no nulls, and zero-length values; drift quarantines.","geometry":"Native Point WKB values copied without repair, coordinate transform, or reprojection.","crs":"EPSG:4019 preserved. EPSG definition is unknown datum based on GRS 1980; no NAD83/4326 inference.","release_status":"Unapproved; historical HIFLD archive equivalence, vintage, baseline, rights and mapping decisions remain pending."}}],
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Source-faithful draft retains every attribute, native OID values, Binary Blob, WKB point geometry and producer-declared EPSG:4019; compatibility/release decisions remain pending.","objects":[{"path":f"geoparquet/{DATASET_SLUG}.parquet","bytes":len(parquet),"sha256":digest(parquet)}]}}},

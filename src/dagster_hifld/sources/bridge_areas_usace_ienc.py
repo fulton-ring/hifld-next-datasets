@@ -1,10 +1,13 @@
 """Bounded, source-faithful capture for the official USACE IENC bridge areas."""
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import io
 import json
 import math
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -16,6 +19,7 @@ import pyarrow.parquet as pq
 from pyproj import CRS
 from shapely import from_wkb
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -120,7 +124,7 @@ def _capture_urls(ids: list[int]) -> list[tuple[str, str]]:
     ]
 
 
-def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+def _read_replay(root: Path) -> Mapping[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
@@ -143,21 +147,16 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     if set(manifest["receipts"]) != expected_names:
         raise ValueError("retained_capture_roster_or_names_invalid")
     expected_urls = dict(_capture_urls(replay_ids))
-    captures = {}
-    for name in sorted(expected_names):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=expected_urls, load_capture=_load_capture,
+        validate_request_identity=validate_capture_request_identity)
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     ids_before = capture_witness(captures)
     if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
             or item.get("type") != "PDF"):
@@ -358,7 +357,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
+def _capture_identity_hash(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> str:
     return _sha(_canonical(_capture_identity(captures, root)))
 
 
@@ -431,7 +430,7 @@ def capture_bridge_areas_usace_ienc(storage: StagingStorageResource, *, version:
             "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
     fields, features, audit = _validate(captures)
@@ -439,7 +438,7 @@ def capture_bridge_areas_usace_ienc(storage: StagingStorageResource, *, version:
     evidence = _capture_identity(captures, root)
     capture_sha = _sha(_canonical(evidence))
     audit.update({"source_capture_evidence_sha256": capture_sha, "source_capture_evidence": evidence,
-                  "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+                  "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
                   "source_release_accepted": False, "source_freshness_accepted": False,
                   "schema_contract_accepted": False, "id_contract_accepted": False,
                   "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
@@ -452,7 +451,7 @@ def capture_bridge_areas_usace_ienc(storage: StagingStorageResource, *, version:
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     parquet = _parquet_bytes(fields, features)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{"input_id": name, "producer": ("USDOT Bureau of Transportation Statistics (BTS) IENC NTAD item"
                                               if name == "bts_item" else PUBLISHER),
                "host": urlsplit(receipt["url"]).hostname,
@@ -531,7 +530,7 @@ def capture_bridge_areas_usace_ienc(storage: StagingStorageResource, *, version:
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
                "metadata/source_audit.json": _canonical(audit) + b"\n",
                "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, _receipt) in sorted(captures.items()):
+    for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures)):
         _body, wire, _wire_receipt = _load_capture(root, name)
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = wire

@@ -10,6 +10,7 @@ overshoot behavior so evidence is never silently clipped.
 from __future__ import annotations
 
 import hashlib
+import copy
 import json
 import stat
 import zlib
@@ -125,6 +126,73 @@ def capture_roster_digests(root: Path, *, exclude: set[str] = frozenset()) -> di
     return result
 
 
+class CaptureDocuments(Mapping):
+    """Read JSON captures one at a time, preserving eager JSON validity checks."""
+    def __init__(self, captures: Mapping, names=None):
+        self._captures = captures
+        self._names = dict.fromkeys(captures if names is None else names)
+        for name in self:
+            self[name]
+
+    def __getitem__(self, name):
+        if name not in self._names:
+            raise KeyError(name)
+        return json.loads(self._captures[name][0])
+
+    def __iter__(self):
+        return iter(self._names)
+
+    def __len__(self):
+        return len(self._names)
+
+
+class RetainedReplayView(Mapping):
+    """Validated capture identities with bodies loaded and rechecked on demand.
+
+    The loader owns the source's body/wire digest and safe-path checks. Receipts
+    are pinned independently so changing both artifacts and their receipt after
+    validation cannot introduce new bytes into an existing replay.
+    """
+    def __init__(self, root, *, receipts, expected_urls, load_capture,
+                 validate_request_identity):
+        self._root = root
+        self._receipts = copy.deepcopy(receipts)
+        self._urls = dict(expected_urls)
+        self._load = load_capture
+        self._validate_identity = validate_request_identity
+
+    def __getitem__(self, name):
+        expected = self._receipts[name]
+        body, _wire, receipt = self._load(self._root, name)
+        if receipt != expected:
+            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
+        self._validate_identity(name, receipt, self._urls[name])
+        return body, receipt
+
+    def __iter__(self):
+        return iter(self._receipts)
+
+    def __len__(self):
+        return len(self._receipts)
+
+
+def validated_capture_view(root: Path, *, receipts: Mapping[str, dict],
+                           expected_urls: Mapping[str, str],
+                           load_capture: Callable[[Path, str], tuple[bytes, bytes, dict]],
+                           validate_request_identity: Callable[[str, Mapping[str, object], str], None],
+                           ) -> Mapping[str, tuple[bytes, dict]]:
+    """Check every sealed receipt before exposing a disk-backed replay view.
+
+    Callers must first validate their manifest, exact file roster and artifact
+    digests. Bodies are discarded after each check and never cached by the view.
+    """
+    view = RetainedReplayView(root, receipts=receipts, expected_urls=expected_urls,
+        load_capture=load_capture, validate_request_identity=validate_request_identity)
+    for name in sorted(view):
+        view[name]
+    return view
+
+
 def validate_retained_capture_replay(
     root: Path,
     *,
@@ -132,7 +200,7 @@ def validate_retained_capture_replay(
     expected_urls: Mapping[str, str],
     load_capture: Callable[[Path, str], tuple[bytes, bytes, dict]],
     validate_request_identity: Callable[[str, Mapping[str, object], str], None],
-) -> dict[str, tuple[bytes, dict]]:
+) -> Mapping[str, tuple[bytes, dict]]:
     """Replay a retained capture directory against its sealed manifest.
 
     Reads ``capture_manifest.json`` (refusing a symlinked manifest), requires a
@@ -142,7 +210,8 @@ def validate_retained_capture_replay(
     capture with the caller's established loader and binds each stored receipt
     to the manifest receipt plus the caller's expected request URL. Artifact
     names and URLs are passed explicitly, so the validator never inherits one
-    dataset's pins from another. Returns ``{name: (body, receipt)}``.
+    dataset's pins from another. Returns a disk-backed ``Mapping`` of
+    ``name: (body, receipt)``; each lookup revalidates the retained capture.
     """
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
@@ -156,14 +225,9 @@ def validate_retained_capture_replay(
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    captures = {}
-    for name in sorted(capture_names):
-        body, _wire, receipt = load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        validate_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=expected_urls, load_capture=load_capture,
+        validate_request_identity=validate_request_identity)
 
 
 @dataclass(frozen=True)

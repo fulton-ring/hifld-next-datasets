@@ -1,9 +1,12 @@
 """Complete native capture for the official USACE IENC dynamic buoy service."""
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -13,6 +16,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
@@ -112,11 +116,11 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     )
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     ids_before = capture_witness(captures)
     if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
             or item.get("type") != "PDF" or item.get("access") != "public"):
@@ -225,7 +229,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
+def _capture_identity_hash(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> str:
     return _sha(_canonical(capture_identity(captures, root)))
 
 
@@ -292,7 +296,7 @@ def capture_usace_dynamic_buoys(storage: StagingStorageResource, *, version: str
         (root / "capture_manifest.json").write_bytes(_canonical({"complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(), "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
 
@@ -301,7 +305,7 @@ def capture_usace_dynamic_buoys(storage: StagingStorageResource, *, version: str
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "bts_item_succession_accepted": False, "source_release_accepted": False,
         "source_freshness_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "coverage_accepted": False,
@@ -312,7 +316,7 @@ def capture_usace_dynamic_buoys(storage: StagingStorageResource, *, version: str
         "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{"input_id": name, "producer": ("USDOT BTS NTAD contextual catalog item" if name == "bts_item" else PUBLISHER),
         "host": urlsplit(receipt["url"]).hostname, "role": "contextual_catalog_reference" if name == "bts_item" else "producer_publication",
         "canonical_url": BTS_ITEM_URL if name == "bts_item" else LAYER_URL, "retrieval_url": receipt["url"],
@@ -350,7 +354,7 @@ def capture_usace_dynamic_buoys(storage: StagingStorageResource, *, version: str
                   "contextual_bts_item": BTS_ITEM_ID, "source_population_complete": True})
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"

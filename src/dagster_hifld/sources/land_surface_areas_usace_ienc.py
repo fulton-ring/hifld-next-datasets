@@ -7,10 +7,13 @@ The published layer currently contains one self-intersecting ring (OBJECTID
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
 import time
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -22,6 +25,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -157,11 +161,11 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
     return body, receipt
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
     if not {"ids_seed", *[name for name, _url in _capture_roster(list(range(1, len(before) + 1)))]} <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS":
         raise ValueError("bts_ienc_item_identity_drift")
@@ -432,7 +436,7 @@ def capture_land_surface_areas_usace_ienc(storage: StagingStorageResource, *, ve
     identity = processing_identity(Path(__file__).parents[3])
     wkid = 4326
     parquet = _parquet_bytes(fields, features, wkid)
-    capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in sorted(captures.items())}))
+    capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"] = capture_sha
     version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
                                       audit["source_schema_sha256"], identity)
@@ -456,7 +460,7 @@ def capture_land_surface_areas_usace_ienc(storage: StagingStorageResource, *, ve
                    "official_service_directory": SERVICE_DIRECTORY_URL,
                    "linked_feature_classes_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"}}
                   if name == "bts_item" else {})}
-              for name, (_body, receipt) in sorted(captures.items())]
+              for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version": 1, "approved": False, "title": "Land Surface Areas (USACE IENC)",
         "description": "Complete official USACE IENC LAND_AREA feature class; unapproved faithful candidate. Inland chart coverage only; HIFLD historical equivalence and nationwide land-surface completeness are not asserted.",
         "publisher": PUBLISHER, "agency": "US Army Corps of Engineers, Army Geospatial Center",
@@ -498,7 +502,7 @@ def capture_land_surface_areas_usace_ienc(storage: StagingStorageResource, *, ve
             "source_record_sha256": audit["source_record_sha256"],
             "source_geometry_sha256": audit["source_geometry_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {n: r for n, (_b, r) in sorted(captures.items())},
+            "receipts": {n: r for n, (_b, r) in ((name, captures[name]) for name in sorted(captures))},
             "attempts": attempts,
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
     outputs = {"geoparquet/" + DATASET_SLUG + ".parquet": parquet,

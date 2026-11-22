@@ -6,6 +6,7 @@ import hashlib
 import math
 import shutil
 import struct
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode
@@ -17,6 +18,7 @@ import pyarrow.parquet as pq
 import pyproj
 import httpx
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_common import (
     arrow_type as _arrow_type, canonical as _canonical, sha as _sha,
@@ -72,7 +74,7 @@ EXTENT_TOLERANCE_DEGREES = 1e-6
 
 def validate_notice_snapshot(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     """Validate exact layer, schema, count, IDs and all page geometries."""
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     ids = capture_witness(captures)
     expected = {"layer_before", "count_before", "ids_seed", "ids_before", "layer_after", "count_after", "ids_after"}
     expected |= {f"page_{i:03d}" for i in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
@@ -297,7 +299,7 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
             "body_sha256": _sha(body),
             "wire_sha256": _sha((root / f"{name}.wire").read_bytes()),
         }
-        for name, (body, _receipt) in sorted(captures.items())
+        for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures))
     }
     source_hash = _sha(_canonical(source_evidence))
     identity = processing_identity(Path(__file__).parents[3])
@@ -314,7 +316,7 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
         "publisher":PUBLISHER, "agency":"US Army Corps of Engineers", "source_url":LAYER_URL,
         "license":None, "source_modified":None, "date_issued":None, "date_modified":None,
         "processor":"HIFLD Next", "code_commit":identity["code_commit"],
-        "inputs":[{"input_id":n,"producer":PUBLISHER,"host":"ienccloud.us","role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"Official layer metadata does not establish the source release date."} for n,(_b,r) in sorted(captures.items())],
+        "inputs":[{"input_id":n,"producer":PUBLISHER,"host":"ienccloud.us","role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"Official layer metadata does not establish the source release date."} for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"attributes":"all declared attributes and physical types retained","ids":"OBJECTID and Feature_ID unchanged","geometry":"Point ordinates retained in source EPSG:4326; no repair or reprojection","candidate_status":"unapproved"}}],
         "lineage":"BTS-linked official USACE IENC Feature Classes MapServer; this layer is limited to IENC chart coverage.",
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Source attributes and Point ordinates retained as an unapproved native candidate.","objects":[{"path":"geoparquet/notice-marks-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},

@@ -5,11 +5,14 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import io
 import json
 import math
 import shutil
 import struct
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -21,6 +24,7 @@ import pyarrow.parquet as pq
 from pyproj import CRS
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -143,7 +147,7 @@ def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
     return body, wire, receipt
 
 
-def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+def _read_replay(root: Path) -> Mapping[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
@@ -181,21 +185,16 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
                 or attempt_receipt.get("wire_sha256") != _sha(attempt_wire)):
             raise ValueError("retained_failed_attempt_bytes_changed:" + attempt_name)
     expected_urls = dict(_capture_roster(replay_ids))
-    captures = {}
-    for name in sorted(_capture_names(replay_ids)):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=expected_urls, load_capture=_load_capture,
+        validate_request_identity=validate_capture_request_identity)
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     ids_before = capture_witness(captures)
     if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
             or item.get("type") != "PDF" or item.get("access") != "public"):
@@ -314,7 +313,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     return layer["fields"], features, audit
 
 
-def _capture_identity(captures: dict[str, tuple[bytes, dict]], root: Path) -> dict:
+def _capture_identity(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> dict:
     # Candidate identity binds every decoded and wire artifact. Receipt JSON is
     # retained as provenance but its observation time does not change content identity.
     digests = {}
@@ -325,7 +324,7 @@ def _capture_identity(captures: dict[str, tuple[bytes, dict]], root: Path) -> di
     return digests
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
+def _capture_identity_hash(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> str:
     return _sha(_canonical(_capture_identity(captures, root)))
 
 
@@ -414,7 +413,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
             "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "attempts": {path.name.removesuffix(".receipt.json"): json.loads(path.read_bytes())
                          for path in sorted(root.glob("*.attempt*.receipt.json"))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
@@ -425,7 +424,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": _capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
@@ -436,7 +435,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
         "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{"input_id": name, "producer": ("USDOT BTS IENC NTAD item" if name == "bts_item" else PUBLISHER),
         "host": urlsplit(receipt["url"]).hostname, "role": "official_distributor" if name == "bts_item" else "producer_publication",
         "canonical_url": BTS_ITEM_URL if name == "bts_item" else LAYER_URL, "retrieval_url": receipt["url"],
@@ -485,7 +484,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n",
         "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         _body, wire, _receipt = _load_capture(root, name)
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = wire

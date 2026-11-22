@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import io
 import json
 import math
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -17,6 +20,7 @@ import pyarrow.parquet as pq
 from pyproj import CRS
 from shapely import from_wkb
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -143,7 +147,7 @@ def _validate_request_identity(name: str, receipt: dict, expected_url: str) -> N
         raise ValueError("retained_capture_request_identity_mismatch:" + name)
 
 
-def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+def _read_replay(root: Path) -> Mapping[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
@@ -165,14 +169,9 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     if set(receipts) != expected_names:
         raise ValueError("retained_capture_name_roster_changed")
     expected_urls = dict(_capture_urls(replay_ids))
-    captures = {}
-    for name in sorted(expected_names):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != receipts[name]:
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_request_identity(name, receipt, expected_urls[name])
-        captures[name] = body, receipt
-    return captures
+    return validated_capture_view(root, receipts=receipts,
+        expected_urls=expected_urls, load_capture=_load_capture,
+        validate_request_identity=_validate_request_identity)
 
 
 def _validate_crs(value: object, label: str, *, required: bool = True) -> bool:
@@ -276,8 +275,8 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS":
         raise ValueError("bts_ienc_item_identity_drift")
@@ -396,7 +395,7 @@ def _read_capture(root: Path, storage: StagingStorageResource,
     if any(root.glob("*.body")) or any(root.glob("*.wire")) or any(root.glob("*.receipt.json")):
         raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
     root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: Mapping[str, tuple[bytes, dict]] = {}
     try:
         with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                           headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
@@ -436,7 +435,7 @@ def _read_capture(root: Path, storage: StagingStorageResource,
         raise
     (root / "capture_manifest.json").write_bytes(_canonical({
         "captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
-        "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
     }) + b"\n")
     return _read_replay(root)
@@ -488,7 +487,7 @@ def capture_usace_berths_areas(storage: StagingStorageResource, *, version: str,
     capture_sha = _sha(_canonical(capture_evidence))
     audit.update({
         "source_capture_evidence_sha256": capture_sha, "source_capture_evidence": capture_evidence,
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
@@ -506,7 +505,7 @@ def capture_usace_berths_areas(storage: StagingStorageResource, *, version: str,
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, candidate_version)
     parquet = _parquet_bytes(fields, features)
     inputs = []
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         distributor = name == "bts_item"
         inputs.append({
             "input_id": name,
@@ -606,7 +605,7 @@ def capture_usace_berths_areas(storage: StagingStorageResource, *, version: str,
     seal_ready_candidate(storage, state_key, candidate_version, identity_sha, {
         "processing_identity": identity, "source_record_sha256": record_sha,
         "source_schema_sha256": schema_sha,
-        "capture_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "capture_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "objects": descriptors,
     })
     validate_construction_code_identity(

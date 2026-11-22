@@ -11,6 +11,7 @@ import json
 import math
 import shutil
 import subprocess
+
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -23,6 +24,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -116,7 +118,7 @@ def _validate_captures(
 ) -> tuple[list[dict[str, object]], dict[str, object], list[dict[str, object]]]:
     if set(captures) != _EXPECTED_CAPTURE_NAMES:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    documents = {name: json.loads(body) for name, (body, _) in captures.items()}
+    documents = CaptureDocuments(captures)
 
     item_before, item_after = documents["bts_item_before"], documents["bts_item_after"]
     item_description = str(item_before.get("description", ""))
@@ -442,7 +444,7 @@ def capture_usace_ienc_isolated_danger(
                 "release_date":None,
                 "release_date_unknown_reason":"Official BTS metadata describes a bi-monthly chart delivery cadence, but the service does not expose a dated source extraction. Feature Source_Date is a source feature survey date, not a release date.",
             }
-            for name, (_, receipt) in sorted(captures.items())
+            for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))
         ],
         "transformations":[{
             "operation":"native_esri_mapserver_json_to_geoparquet_candidate",
@@ -473,7 +475,7 @@ def capture_usace_ienc_isolated_danger(
     })
     version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"], audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    receipts = {name:receipt for name,(_,receipt) in sorted(captures.items())}
+    receipts = {name:receipt for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))}
     (capture_root / "capture_manifest.json").write_bytes(_canonical({
         "captured_at":datetime.now(timezone.utc).isoformat(), "complete":True,
         "source_feature_count":audit["source_feature_count"],

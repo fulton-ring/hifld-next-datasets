@@ -5,6 +5,8 @@ rights, release freshness, and HIFLD continuity remain maintainer decisions.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
@@ -260,7 +262,7 @@ def _object_descriptor(body: bytes) -> dict[str, object]:
     return {"bytes": len(body), "sha256": _sha(body)}
 
 
-def _capture_manifest(root: Path, *, complete: bool, captures: dict[str, tuple[bytes, dict]],
+def _capture_manifest(root: Path, *, complete: bool, captures: Mapping[str, tuple[bytes, dict]],
                       error_code: str | None = None, count: int | None = None) -> None:
     roster = {}
     for path in sorted(root.iterdir()):
@@ -272,7 +274,7 @@ def _capture_manifest(root: Path, *, complete: bool, captures: dict[str, tuple[b
     value = {"schema_version": 1, "complete": complete,
              "captured_at": datetime.now(timezone.utc).isoformat(),
              "source_layer": LAYER_URL,
-             "captured_request_count": len(captures), "receipts": {n: r for n, (_b, r) in sorted(captures.items())},
+             "captured_request_count": len(captures), "receipts": {n: r for n, (_b, r) in ((name, captures[name]) for name in sorted(captures))},
              "artifact_roster_sha256": _sha(_json(roster))}
     if count is not None:
         value["source_feature_count"] = count
@@ -406,7 +408,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     ids_sha = _sha(_json(ids_before).rstrip(b"\n"))
     receipt_body_hashes = {name: {"body_sha256": receipt["sha256"],
                                   "wire_sha256": receipt["wire_sha256"]}
-                           for name, (_body, receipt) in sorted(captures.items())}
+                           for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     source_capture_sha = _sha(_json(receipt_body_hashes).rstrip(b"\n"))
     version_record_sha = _sha(_json({"source_record_sha256": source_record_sha,
                                      "source_capture_sha256": source_capture_sha}).rstrip(b"\n"))
@@ -418,7 +420,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     geojson = _make_geojson(features)
     observed_at = max(str(receipt["observed_at"]) for _body, receipt in captures.values())
     inputs = []
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         if name == "prior_bts_item":
             continue
         inputs.append({
@@ -463,7 +465,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
         "source_fields": EXPECTED_DECLARATIONS, "geometry_type": "esriGeometryPolyline",
         "native_crs": "EPSG:4326", "pinned_extent": EXPECTED_EXTENT,
         "source_scope": "IENC chart feature class only; nationwide coverage and HIFLD historical equivalence are not established.",
-        "capture_request_count": len(captures), "capture_receipts": {n: r for n, (_b, r) in sorted(captures.items())},
+        "capture_request_count": len(captures), "capture_receipts": {n: r for n, (_b, r) in ((name, captures[name]) for name in sorted(captures))},
         "capture_directory": str(root), "capture_completed_at": observed_at,
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
@@ -532,7 +534,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     seal_ready_candidate(storage, state_key, version, state_fingerprint, {
         "processing_identity": identity, "source_record_sha256": source_record_sha,
         "source_schema_sha256": source_schema_sha,
-        "capture_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "capture_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "objects": descriptors,
     })
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],

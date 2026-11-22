@@ -5,9 +5,12 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import hashlib
 import json
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -19,6 +22,7 @@ import pyarrow.parquet as pq
 import shapely
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -103,9 +107,9 @@ def _load_prefilled(root: Path, name: str, expected_url: str) -> tuple[bytes, di
     return body, receipt
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     description = item.get("description")
     if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
@@ -325,13 +329,13 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
     capture_evidence={}
-    for name,(body,receipt) in sorted(captures.items()):
+    for name,(body,receipt) in ((name, captures[name]) for name in sorted(captures)):
         wire=(root/f"{name}.wire").read_bytes()
         capture_evidence[name]={"decoded_sha256":_sha(body),"wire_sha256":_sha(wire),
             "request_url":receipt["url"],"observed_at":receipt["observed_at"]}
     capture_sha=_sha(_canonical(capture_evidence))
     audit.update({"source_capture_sha256":capture_sha,"source_capture_evidence":capture_evidence,
-        "source_receipts":{name:receipt for name,(_body,receipt) in sorted(captures.items())},
+        "source_receipts":{name:receipt for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_population_complete":True,"source_release_accepted":False,"source_freshness_accepted":False,
         "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,
         "rights_accepted":False,"mapping_approved":False,"release_accepted":False,"baseline_accepted":False})
@@ -340,7 +344,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     inputs=[]
-    for name,(_body,receipt) in sorted(captures.items()):
+    for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures)):
         distributor=name=="bts_item"
         inputs.append({"input_id":name,
             "producer":"USDOT BTS IENC public ArcGIS item" if distributor else PUBLISHER,
@@ -388,7 +392,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/navigation-system-of-marks-areas-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"

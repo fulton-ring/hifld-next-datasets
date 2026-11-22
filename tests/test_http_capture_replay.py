@@ -2,9 +2,11 @@
 import json
 import tempfile
 import unittest
+import weakref
 from pathlib import Path
 
 from dagster_hifld.http_capture import (
+    CaptureDocuments,
     capture_roster_digests,
     validate_retained_capture_replay,
 )
@@ -65,6 +67,69 @@ class ValidateRetainedCaptureReplayTests(unittest.TestCase):
                 self.assertEqual(body, f"{name} archive bytes".encode())
                 self.assertEqual(receipt["url"], URLS[name])
                 self.assertEqual(receipt["sha256"], _sha(f"{name} archive bytes".encode()))
+
+    def test_replay_checks_every_capture_without_retaining_page_bodies(self):
+        class Body:
+            def __init__(self, data):
+                self.data = data
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            _write_capture(root)
+            reads, bodies = [], []
+
+            def load(root, name):
+                body, wire, receipt = _load_capture(root, name)
+                reads.append(name)
+                body = Body(body)
+                bodies.append(weakref.ref(body))
+                return body, wire, receipt
+
+            captures = validate_retained_capture_replay(
+                root, capture_names=NAMES, expected_urls=URLS,
+                load_capture=load, validate_request_identity=validate_capture_request_identity)
+            self.assertEqual(reads, sorted(NAMES))
+            self.assertTrue(all(ref() is None for ref in bodies))
+            self.assertEqual(captures["beta"][0].data, b"beta archive bytes")
+            self.assertEqual(reads, ["alpha", "beta", "beta"])
+            self.assertTrue(all(ref() is None for ref in bodies))
+
+    def test_replay_refuses_body_changed_after_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            _write_capture(root)
+            captures = self.replay(root)
+            (root / "beta.body").write_bytes(b"changed after replay validation")
+            with self.assertRaises(ValueError):
+                captures["beta"]
+
+    def test_replay_pins_receipt_when_artifacts_are_replaced_after_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            _write_capture(root)
+            captures = self.replay(root)
+            bodies = {name: b"replacement body" for name in NAMES}
+            _write_capture(root, bodies=bodies)
+            with self.assertRaisesRegex(ValueError, "retained_capture_manifest_receipt_mismatch"):
+                captures["alpha"]
+
+    def test_documents_parse_all_json_but_reload_only_requested_page(self):
+        class Captures(dict):
+            def __getitem__(self, name):
+                reads.append(name)
+                return super().__getitem__(name)
+
+        reads = []
+        captures = Captures(alpha=(b'{"value": 1}', {}), beta=(b'{"value": 2}', {}))
+        documents = CaptureDocuments(captures)
+        self.assertEqual(reads, ["alpha", "beta"])
+        first = documents["alpha"]
+        first["value"] = 999
+        self.assertEqual(documents["alpha"], {"value": 1})
+        self.assertEqual(reads, ["alpha", "beta", "alpha", "alpha"])
+        captures["beta"] = (b'invalid JSON', {})
+        with self.assertRaises(ValueError):
+            CaptureDocuments(captures)
 
     def test_symlinked_manifest_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

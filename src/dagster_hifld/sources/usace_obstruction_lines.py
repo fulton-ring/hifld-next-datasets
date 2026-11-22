@@ -1,9 +1,12 @@
 """Bounded, source-faithful capture for the official USACE IENC obstruction lines."""
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -11,6 +14,7 @@ from uuid import uuid4
 
 import httpx
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -93,7 +97,7 @@ def _capture_urls(ids: list[int]) -> list[tuple[str, str]]:
     ]
 
 
-def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+def _read_replay(root: Path) -> Mapping[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
@@ -115,21 +119,16 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     if set(manifest["receipts"]) != BASE_CAPTURE_NAMES:
         raise ValueError("retained_capture_name_roster_changed")
     expected_urls = dict(_capture_urls(replay_ids))
-    captures = {}
-    for name in sorted(BASE_CAPTURE_NAMES):
-        body, _wire, receipt = load_capture(root, name)
-        if receipt != manifest["receipts"][name]:
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=expected_urls, load_capture=_load_capture,
+        validate_request_identity=validate_capture_request_identity)
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     ids_before = capture_witness(captures)
     if set(captures) != BASE_CAPTURE_NAMES:
         raise ValueError("source_capture_name_roster_drift")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     if (docs["bts_item"].get("id") != BTS_ITEM_ID
             or docs["bts_item"].get("owner") != "USDOT_BTS"
             or docs["bts_item"].get("type") != "PDF"):
@@ -286,7 +285,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
             raise
         (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,
             "source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],
-            "source_schema_sha256":audit["source_schema_sha256"],"receipts":{name:receipt for name,(_b,receipt) in sorted(captures.items())},
+            "source_schema_sha256":audit["source_schema_sha256"],"receipts":{name:receipt for name,(_b,receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
         captures=_read_replay(root)
     fields,features,audit=_validate(captures)
@@ -297,7 +296,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
     geometry_body=_canonical([[row["attributes"]["OBJECTID"],row["geometry"]] for row in features])
     schema_body=_canonical(fields)
     audit.update({"source_capture_evidence_sha256":capture_sha,"source_capture_evidence":evidence,
-                  "source_receipts":{name:receipt for name,(_body,receipt) in sorted(captures.items())},
+                  "source_receipts":{name:receipt for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))},
                   "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,
                   "id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,
                   "mapping_approved":False,"release_accepted":False,"baseline_accepted":False})
@@ -319,7 +318,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
                  "bts_item_id":BTS_ITEM_ID,"bts_item_owner":"USDOT_BTS","official_service_directory":SERVICE_DIRECTORY_URL,
                  "linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
                  "basis":"Captured BTS IENC record identifies the program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase; linked service metadata identifies copyright USACE IENC."}} if name=="bts_item" else {})}
-            for name,(_body,receipt) in sorted(captures.items())]
+            for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest={"schema_version":1,"approved":False,"title":"Obstruction Lines (USACE IENC)",
         "description":"Complete current OBSTRUCTION_LINE feature class from the official USACE IENC Feature Classes service; unapproved faithful candidate. Observed coverage is limited to records returned by this layer.",
         "publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,
@@ -353,7 +352,7 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
     fingerprint=_sha(_canonical({"identity":identity,"source_record_sha256":audit["source_record_sha256"],
                                  "source_schema_sha256":audit["source_schema_sha256"],"capture_evidence_sha256":capture_sha}))
     state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
-    receipts={name:receipt for name,(_body,receipt) in sorted(captures.items())}
+    receipts={name:receipt for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))}
     if storage.object_snapshot(state_key) is not None:
         original=json.loads(load_first_construction(storage,state_key,version,fingerprint)).get("payload")
         if (not isinstance(original,dict) or original.get("processing_identity")!=identity

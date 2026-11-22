@@ -5,9 +5,12 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -18,6 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import (
@@ -140,11 +144,11 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
     return body, receipt
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
     if not {"ids_seed", *[name for name,_url in _capture_roster(before)]} <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
             or item.get("type") != "PDF" or item.get("access") != "public"):
@@ -378,7 +382,7 @@ def capture_usace_landmark_areas(storage: StagingStorageResource, *, version: st
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
-    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in sorted(captures.items())}))
+    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"]=capture_sha
     version="v"+_sha(_canonical({"source_record_sha256":audit["source_record_sha256"],
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
@@ -403,7 +407,7 @@ def capture_usace_landmark_areas(storage: StagingStorageResource, *, version: st
                  "official_service_directory":SERVICE_DIRECTORY_URL,
                  "linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"}}
                 if name == "bts_item" else {})}
-            for name,(_body,receipt) in sorted(captures.items())]
+            for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest={"schema_version":1,"approved":False,"title":"Landmark Areas (USACE IENC)","description":"Complete observed current official USACE IENC LANDMARK_AREA feature class; unapproved faithful candidate. Inland-chart coverage only; historical HIFLD equivalence and nationwide landmark coverage are not asserted.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers, Army Geospatial Center","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and nullable/duplicate-capable Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; BTS catalog-item succession, source release, historical baseline, ID/schema/coverage and rights decisions remain pending"}}],"lineage":f"Current public USDOT BTS IENC PDF item {BTS_ITEM_ID} links the official IENC Feature Classes service and master geodatabase. This candidate is the exact published LANDMARK_AREA layer; its relationship to any historical HIFLD release is unestablished.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified polygon rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/landmark-areas-usace-ienc-2.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No approved schema/compatibility contract.","pmtiles":"No display transformation approved."}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"source_fields":fields,"official_layer_name":"LANDMARK_AREA","official_source_item":"USDOT_BTS " + BTS_ITEM_ID,"prior_source_item":None,"source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
@@ -412,14 +416,14 @@ def capture_usace_landmark_areas(storage: StagingStorageResource, *, version: st
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
     if not replay:
-        (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+        (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/landmark-areas-usace-ienc-2.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
     ready={"approved":False,"version":version,"objects":{"geoparquet/landmark-areas-usace-ienc-2.parquet":{"bytes":len(parquet),"sha256":_sha(parquet)}},"source_population_complete":True,"source_record_sha256":audit["source_record_sha256"],"source_item_succession_accepted":False,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     outputs["metadata/candidate_ready.json"]=_canonical(ready)+b"\n"
     fingerprint=_sha(_canonical(identity)); state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
-    receipts={n:r for n,(_b,r) in sorted(captures.items())}
+    receipts={n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))}
     if storage.object_snapshot(state_key) is not None:
         bundle=json.loads(load_first_construction(storage,state_key,version,fingerprint))
         payload=bundle.get("payload")

@@ -43,6 +43,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources import nhd_capture, nhd_transport
 from dagster_hifld.sources.nhd_transport import failed_receipt_error_code as _failed_receipt_error_code
 from dagster_hifld.capture_completeness import validate_capture_witness
@@ -352,8 +353,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     unexpected = doc_names - required - set(page_names) - refused_attr_names
     if unexpected:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()
-            if name != "service_doc"}
+    docs = CaptureDocuments(captures, (name for name in captures if name != "service_doc"))
     if SERVICE_HOST.encode("utf-8") not in captures["service_doc"][0]:
         raise ValueError("usgs_service_documentation_link_drift")
     service, layer = docs["service_before"], docs["layer_before"]

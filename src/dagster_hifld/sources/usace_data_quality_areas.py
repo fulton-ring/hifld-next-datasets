@@ -5,9 +5,12 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -18,6 +21,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import (
@@ -145,12 +149,12 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
     return body, receipt
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
     expected_names = {name for name,_url in _capture_roster(before)}
     if not expected_names <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     directory = docs["service_directory_before"]
     if not any(service.get("name") == "IENC_Feature_Classes/DATA_QUALITY_AREA"
                and service.get("type") == "MapServer" for service in directory.get("services", [])):
@@ -363,7 +367,7 @@ def capture_usace_data_quality_areas(storage: StagingStorageResource, *, version
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
-    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in sorted(captures.items())}))
+    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"]=capture_sha
     version="v"+_sha(_canonical({"source_record_sha256":audit["source_record_sha256"],
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
@@ -382,7 +386,7 @@ def capture_usace_data_quality_areas(storage: StagingStorageResource, *, version
              "attribution":"USACE IENC; rights review pending.",
              "release_date":None,
              "release_date_unknown_reason":"The service response does not declare a dated release for this layer snapshot."}
-            for name,(_body,receipt) in sorted(captures.items())]
+            for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     field_mapping=[{"source_name":name,"source_esri_type":kind,
                     "output_name":"geometry" if name == "SHAPE" else name,
                     "output_arrow_type":str(_arrow_type({"type":kind})),
@@ -395,7 +399,7 @@ def capture_usace_data_quality_areas(storage: StagingStorageResource, *, version
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/data-quality-assessment-areas-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"

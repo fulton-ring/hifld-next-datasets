@@ -5,6 +5,7 @@ import json
 import math
 import shutil
 import struct
+
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -14,6 +15,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -103,7 +105,7 @@ def _read_replay(root: Path, ids: list[int]):
 
 
 def _validate(captures: dict[str,tuple[bytes,dict]]):
-    docs={name:json.loads(body) for name,(body,_receipt) in captures.items()}
+    docs=CaptureDocuments(captures)
     ids=capture_witness(captures)
     if docs["bts_item"].get("id")!=BTS_ITEM_ID or docs["bts_item"].get("owner")!="USDOT_BTS" or docs["bts_item"].get("type")!="PDF": raise ValueError("bts_item_identity_drift")
     bts_description=" ".join(str(docs["bts_item"].get(k,"")) for k in ("title","description"))
@@ -241,7 +243,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
                 except (OSError,ValueError): pass
             if captures:quarantine_incomplete_capture(storage,root,DATASET_SLUG,version,captures,type(exc).__name__)
             raise
-        (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"receipts":{n:r for n,(_b,r) in sorted(captures.items())},
+        (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
         captures=_read_replay(root,ids)
     fields,features,audit=_validate(captures)
@@ -260,7 +262,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
             cur,wire,receipt=_load_capture(root,name);old=previous[name]
             if any(receipt.get(k)!=old.get(k) for k in ("complete_body","status","bytes","sha256","wire_bytes","wire_sha256")) or cur!=body or _sha(wire)!=old.get("wire_sha256"):
                 raise ValueError("cached_source_capture_content_changed:"+name)
-    receipts=existing["capture_receipts"] if existing else {n:r for n,(_b,r) in sorted(captures.items())}
+    receipts=existing["capture_receipts"] if existing else {n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))}
     audit.update({"source_capture_evidence_sha256":capture_hash,"source_capture_evidence":capture_identity,
         "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
         "baseline_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
