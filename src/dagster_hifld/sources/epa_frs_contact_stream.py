@@ -14,6 +14,9 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.sources.epa_capture import (
+    OffsetCaptureSpec, capture_offset_pages, capture_id_windows,
+)
 
 
 SERVICE_URL = "https://gispub.epa.gov/arcgis/rest/services/OEI/FRS_INTERESTS/MapServer"
@@ -236,23 +239,11 @@ def query_ids(client: httpx.Client, *, max_object_id: int,
     Windows select by the native object ID value, so gaps are preserved and no
     assumption is made that IDs are contiguous or start at one.
     """
-    previous = 0
-    for low in range(0, max_object_id, ID_WINDOW):
-        high = min(low + ID_WINDOW, max_object_id)
-        payload = _payload(request(client, TABLE_URL + "/query", {
-            "where": f"OBJECTID > {low} AND OBJECTID <= {high}",
-            "returnIdsOnly": "true", "f": "json",
-        }))
-        ids = payload.get("objectIds")
-        if not isinstance(ids, list) or any(type(value) is not int for value in ids):
-            raise EPAFRSContactCaptureError("source_id_window_invalid")
-        if ids != sorted(ids) or any(not low < value <= high for value in ids):
-            raise EPAFRSContactCaptureError("source_id_window_order_or_bounds_changed")
-        for value in ids:
-            if value <= previous:
-                raise EPAFRSContactCaptureError("source_id_roster_duplicate_or_unordered")
-            previous = value
-            yield value
+    yield from capture_id_windows(
+        maximum_id=max_object_id, window_size=ID_WINDOW, table_url=TABLE_URL,
+        request=lambda url, params: request(client, url, params),
+        payload=_payload, error=EPAFRSContactCaptureError,
+    )
 
 
 def _arrow_schema(fields: tuple[dict[str, Any], ...]) -> pa.Schema:
@@ -359,21 +350,24 @@ def capture_to_parquet(client: httpx.Client, capture_root: Path, parquet_path: P
         seen_rows = 0
         previous_object_id = 0
         try:
-            for page_number, offset in enumerate(range(0, count_before, page_size)):
-                params = {"where": "1=1", "outFields": ",".join(FIELD_NAMES),
-                          "returnGeometry": "false", "orderByFields": "OBJECTID ASC",
-                          "resultOffset": offset, "resultRecordCount": page_size, "f": "json"}
-                page = request(client, TABLE_URL + "/query", params)
-                receipt = _receipt(f"page_{page_number:05d}", TABLE_URL + "/query", params, page)
-                (capture_root / f"{receipt['name']}.wire.gz").write_bytes(page.wire)
-                (capture_root / f"{receipt['name']}.receipt.json").write_bytes(canonical(receipt) + b"\n")
-                payload = _payload(page)
-                rows = payload.get("features")
-                expected_page = min(page_size, count_before - offset)
-                if not isinstance(rows, list) or len(rows) != expected_page:
-                    raise EPAFRSContactCaptureError("source_page_row_count_incomplete")
-                if payload.get("exceededTransferLimit") is True and expected_page < page_size:
-                    raise EPAFRSContactCaptureError("source_final_page_exceeded_transfer_limit")
+            spec = OffsetCaptureSpec(
+                table_url=TABLE_URL, page_size=page_size,
+                page_name=lambda number: f"page_{number:05d}", error=EPAFRSContactCaptureError,
+                query={"where": "1=1", "outFields": ",".join(FIELD_NAMES),
+                       "returnGeometry": "false", "orderByFields": "OBJECTID ASC"},
+            )
+
+            def retain_page(name, params, page):
+                receipt = _receipt(name, TABLE_URL + "/query", params, page)
+                (capture_root / f"{name}.wire.gz").write_bytes(page.wire)
+                (capture_root / f"{name}.receipt.json").write_bytes(canonical(receipt) + b"\n")
+                return receipt
+
+            for captured in capture_offset_pages(
+                    spec, count_before,
+                    request=lambda name, url, params: request(client, url, params),
+                    payload=_payload, retain=retain_page):
+                rows, receipt = captured.features, captured.evidence
                 attrs_batch = []
                 for feature in rows:
                     if not isinstance(feature, dict) or feature.get("geometry") is not None:

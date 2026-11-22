@@ -34,6 +34,8 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.epa_capture import OffsetCaptureSpec, capture_offset_pages
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -107,7 +109,7 @@ def _row_count_from_candidate(storage: StagingStorageResource, prefix: str) -> i
 def _capture_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict], dict,
         dict[str, tuple[bytes, dict]]]:
     """Fetch and retain exact GET responses, bracketing all rows with count/ID reads."""
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures = RetainedCaptureView(capture_root)
 
     def request(name: str, url: str, params: Mapping[str, object]) -> dict:
         request_url = url + "?" + urlencode(params)
@@ -148,19 +150,14 @@ def _capture_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict]
         raise EpaFrsSicCaptureError("source_object_id_roster_is_invalid")
 
     rows: list[dict] = []
-    for page_number, offset in enumerate(range(0, count_before, PAGE_SIZE)):
-        page = request(
-            f"page_{page_number:03d}", TABLE_URL + "/query",
-            {"where": "1=1", "outFields": ",".join(FIELD_NAMES), "returnGeometry": "false",
-             "orderByFields": "OBJECTID ASC", "resultOffset": offset,
-             "resultRecordCount": PAGE_SIZE, "f": "json"},
-        )
-        features = page.get("features")
-        wanted = min(PAGE_SIZE, count_before - offset)
-        if not isinstance(features, list) or len(features) != wanted:
-            raise EpaFrsSicCaptureError("source_page_row_count_incomplete")
-        if page.get("exceededTransferLimit") is True and wanted < PAGE_SIZE:
-            raise EpaFrsSicCaptureError("source_final_page_exceeded_transfer_limit")
+    spec = OffsetCaptureSpec(
+        table_url=TABLE_URL, page_size=PAGE_SIZE,
+        page_name=lambda number: f"page_{number:03d}", error=EpaFrsSicCaptureError,
+        query={"where": "1=1", "outFields": ",".join(FIELD_NAMES),
+               "returnGeometry": "false", "orderByFields": "OBJECTID ASC"},
+    )
+    for captured in capture_offset_pages(spec, count_before, request=request):
+        features = captured.features
         for feature in features:
             if not isinstance(feature, dict) or feature.get("geometry") is not None:
                 raise EpaFrsSicCaptureError("source_table_returned_unexpected_geometry")
@@ -207,7 +204,7 @@ def _capture_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict]
         "fields": list(fields),
         "response_receipts": {name: receipt for name, (_body, receipt) in captures.items()},
     }
-    return rows, manifest, captures
+    return rows, manifest, dict(captures)
 
 
 def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_key: str,

@@ -44,6 +44,7 @@ from dagster_hifld.sources.capture_common import (
     load_candidate_checkpoint,
     stage_candidate_objects,
 )
+from dagster_hifld.sources.epa_capture import KeysetCaptureSpec, capture_keyset_layer
 from dagster_hifld.sources.arcgis_layer import (
     RetainedCaptureViews, load_receipt, load_replay, save_state as _save_state,
     witness_aside as _witness_error_response,
@@ -562,125 +563,19 @@ def _default_client() -> httpx.Client:
 
 
 def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None = None) -> dict[str, object]:
-    """Retain every raw response for the exact native layer, resuming earlier progress.
-
-    Pure-local when the capture directory already holds every required page.
-    """
+    """Capture the native layer through the shared resumable EPA keyset owner."""
     capture_root = Path(capture_root).absolute()
-    capture_root.mkdir(parents=True, exist_ok=True)
-    state = _load_state(capture_root)
-    pages: list[dict[str, object]] = list(state.get("data_pages", []))
-    tail: dict[str, object] | None = state.get("tail")
-    owner_client = client is None
-    active = client or _default_client()
-    first_captured_at = pages[0]["captured_at"] if pages else datetime.now(timezone.utc).isoformat()
-    try:
-        retained: dict[str, tuple[bytes, dict[str, object]]] = {}
-        urls = _document_urls()
-        last_objectid = pages[-1]['last_objectid'] if pages else 0
-        tail_valid = False
-        try:
-            tail_body, tail_receipt = _read_capture(capture_root, 'page_tail')
-            tail_document = json.loads(tail_body)
-        except ValueError:
-            pass
-        else:
-            if tail_receipt['url'] != _page_url(last_objectid):
-                raise EPAFRSInterestsError('retained_capture_receipt_invalid:page_tail')
-            tail_valid = isinstance(tail_document, dict) and tail_document.get('features') == []
-        refresh_closing = state.get('complete') is not True or tail is None or not tail_valid
-        closing_names = ('layer_after', 'service_after', 'count_after')
-        if not refresh_closing:
-            try:
-                for name in (*METADATA_NAMES, *closing_names):
-                    document = json.loads(_read_capture(capture_root, name, expected_url=urls[name])[0])
-                    if not isinstance(document, dict) or 'error' in document:
-                        refresh_closing = True
-                        break
-            except ValueError:
-                refresh_closing = True
-        if refresh_closing:
-            _save_state(capture_root, {'data_pages': pages, 'tail': tail, 'complete': False})
-            for name in closing_names:
-                _witness_error_response(capture_root, name)
-            if not tail_valid:
-                tail = None
-                _witness_error_response(capture_root, 'page_tail')
-                _witness_error_response(capture_root, f'page_{len(pages):06d}')
-        for name in METADATA_NAMES:
-            url = urls[name]
-            retained[name] = _retained_or_fetch(active, capture_root, name, url)
-            _reject_error_response(capture_root, name, retained[name][0])
-        count_before = json.loads(retained["count_before"][0]).get("count")
-        if type(count_before) is not int or count_before <= 0:
-            raise EPAFRSInterestsError("source_count_drift")
-        while not (capture_root / "page_tail.body").exists():
-            name = f"page_{len(pages):06d}"
-            body, receipt = _retained_or_fetch(active, capture_root, name, _page_url(last_objectid))
-            page = json.loads(body)
-            if "error" in page:
-                _witness_error_response(capture_root, name)
-                raise EPAFRSInterestsError("source_page_error")
-            features = page.get("features")
-            if not isinstance(features, list):
-                raise EPAFRSInterestsError("source_page_missing_features")
-            if not features:
-                if last_objectid == 0:
-                    raise EPAFRSInterestsError("source_page_population_incomplete")
-                # An empty page in a data slot is the completeness witness: the same
-                # query URL defines page_tail, so retain its exact bytes under that name.
-                for suffix in ("body", "wire", "receipt.json"):
-                    (capture_root / f"page_tail.{suffix}").write_bytes(
-                        (capture_root / f"{name}.{suffix}").read_bytes())
-                break
-            for feature in features:
-                _validate_feature(feature, tuple(f[0] for f in NATIVE_FIELDS))
-                objectid = feature["attributes"]["OBJECTID"]
-                if objectid <= last_objectid:
-                    raise EPAFRSInterestsError("source_object_ids_not_strictly_increasing")
-                last_objectid = objectid
-            pages.append({"name": name, "last_objectid": last_objectid, "features": len(features),
-                          "captured_at": receipt["observed_at"], "body_sha256": _sha(body)})
-            _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
-            if len(features) < PAGE_SIZE:
-                tail_body, tail_receipt = _retained_or_fetch(active, capture_root, "page_tail",
-                                                             _page_url(last_objectid))
-                _reject_error_response(capture_root, "page_tail", tail_body)
-                if json.loads(tail_body).get("features") != []:
-                    raise EPAFRSInterestsError("source_tail_page_not_empty")
-                tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                        "captured_at": tail_receipt["observed_at"], "body_sha256": _sha(tail_body)}
-                _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
-                break
-            if len(pages) > (count_before + PAGE_SIZE - 1) // PAGE_SIZE:
-                raise EPAFRSInterestsError("source_page_population_incomplete")
-        if tail is None and (capture_root / "page_tail.body").exists():
-            tail_receipt = json.loads((capture_root / "page_tail.receipt.json").read_bytes())
-            tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                    "captured_at": tail_receipt["observed_at"]}
-        if tail is None or not (capture_root / "page_tail.body").exists():
-            raise EPAFRSInterestsError("source_tail_page_not_empty")
-        if sum(page['features'] for page in pages) != count_before:
-            raise EPAFRSInterestsError('source_page_population_incomplete')
-        for name, url in (("layer_after", LAYER_URL + "?f=pjson"),
-                          ("service_after", SERVICE_URL + "?f=pjson"),
-                          ("count_after", _count_url())):
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            _reject_error_response(capture_root, name, body)
-            retained[name] = (body, _read_capture(capture_root, name)[1])
-        if json.loads(retained["count_after"][0]).get("count") != count_before:
-            raise EPAFRSInterestsError("source_metadata_or_count_changed_during_capture")
-    except EPAFRSInterestsError:
-        if owner_client:
-            active.close()
-        raise
-    except Exception as exc:
-        if owner_client:
-            active.close()
-        raise EPAFRSInterestsError("source_capture_failed:" + type(exc).__name__) from exc
-    if owner_client:
-        active.close()
-
+    spec = KeysetCaptureSpec(
+        metadata_names=METADATA_NAMES, document_urls=_document_urls, page_url=_page_url,
+        page_size=PAGE_SIZE, load_state=_load_state, save_state=_save_state,
+        read_capture=_read_capture, witness_aside=_witness_error_response,
+        fetch=_retained_or_fetch, reject_error=_reject_error_response,
+        validate_feature=lambda feature: _validate_feature(feature, tuple(f[0] for f in NATIVE_FIELDS)),
+        default_client=_default_client, error=EPAFRSInterestsError,
+    )
+    captured = capture_keyset_layer(spec, capture_root, client=client)
+    pages, tail = captured["pages"], captured["tail"]
+    first_captured_at = captured["first_captured_at"]
     last_captured_at = str(tail["captured_at"])
     # Construction happens once at seal time (capture_epa_frs_interests);
     # retention and validation stay the only fetch-time side effects.
