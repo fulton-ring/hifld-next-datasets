@@ -14,6 +14,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon
 
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -184,8 +185,12 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
             roster = offset_layer_capture_roster(
                 count, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
                 page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"})
-            for name, url in roster[4:]:
+            captures = RetainedCaptureView(root, captures)
+            def fetch(client, url, root, name):
                 get(client, name, url)
+                return captures[name]
+            capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, roster=lambda ids: roster, fetch=fetch)
             for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
                 page = json.loads(captures[f"page_{page_no:03d}"][0])
                 rows = page.get("features")
