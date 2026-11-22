@@ -30,7 +30,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
-from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps
 
 SLUG = "us-army-corps-of-engineers-usace-offices"
 SERVICE = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/usace_offices/FeatureServer"
@@ -453,7 +453,7 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
     captures: dict[str, tuple[bytes, dict]] = RetainedCaptureView(run_capture)
     def get(client, name, url):
         body, receipt = _capture(client, url, run_capture, name)
-        captures[name] = (body, receipt)
+        captures[name] = (run_capture / (name + ".decoded"), receipt)
         return body
 
     with httpx.Client(timeout=45, follow_redirects=True, headers={"Accept-Encoding": "identity"}) as client:
@@ -464,22 +464,35 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
             ids_field_before, ids_before = _object_ids((yield ('ids_before', _query_url(where='1=1', returnIdsOnly='true'),)))
             if type(count_before) is not int or count_before > MAX_COUNT or ids_field_before != layer_before.get("objectIdField"):
                 raise USACEOfficesSourceError("initial_count_or_id_probe_invalid")
-            features = []
             batch_size = min(500, max(1, int(layer_before.get("maxRecordCount", 500))))
-            for index in range(0, len(ids_before), batch_size):
-                page_ids = ids_before[index:index + batch_size]
-                url = _query_url(objectIds=",".join(map(str, page_ids)), outFields="*", returnGeometry="true", returnZ="true", returnM="true", orderByFields=layer_before["objectIdField"])
-                page = _strict_json((yield (f'features_{index:05d}', url,)))
+
+            def validate_page(offset, requested, body):
+                page = _strict_json(body)
                 if page.get("exceededTransferLimit") is True:
                     raise USACEOfficesSourceError("source_page_exceeded_transfer_limit")
                 _validate_page_schema(page.get("fields"), layer_before.get("fields"))
-                features.extend(page.get("features", []))
-            layer_after = _strict_json((yield ('layer_after', BASE + '?f=pjson',)))
-            _validate_layer_schema(layer_after)
-            count_after = _strict_json((yield ('count_after', _query_url(where='1=1', returnCountOnly='true'),))).get("count")
-            ids_field_after, ids_after = _object_ids((yield ('ids_after', _query_url(where='1=1', returnIdsOnly='true'),)))
+                return list(page.get("features", []))
 
-            return layer_before, count_before, ids_field_before, ids_before, features, layer_after, count_after, ids_field_after, ids_after
+            def validate_closing(name, body, closed):
+                if name == "layer_after":
+                    _validate_layer_schema(_strict_json(body))
+                elif name == "count_after":
+                    _strict_json(body)
+
+            features, _pages, closed = yield ExactIdCapturePlan(ids_before, batch_size,
+                page_request=lambda offset, requested: (f"features_{offset:05d}", _query_url(
+                    objectIds=",".join(map(str, requested)), outFields="*", returnGeometry="true", returnZ="true",
+                    returnM="true", orderByFields=layer_before["objectIdField"])),
+                validate_page=validate_page, read_page=lambda offset: captures[f"features_{offset:05d}"][0],
+                validate_closing=validate_closing,
+                closing_requests=(("layer_after", BASE + "?f=pjson"),
+                    ("count_after", _query_url(where="1=1", returnCountOnly="true")),
+                    ("ids_after", _query_url(where="1=1", returnIdsOnly="true"))))
+            layer_after = _strict_json(closed["layer_after"])
+            count_after = _strict_json(closed["count_after"]).get("count")
+            ids_field_after, ids_after = _object_ids(closed["ids_after"])
+
+            return layer_before, count_before, ids_field_before, ids_before, list(features), layer_after, count_after, ids_field_after, ids_after
         layer_before, count_before, ids_field_before, ids_before, features, layer_after, count_after, ids_field_after, ids_after = capture_request_steps(request_steps(), lambda name, url: get(client, name, url))
 
     schema_drift = _schema_identity(layer_before) != _schema_identity(layer_after)

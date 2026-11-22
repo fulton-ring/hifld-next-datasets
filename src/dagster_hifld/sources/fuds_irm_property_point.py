@@ -39,7 +39,7 @@ from dagster_hifld.sources.capture_common import (
     write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps
 
 DATASET_SLUG = "interim-risk-management-irm-property-point"
 FILE_SLUG = DATASET_SLUG
@@ -235,7 +235,9 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
             )
             if retained_prior + progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > MAX_TOTAL_CAPTURE_BYTES:
                 raise ValueError("source_capture_total_byte_budget_exceeded")
-        return capture_get(client, url, caproot, name, max_bytes=MAX_CAPTURE_BYTES, reserve=reserve)
+        value = capture_get(client, url, caproot, name, max_bytes=MAX_CAPTURE_BYTES, reserve=reserve)
+        captures[name] = value
+        return value
     try:
         if replay:
             names = [path.name.removesuffix(".receipt.json") for path in sorted(caproot.glob("*.receipt.json"))]
@@ -256,18 +258,24 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
                 seed_body, seed_receipt = (yield ('ids_seed', u,)); seed = json.loads(seed_body).get("objectIds")
                 if not isinstance(seed, list) or any(type(i) is not int for i in seed) or len(set(seed)) != len(seed): raise ValueError("source_seed_id_population_drift")
                 captures["ids_seed"] = (seed_body, seed_receipt)
-                for name, url in [("service_before", SERVICE_URL+"?f=pjson"), ("layer_before", LAYER_URL+"?f=pjson"),
-                    ("count_before", LAYER_URL+"/query?"+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                    ("ids_before", u)]: captures[name] = (yield (name, url,))
+                yield ("service_before", SERVICE_URL + "?f=pjson")
+                yield ("layer_before", LAYER_URL + "?f=pjson")
+                yield ("count_before", LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnCountOnly": "true", "f": "json"}))
+                yield ("ids_before", u)
                 count = json.loads(captures["count_before"][0])["count"]
                 ids = sorted(seed)
-                if type(count) is not int or count != len(ids): raise ValueError("source_seed_count_drift")
-                for offset in range(0, count, PAGE_SIZE):
-                    page_ids = ids[offset:offset+PAGE_SIZE]
-                    params = {"objectIds":",".join(map(str,page_ids)),"outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","outSR":"4326","orderByFields":"OBJECTID ASC","f":"json"}
-                    captures[f"page_{offset//PAGE_SIZE:04d}"] = (yield (f'page_{offset // PAGE_SIZE:04d}', LAYER_URL + '/query?' + urlencode(params),))
-                for name, url in [("layer_after", LAYER_URL+"?f=pjson"), ("service_after", SERVICE_URL+"?f=pjson"),
-                    ("count_after", LAYER_URL+"/query?"+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"})), ("ids_after", u)]: captures[name] = (yield (name, url,))
+                if type(count) is not int or count != len(ids):
+                    raise ValueError("source_seed_count_drift")
+                # Raw pages are validated together only after closing witnesses.
+                yield ExactIdCapturePlan(ids, PAGE_SIZE,
+                    page_request=lambda offset, requested: (f"page_{offset // PAGE_SIZE:04d}", LAYER_URL + "/query?" + urlencode({
+                        "objectIds": ",".join(map(str, requested)), "outFields": "*", "returnGeometry": "true",
+                        "returnZ": "true", "returnM": "true", "outSR": "4326", "orderByFields": "OBJECTID ASC", "f": "json"})),
+                    validate_page=lambda offset, requested, value: [], project_rows=lambda document: [],
+                    read_page=lambda offset: captures[f"page_{offset // PAGE_SIZE:04d}"][0],
+                    closing_requests=(("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson"),
+                        ("count_after", LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
+                        ("ids_after", u)))
             capture_request_steps(request_steps(), lambda name, url: get(client, name, url))
         layer, fields, features, audit = _validate(captures)
     except Exception as exc:

@@ -29,7 +29,7 @@ from dagster_hifld.sources.capture_common import (
     write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps
 
 DATASET_SLUG = "formerly-used-defense-sites-division-boundaries"
 FILE_SLUG = DATASET_SLUG
@@ -143,26 +143,37 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
                 ids = (yield ('ids_before', LAYER_URL + '/query', {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'},)).get("objectIds")
                 if type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count:
                     raise ValueError("source_initial_id_roster_invalid")
-                seed = sorted(ids); features=[]
-                for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
-                    page = (yield (f'page_{page_no:03d}', LAYER_URL + '/query', {'where': '1=1', 'outFields': '*', 'returnGeometry': 'true', 'returnZ': 'true', 'returnM': 'true', 'outSR': '4326', 'orderByFields': 'OBJECTID ASC', 'resultOffset': offset, 'resultRecordCount': PAGE_SIZE, 'f': 'json'},))
-                    rows = page.get("features"); expected = min(PAGE_SIZE, count-offset)
-                    if not isinstance(rows,list) or len(rows)!=expected: raise ValueError("source_page_incomplete")
-                    exceeded=page.get("exceededTransferLimit",False)
-                    if type(exceeded) is not bool: raise ValueError("source_page_transfer_limit_flag_invalid")
-                    if exceeded and (len(rows)!=PAGE_SIZE or offset+expected>=count):
-                        raise ValueError("source_page_exceeded_transfer_limit")
-                    if page.get("spatialReference",{}).get("latestWkid",page.get("spatialReference",{}).get("wkid")) != 4326:
-                        raise ValueError("source_page_crs_drift")
-                    if [r.get("attributes",{}).get("OBJECTID") for r in rows] != seed[offset:offset+expected]:
-                        raise ValueError("source_page_id_slice_mismatch")
-                    features.extend(rows)
-                after = (yield ('layer_after', LAYER_URL, {'f': 'pjson'},))
-                service_after = (yield ('service_after', SERVICE_URL, {'f': 'pjson'},))
-                count_after = (yield ('count_after', LAYER_URL + '/query', {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'},)).get("count")
-                ids_after = (yield ('ids_after', LAYER_URL + '/query', {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'},)).get("objectIds")
+                seed = sorted(ids)
 
-                return service, layer, fields, schema, count, seed, features, after, service_after, count_after, ids_after
+                def validate_page(offset, requested, page):
+                    rows = page.get("features")
+                    if not isinstance(rows, list) or len(rows) != len(requested):
+                        raise ValueError("source_page_incomplete")
+                    exceeded = page.get("exceededTransferLimit", False)
+                    if type(exceeded) is not bool:
+                        raise ValueError("source_page_transfer_limit_flag_invalid")
+                    if exceeded and (len(rows) != PAGE_SIZE or offset + len(requested) >= count):
+                        raise ValueError("source_page_exceeded_transfer_limit")
+                    if page.get("spatialReference", {}).get("latestWkid", page.get("spatialReference", {}).get("wkid")) != 4326:
+                        raise ValueError("source_page_crs_drift")
+                    if [row.get("attributes", {}).get("OBJECTID") for row in rows] != requested:
+                        raise ValueError("source_page_id_slice_mismatch")
+                    return rows
+
+                features, _pages, closed = yield ExactIdCapturePlan(seed, PAGE_SIZE,
+                    page_request=lambda offset, requested: (f"page_{offset // PAGE_SIZE:03d}", LAYER_URL + "/query", {
+                        "where": "1=1", "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
+                        "outSR": "4326", "orderByFields": "OBJECTID ASC", "resultOffset": offset,
+                        "resultRecordCount": PAGE_SIZE, "f": "json"}),
+                    validate_page=validate_page, read_page=lambda offset: captures[f"page_{offset // PAGE_SIZE:03d}"][0],
+                    closing_requests=(("layer_after", LAYER_URL, {"f": "pjson"}),
+                        ("service_after", SERVICE_URL, {"f": "pjson"}),
+                        ("count_after", LAYER_URL + "/query", {"where": "1=1", "returnCountOnly": "true", "f": "json"}),
+                        ("ids_after", LAYER_URL + "/query", {"where": "1=1", "returnIdsOnly": "true", "f": "json"})))
+                after, service_after = closed["layer_after"], closed["service_after"]
+                count_after, ids_after = closed["count_after"].get("count"), closed["ids_after"].get("objectIds")
+
+                return service, layer, fields, schema, count, seed, list(features), after, service_after, count_after, ids_after
             service, layer, fields, schema, count, seed, features, after, service_after, count_after, ids_after = capture_request_steps(request_steps(), lambda name, url, params=None: get(client, name, url, params))
         if layer != after or service != service_after or count_after != count or sorted(ids_after or []) != seed:
             raise ValueError("source_changed_during_capture")

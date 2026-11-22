@@ -30,7 +30,7 @@ from dagster_hifld.release_approval import verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
 from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
-from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps
 
 SLUG = "fire-and-emergency-medical-service-ems-stations"
 URL = "https://carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/51"
@@ -134,22 +134,27 @@ def _capture(capture_dir: Path | None) -> tuple[dict[str, bytes], list[dict]]:
     root = default_capture_dir("hifld-native-reconstruction", SLUG, "captures") / uuid4().hex
     root.mkdir(parents=True, exist_ok=False)
     captures, receipts = RetainedCaptureView(root), []
-    names = ["layer", "count_before", "ids_before"]
     with httpx.Client(timeout=90, headers={"Accept-Encoding": "identity", "User-Agent": "HIFLD local draft source adapter"}, follow_redirects=False) as client:
         def request_steps():
-            for name in names:
-                (yield (name, _url(name),))
+            yield ("layer", _url("layer"))
+            yield ("count_before", _url("count_before"))
+            yield ("ids_before", _url("ids_before"))
             count = strict_json(captures["count_before"][0]).get("count")
             ids = strict_json(captures["ids_before"][0]).get("objectIds")
             if type(count) is not int or not isinstance(ids, list) or len(ids) != count:
                 raise EMSQuarantineError("preflight_count_and_id_mismatch")
-            for i, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-                name = f"page_{i:03d}"
-                (yield (name, _url(name, start),))
+
+            def validate_page(offset, requested, value):
                 if sum(receipt["bytes"] for receipt in receipts) > MAX_CAPTURE_BYTES:
                     raise EMSQuarantineError("capture_exceeds_storage_budget")
-            for name in ("ids_after", "count_after"):
-                (yield (name, _url(name),))
+                return []
+
+            # Full native rows remain deferred to validate() after both witnesses.
+            yield ExactIdCapturePlan(ids, PAGE_SIZE,
+                page_request=lambda offset, requested: (f"page_{offset // PAGE_SIZE:03d}", _url(f"page_{offset // PAGE_SIZE:03d}", offset)),
+                validate_page=validate_page, project_rows=lambda document: [],
+                read_page=lambda offset: captures[f"page_{offset // PAGE_SIZE:03d}"][0],
+                closing_requests=(("ids_after", _url("ids_after")), ("count_after", _url("count_after"))))
         capture_request_steps(request_steps(), lambda name, url: _get(client, name, url, captures, receipts, root))
     return CaptureDocuments(captures, decode=lambda body: body), receipts
 

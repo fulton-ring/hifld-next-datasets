@@ -40,7 +40,7 @@ from dagster_hifld.sources.capture_common import (
     content_derived_version, seal_ready_candidate, verify_cached_candidate,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
-from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps, retry_capture_request
 
 DATASET_SLUG = FILE_SLUG = "trails-2"
 PUBLISHER = "U.S. Geological Survey, The National Map Transportation"
@@ -650,12 +650,15 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(120, connect=20),
                               headers={"User-Agent": "hifld-next-datasets/usgs-tnm-trails-draft"}) as client:
-                def request_steps(retained):
-                    requests = [("service_before", SERVICE_URL + "?f=pjson"), ("layer_before", LAYER_URL + "?f=pjson"),
-                        ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                        ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
-                    for name, url in requests:
-                        retained += (yield (name, url, retained,))
+                def fetch(name, url):
+                    nonlocal retained
+                    retained += _capture_into(captures, client, url, root, name, retained)
+
+                def request_steps():
+                    yield ("service_before", SERVICE_URL + "?f=pjson")
+                    yield ("layer_before", LAYER_URL + "?f=pjson")
+                    yield ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"}))
+                    yield ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))
                     ids = json.loads(captures["ids_before"][0]).get("objectIds")
                     ids = validate_capture_witness(json.loads(captures["count_before"][0]).get("count"), ids,
                         json.loads(captures["count_before"][0]).get("count"), ids)
@@ -663,21 +666,19 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
                         raise ValueError("trails_dimensions_probe_without_ids")
                     probe_url = _query({"objectIds": str(ids[0]), "outFields": "OBJECTID", "returnGeometry": "true",
                                         "returnZ": "true", "returnM": "true", "f": "json"})
-                    retained += (yield ('dimensions_probe', probe_url, retained,))
-                    for start in range(0, len(ids), BATCH_SIZE):
-                        name = f"page_{start:05d}"
-                        url = _query({"where": "1=1", "outFields": "*", "returnGeometry": "true",
-                                      "returnZ": "true", "returnM": "true",
-                                      "orderByFields": "objectid ASC", "resultOffset": start,
-                                      "resultRecordCount": BATCH_SIZE, "f": "json"})
-                        retained += (yield (name, url, retained,))
-                    for name, url in [("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                        ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
-                        ("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson")]:
-                        retained += (yield (name, url, retained,))
-
+                    yield ("dimensions_probe", probe_url)
+                    # Geometry and schema checks consume raw pages after the brackets.
+                    yield ExactIdCapturePlan(ids, BATCH_SIZE,
+                        page_request=lambda offset, requested: (f"page_{offset:05d}", _query({
+                            "where": "1=1", "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
+                            "orderByFields": "objectid ASC", "resultOffset": offset, "resultRecordCount": BATCH_SIZE, "f": "json"})),
+                        validate_page=lambda offset, requested, value: [], project_rows=lambda document: [],
+                        read_page=lambda offset: captures[f"page_{offset:05d}"][0],
+                        closing_requests=(("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
+                            ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
+                            ("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson")))
                     return retained
-                retained = capture_request_steps(request_steps(retained), lambda name, url, used: _capture_into(captures, client, url, root, name, used))
+                retained = capture_request_steps(request_steps(), fetch)
             layer, audit = _population(captures)
             manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         **_artifact_rosters(root),
