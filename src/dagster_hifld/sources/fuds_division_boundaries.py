@@ -25,6 +25,7 @@ from dagster_hifld.sources.capture_common import (
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 
 DATASET_SLUG = "formerly-used-defense-sites-division-boundaries"
 FILE_SLUG = DATASET_SLUG
@@ -121,43 +122,44 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
         return value
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/fuds-divisions"}) as client:
-            service = get(client, "service_before", SERVICE_URL, {"f":"pjson"})
-            layer = get(client, "layer_before", LAYER_URL, {"f":"pjson"})
-            if (layer.get("name") != LAYER_NAME or layer.get("id") != LAYER_ID
-                    or layer.get("geometryType") != "esriGeometryPolygon"):
-                raise ValueError("source_layer_identity_drift")
-            fields = layer["fields"]
-            schema = _schema(layer)
-            sr = layer.get("extent", {}).get("spatialReference", {})
-            if sr.get("latestWkid", sr.get("wkid")) != 4326: raise ValueError("source_crs_drift")
-            caps = layer.get("advancedQueryCapabilities", {})
-            if caps.get("supportsPagination") is not True or caps.get("supportsOrderBy") is not True:
-                raise ValueError("source_ordered_pagination_not_supported")
-            count = get(client, "count_before", LAYER_URL+"/query", {"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
-            ids = get(client, "ids_before", LAYER_URL+"/query", {"where":"1=1","returnIdsOnly":"true","f":"json"}).get("objectIds")
-            if type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count:
-                raise ValueError("source_initial_id_roster_invalid")
-            seed = sorted(ids); features=[]
-            for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
-                page = get(client, f"page_{page_no:03d}", LAYER_URL+"/query", {
-                    "where":"1=1", "outFields":"*", "returnGeometry":"true", "returnZ":"true", "returnM":"true",
-                    "outSR":"4326", "orderByFields":"OBJECTID ASC", "resultOffset":offset,
-                    "resultRecordCount":PAGE_SIZE, "f":"json"})
-                rows = page.get("features"); expected = min(PAGE_SIZE, count-offset)
-                if not isinstance(rows,list) or len(rows)!=expected: raise ValueError("source_page_incomplete")
-                exceeded=page.get("exceededTransferLimit",False)
-                if type(exceeded) is not bool: raise ValueError("source_page_transfer_limit_flag_invalid")
-                if exceeded and (len(rows)!=PAGE_SIZE or offset+expected>=count):
-                    raise ValueError("source_page_exceeded_transfer_limit")
-                if page.get("spatialReference",{}).get("latestWkid",page.get("spatialReference",{}).get("wkid")) != 4326:
-                    raise ValueError("source_page_crs_drift")
-                if [r.get("attributes",{}).get("OBJECTID") for r in rows] != seed[offset:offset+expected]:
-                    raise ValueError("source_page_id_slice_mismatch")
-                features.extend(rows)
-            after = get(client, "layer_after", LAYER_URL, {"f":"pjson"})
-            service_after = get(client, "service_after", SERVICE_URL, {"f":"pjson"})
-            count_after = get(client,"count_after",LAYER_URL+"/query",{"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
-            ids_after = get(client,"ids_after",LAYER_URL+"/query",{"where":"1=1","returnIdsOnly":"true","f":"json"}).get("objectIds")
+            def request_steps():
+                service = (yield ('service_before', SERVICE_URL, {'f': 'pjson'},))
+                layer = (yield ('layer_before', LAYER_URL, {'f': 'pjson'},))
+                if (layer.get("name") != LAYER_NAME or layer.get("id") != LAYER_ID
+                        or layer.get("geometryType") != "esriGeometryPolygon"):
+                    raise ValueError("source_layer_identity_drift")
+                fields = layer["fields"]
+                schema = _schema(layer)
+                sr = layer.get("extent", {}).get("spatialReference", {})
+                if sr.get("latestWkid", sr.get("wkid")) != 4326: raise ValueError("source_crs_drift")
+                caps = layer.get("advancedQueryCapabilities", {})
+                if caps.get("supportsPagination") is not True or caps.get("supportsOrderBy") is not True:
+                    raise ValueError("source_ordered_pagination_not_supported")
+                count = (yield ('count_before', LAYER_URL + '/query', {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'},)).get("count")
+                ids = (yield ('ids_before', LAYER_URL + '/query', {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'},)).get("objectIds")
+                if type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count:
+                    raise ValueError("source_initial_id_roster_invalid")
+                seed = sorted(ids); features=[]
+                for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
+                    page = (yield (f'page_{page_no:03d}', LAYER_URL + '/query', {'where': '1=1', 'outFields': '*', 'returnGeometry': 'true', 'returnZ': 'true', 'returnM': 'true', 'outSR': '4326', 'orderByFields': 'OBJECTID ASC', 'resultOffset': offset, 'resultRecordCount': PAGE_SIZE, 'f': 'json'},))
+                    rows = page.get("features"); expected = min(PAGE_SIZE, count-offset)
+                    if not isinstance(rows,list) or len(rows)!=expected: raise ValueError("source_page_incomplete")
+                    exceeded=page.get("exceededTransferLimit",False)
+                    if type(exceeded) is not bool: raise ValueError("source_page_transfer_limit_flag_invalid")
+                    if exceeded and (len(rows)!=PAGE_SIZE or offset+expected>=count):
+                        raise ValueError("source_page_exceeded_transfer_limit")
+                    if page.get("spatialReference",{}).get("latestWkid",page.get("spatialReference",{}).get("wkid")) != 4326:
+                        raise ValueError("source_page_crs_drift")
+                    if [r.get("attributes",{}).get("OBJECTID") for r in rows] != seed[offset:offset+expected]:
+                        raise ValueError("source_page_id_slice_mismatch")
+                    features.extend(rows)
+                after = (yield ('layer_after', LAYER_URL, {'f': 'pjson'},))
+                service_after = (yield ('service_after', SERVICE_URL, {'f': 'pjson'},))
+                count_after = (yield ('count_after', LAYER_URL + '/query', {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'},)).get("count")
+                ids_after = (yield ('ids_after', LAYER_URL + '/query', {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'},)).get("objectIds")
+
+                return service, layer, fields, schema, count, seed, features, after, service_after, count_after, ids_after
+            service, layer, fields, schema, count, seed, features, after, service_after, count_after, ids_after = capture_request_steps(request_steps(), lambda name, url, params=None: get(client, name, url, params))
         if layer != after or service != service_after or count_after != count or sorted(ids_after or []) != seed:
             raise ValueError("source_changed_during_capture")
         field_names=[f["name"] for f in fields if f["type"] != "esriFieldTypeGeometry"]

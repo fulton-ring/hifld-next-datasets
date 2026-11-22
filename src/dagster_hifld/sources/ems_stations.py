@@ -21,6 +21,7 @@ from shapely.geometry import Point
 
 from dagster_hifld.release_approval import verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 
 SLUG = "fire-and-emergency-medical-service-ems-stations"
 URL = "https://carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/51"
@@ -115,19 +116,21 @@ def _capture(capture_dir: Path | None) -> tuple[dict[str, bytes], list[dict]]:
     bodies, receipts = {}, []
     names = ["layer", "count_before", "ids_before"]
     with httpx.Client(timeout=90, headers={"Accept-Encoding": "identity", "User-Agent": "HIFLD local draft source adapter"}, follow_redirects=False) as client:
-        for name in names:
-            _get(client, name, _url(name), bodies, receipts)
-        count = strict_json(bodies["count_before"]).get("count")
-        ids = strict_json(bodies["ids_before"]).get("objectIds")
-        if type(count) is not int or not isinstance(ids, list) or len(ids) != count:
-            raise EMSQuarantineError("preflight_count_and_id_mismatch")
-        for i, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-            name = f"page_{i:03d}"
-            _get(client, name, _url(name, start), bodies, receipts)
-            if sum(map(len, bodies.values())) > MAX_CAPTURE_BYTES:
-                raise EMSQuarantineError("capture_exceeds_storage_budget")
-        for name in ("ids_after", "count_after"):
-            _get(client, name, _url(name), bodies, receipts)
+        def request_steps():
+            for name in names:
+                (yield (name, _url(name),))
+            count = strict_json(bodies["count_before"]).get("count")
+            ids = strict_json(bodies["ids_before"]).get("objectIds")
+            if type(count) is not int or not isinstance(ids, list) or len(ids) != count:
+                raise EMSQuarantineError("preflight_count_and_id_mismatch")
+            for i, start in enumerate(range(0, len(ids), PAGE_SIZE)):
+                name = f"page_{i:03d}"
+                (yield (name, _url(name, start),))
+                if sum(map(len, bodies.values())) > MAX_CAPTURE_BYTES:
+                    raise EMSQuarantineError("capture_exceeds_storage_budget")
+            for name in ("ids_after", "count_after"):
+                (yield (name, _url(name),))
+        capture_request_steps(request_steps(), lambda name, url: _get(client, name, url, bodies, receipts))
     return bodies, receipts
 
 

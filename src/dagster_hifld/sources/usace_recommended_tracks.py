@@ -35,6 +35,7 @@ from dagster_hifld.sources.capture_common import (
     processing_identity,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 
 DATASET_SLUG = "recommended-tracks-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -330,67 +331,60 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     client = client or httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                                     headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"})
     try:
-        bts_item = _read_capture(root, "bts_item", BTS_ITEM_URL, captures, budget, client)
-        _assert_bts_item(bts_item)
-        # The previously referenced item is retained for continuity review;
-        # either a denial/error body or a changed item remains evidence, not authority.
-        _read_capture(root, "prior_bts_item", PRIOR_BTS_ITEM_URL, captures, budget, client,
-                      allow_error=True)
-        directory = _read_capture(root, "service_directory", SERVICE_DIRECTORY_URL,
-                                  captures, budget, client)
-        services = directory.get("services")
-        if not isinstance(services, list) or not any(
-                row.get("name") == "IENC_Feature_Classes/RECOMMENDED_TRACK_LINE"
-                and row.get("type") == "MapServer" for row in services if isinstance(row, dict)):
-            raise ValueError("source_service_directory_identity_drift")
-        metadata_before = _read_capture(root, "layer_before", _url(LAYER_URL, {"f": "json"}),
-                                        captures, budget, client)
-        _validate_metadata(metadata_before)
-        count_before = _read_capture(root, "count_before", _url(LAYER_QUERY_URL, {
-            "where": "1=1", "returnCountOnly": "true", "f": "json"}), captures, budget, client)
-        ids_before_value = _read_capture(root, "ids_before", _url(LAYER_QUERY_URL, {
-            "where": "1=1", "returnIdsOnly": "true", "f": "json"}), captures, budget, client)
-        ids_before = _ids(ids_before_value, "before")
-        if (type(count_before.get("count")) is not int or count_before["count"] < 1
-                or len(ids_before) != count_before["count"]):
-            raise ValueError("source_count_drift_before")
-        features = []
-        for offset in range(0, len(ids_before), PAGE_SIZE):
-            requested = ids_before[offset:offset + PAGE_SIZE]
-            name = f"page_{offset:06d}"
-            page = _read_capture(root, name, _url(LAYER_QUERY_URL, {
-                "objectIds": ",".join(map(str, requested)), "outFields": "*",
-                "returnGeometry": "true", "outSR": "4326", "f": "json",
-            }), captures, budget, client)
-            if (page.get("geometryType") != "esriGeometryPolyline"
-                    or page.get("exceededTransferLimit") is True
-                    or not isinstance(page.get("features"), list)
-                    or len(page["features"]) != len(requested)):
-                raise ValueError("source_page_incomplete")
-            for dim in ("hasZ", "hasM"):
-                if dim in page and (type(page[dim]) is not bool or page[dim] is not False):
-                    raise ValueError("source_page_dimension_drift")
-            _validate_crs(page.get("spatialReference"), "source_page_crs_drift")
-            page_fields = page.get("fields")
-            expected_attributes = [{"name": name, "type": kind} for name, kind in ATTRIBUTE_FIELDS]
-            if (not isinstance(page_fields, list)
-                    or [{"name": f.get("name"), "type": f.get("type")} for f in page_fields]
-                    != expected_attributes):
-                raise ValueError("source_page_schema_drift")
-            for feature, identity in zip(page["features"], requested, strict=True):
-                features.append(_validate_feature(feature, identity, EXPECTED_EXTENT))
-        ids_after_value = _read_capture(root, "ids_after", _url(LAYER_QUERY_URL, {
-            "where": "1=1", "returnIdsOnly": "true", "f": "json"}), captures, budget, client)
-        count_after = _read_capture(root, "count_after", _url(LAYER_QUERY_URL, {
-            "where": "1=1", "returnCountOnly": "true", "f": "json"}), captures, budget, client)
-        metadata_after = _read_capture(root, "layer_after", _url(LAYER_URL, {"f": "json"}),
-                                       captures, budget, client)
-        _validate_metadata(metadata_after)
-        ids_after = _ids(ids_after_value, "after")
-        if (ids_before != ids_after or count_after.get("count") != count_before.get("count")
-                or count_before != count_after or metadata_before != metadata_after
-                or [f["attributes"]["OBJECTID"] for f in features] != ids_before):
-            raise ValueError("source_population_or_metadata_changed_during_capture")
+        def request_steps():
+            bts_item = (yield ('bts_item', BTS_ITEM_URL,))
+            _assert_bts_item(bts_item)
+            # The previously referenced item is retained for continuity review;
+            # either a denial/error body or a changed item remains evidence, not authority.
+            (yield ('prior_bts_item', PRIOR_BTS_ITEM_URL, True,))
+            directory = (yield ('service_directory', SERVICE_DIRECTORY_URL,))
+            services = directory.get("services")
+            if not isinstance(services, list) or not any(
+                    row.get("name") == "IENC_Feature_Classes/RECOMMENDED_TRACK_LINE"
+                    and row.get("type") == "MapServer" for row in services if isinstance(row, dict)):
+                raise ValueError("source_service_directory_identity_drift")
+            metadata_before = (yield ('layer_before', _url(LAYER_URL, {'f': 'json'}),))
+            _validate_metadata(metadata_before)
+            count_before = (yield ('count_before', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'}),))
+            ids_before_value = (yield ('ids_before', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),))
+            ids_before = _ids(ids_before_value, "before")
+            if (type(count_before.get("count")) is not int or count_before["count"] < 1
+                    or len(ids_before) != count_before["count"]):
+                raise ValueError("source_count_drift_before")
+            features = []
+            for offset in range(0, len(ids_before), PAGE_SIZE):
+                requested = ids_before[offset:offset + PAGE_SIZE]
+                name = f"page_{offset:06d}"
+                page = (yield (name, _url(LAYER_QUERY_URL, {'objectIds': ','.join(map(str, requested)), 'outFields': '*', 'returnGeometry': 'true', 'outSR': '4326', 'f': 'json'}),))
+                if (page.get("geometryType") != "esriGeometryPolyline"
+                        or page.get("exceededTransferLimit") is True
+                        or not isinstance(page.get("features"), list)
+                        or len(page["features"]) != len(requested)):
+                    raise ValueError("source_page_incomplete")
+                for dim in ("hasZ", "hasM"):
+                    if dim in page and (type(page[dim]) is not bool or page[dim] is not False):
+                        raise ValueError("source_page_dimension_drift")
+                _validate_crs(page.get("spatialReference"), "source_page_crs_drift")
+                page_fields = page.get("fields")
+                expected_attributes = [{"name": name, "type": kind} for name, kind in ATTRIBUTE_FIELDS]
+                if (not isinstance(page_fields, list)
+                        or [{"name": f.get("name"), "type": f.get("type")} for f in page_fields]
+                        != expected_attributes):
+                    raise ValueError("source_page_schema_drift")
+                for feature, identity in zip(page["features"], requested, strict=True):
+                    features.append(_validate_feature(feature, identity, EXPECTED_EXTENT))
+            ids_after_value = (yield ('ids_after', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),))
+            count_after = (yield ('count_after', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'}),))
+            metadata_after = (yield ('layer_after', _url(LAYER_URL, {'f': 'json'}),))
+            _validate_metadata(metadata_after)
+            ids_after = _ids(ids_after_value, "after")
+            if (ids_before != ids_after or count_after.get("count") != count_before.get("count")
+                    or count_before != count_after or metadata_before != metadata_after
+                    or [f["attributes"]["OBJECTID"] for f in features] != ids_before):
+                raise ValueError("source_population_or_metadata_changed_during_capture")
+
+            return metadata_before, count_before, ids_before, features, ids_after_value, count_after, metadata_after, ids_after
+        metadata_before, count_before, ids_before, features, ids_after_value, count_after, metadata_after, ids_after = capture_request_steps(request_steps(), lambda name, url, allow_error=False: _read_capture(root, name, url, captures, budget, client, allow_error=allow_error))
     except Exception as exc:
         try:
             _capture_manifest(root, complete=False, captures=captures, error_code=type(exc).__name__)

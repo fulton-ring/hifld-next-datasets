@@ -33,6 +33,7 @@ from dagster_hifld.sources.capture_common import (
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 
 DATASET_SLUG = "interim-risk-management-irm-property-point"
 FILE_SLUG = DATASET_SLUG
@@ -239,22 +240,24 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
                 captures[name]=(body,receipt)
         else:
           with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/irm-property-point-draft"}) as client:
-            u = LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})
-            seed_body, seed_receipt = get(client, "ids_seed", u); seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or any(type(i) is not int for i in seed) or len(set(seed)) != len(seed): raise ValueError("source_seed_id_population_drift")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in [("service_before", SERVICE_URL+"?f=pjson"), ("layer_before", LAYER_URL+"?f=pjson"),
-                ("count_before", LAYER_URL+"/query?"+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                ("ids_before", u)]: captures[name] = get(client, name, url)
-            count = json.loads(captures["count_before"][0])["count"]
-            ids = sorted(seed)
-            if type(count) is not int or count != len(ids): raise ValueError("source_seed_count_drift")
-            for offset in range(0, count, PAGE_SIZE):
-                page_ids = ids[offset:offset+PAGE_SIZE]
-                params = {"objectIds":",".join(map(str,page_ids)),"outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","outSR":"4326","orderByFields":"OBJECTID ASC","f":"json"}
-                captures[f"page_{offset//PAGE_SIZE:04d}"] = get(client, f"page_{offset//PAGE_SIZE:04d}", LAYER_URL+"/query?"+urlencode(params))
-            for name, url in [("layer_after", LAYER_URL+"?f=pjson"), ("service_after", SERVICE_URL+"?f=pjson"),
-                ("count_after", LAYER_URL+"/query?"+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"})), ("ids_after", u)]: captures[name] = get(client,name,url)
+            def request_steps():
+                u = LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})
+                seed_body, seed_receipt = (yield ('ids_seed', u,)); seed = json.loads(seed_body).get("objectIds")
+                if not isinstance(seed, list) or any(type(i) is not int for i in seed) or len(set(seed)) != len(seed): raise ValueError("source_seed_id_population_drift")
+                captures["ids_seed"] = (seed_body, seed_receipt)
+                for name, url in [("service_before", SERVICE_URL+"?f=pjson"), ("layer_before", LAYER_URL+"?f=pjson"),
+                    ("count_before", LAYER_URL+"/query?"+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"})),
+                    ("ids_before", u)]: captures[name] = (yield (name, url,))
+                count = json.loads(captures["count_before"][0])["count"]
+                ids = sorted(seed)
+                if type(count) is not int or count != len(ids): raise ValueError("source_seed_count_drift")
+                for offset in range(0, count, PAGE_SIZE):
+                    page_ids = ids[offset:offset+PAGE_SIZE]
+                    params = {"objectIds":",".join(map(str,page_ids)),"outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","outSR":"4326","orderByFields":"OBJECTID ASC","f":"json"}
+                    captures[f"page_{offset//PAGE_SIZE:04d}"] = (yield (f'page_{offset // PAGE_SIZE:04d}', LAYER_URL + '/query?' + urlencode(params),))
+                for name, url in [("layer_after", LAYER_URL+"?f=pjson"), ("service_after", SERVICE_URL+"?f=pjson"),
+                    ("count_after", LAYER_URL+"/query?"+urlencode({"where":"1=1","returnCountOnly":"true","f":"json"})), ("ids_after", u)]: captures[name] = (yield (name, url,))
+            capture_request_steps(request_steps(), lambda name, url: get(client, name, url))
         layer, fields, features, audit = _validate(captures)
     except Exception as exc:
         receipts = {n:r for n,(b,r) in captures.items()}

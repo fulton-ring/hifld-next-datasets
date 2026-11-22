@@ -42,6 +42,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 
 SLUG = 'american-red-cross-regions'
 SERVICE = 'https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer'
@@ -194,7 +195,7 @@ def validate_receipt(name, body, receipt):
 
 def acquire(storage, capture_directory=None):
     local_root(storage); captures = {}
-    for name, url in URLS.items():
+    def fetch_one(name, url):
         body = receipt_body = b''; pieces = {}; receipt = {}; result = None
         try:
             if capture_directory is not None:
@@ -240,6 +241,7 @@ def acquire(storage, capture_directory=None):
         except (OSError, ValueError, TypeError, httpx.HTTPError) as exc:
             where = diagnostic(storage, pieces, str(exc))
             raise ArcRegionsError(f'{exc}; preserved:{where}') from exc
+    capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
     return captures
 
 

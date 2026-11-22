@@ -20,6 +20,7 @@ from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.release_approval import validate_release_provenance,verifier_implementation_sha256
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.validation import compare_full_rows,sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
 
 SLUG='historical-tsunami-observations'
 URL='https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_observations/FeatureServer/0'
@@ -231,8 +232,11 @@ def acquire(storage: StagingStorageResource, capture_dir: Path|None) -> dict[str
                     target=Path(tmp)/(archive+'.zip')
                     with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
                         with httpx.Client(timeout=60,follow_redirects=True,headers={'Accept-Encoding':'identity'}) as client:
-                            for n,url in urls.items():
-                                for attempt in range(3):
+                            def fetch_one(n, url):
+                                nonlocal cumulative
+                                def capture_attempt(attempt_number):
+                                    nonlocal cumulative
+                                    attempt = attempt_number - 1
                                     raw=b'';receipt={'url':url,'fetched_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                                     try:
                                         with client.stream('GET',url) as response:
@@ -247,14 +251,20 @@ def acquire(storage: StagingStorageResource, capture_dir: Path|None) -> dict[str
                                             validate_http(raw,receipt,url,KNOWN_FINAL_URLS.get(n,url))
                                             if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=response.num_bytes_downloaded:
                                                 raise ObservationQuarantineError('incomplete_original_http_wire_length')
-                                        cumulative+=len(raw);break
+                                        cumulative+=len(raw);return raw, receipt
                                     except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
                                         receipt.update(bytes=len(raw),sha256=sha(raw),partial=True)
                                         quarantine(storage,raw,receipt,str(exc))
                                         if attempt==2:raise ObservationQuarantineError(f'bounded_original_http_retry_exhausted:{n}:{exc}') from exc
+                                        raise
+                                raw, receipt = retry_capture_request(
+                                    capture_attempt, attempts=3, schedule=(),
+                                    retryable=lambda exc, attempt: isinstance(exc, (httpx.HTTPError, OSError, ValueError, TypeError)),
+                                    preserve_failed=lambda exc, attempt: None)
                                 z.writestr(n+'.body',raw);z.writestr(n+'.receipt.json',encode(receipt))
                                 if n in ('count_before','count_after') and strict_json(raw).get('count')!=FEATURE_COUNT:
                                     raise ObservationQuarantineError('source_population_drift_requires_review')
+                            capture_request_steps(((n, url) for n, url in urls.items()), fetch_one)
                     packs[archive]=target.read_bytes()
             except (ValueError,TypeError,KeyError,OSError,zipfile.BadZipFile) as exc:
                 location=f'_quarantine/{SLUG}/acquisitions/{uuid4().hex}'

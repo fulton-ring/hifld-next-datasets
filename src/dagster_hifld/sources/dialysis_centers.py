@@ -38,6 +38,7 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 
 SLUG='dialysis-centers'
 LANDING='https://healthcareready.org/rxopen/'
@@ -209,7 +210,7 @@ def acquire(storage,capture_dir=None):
     local_only(storage);captures={};attempt=f'_acquisition-attempts/{SLUG}/{uuid4().hex}';root=Path(capture_dir).absolute()if capture_dir is not None else None
     if root is not None and('..'in root.parts or any(p.is_symlink()for p in[root,*root.parents])):raise DialysisQuarantineError('unsafe_capture_root')
     try:
-        for name,url in URLS.items():
+        def fetch_one(name, url):
             if root is not None:
                 body=bounded_input(root/(name+'.body'),MAX_BODY_BYTES)
                 immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body)
@@ -247,6 +248,7 @@ def acquire(storage,capture_dir=None):
                 immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body);raw=encode(receipt)
             immutable(storage,f'{attempt}/{name}.raw-receipt.body',raw)
             receipt=strict_json(raw);validate_receipt(name,body,receipt);captures[name]=(body,receipt)
+        capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
         return captures
     except Exception as exc:
         immutable(storage,attempt+'/failure.json',encode({'approved':False,'reason_type':type(exc).__name__}))

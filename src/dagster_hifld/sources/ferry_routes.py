@@ -37,6 +37,7 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.capture_common import _validate_cached_catalog_sidecars
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
 
 SLUG = 'ferry-routes-1'
 LAYER = 'BTS_NCFO_Ferry_Routes'
@@ -191,7 +192,7 @@ def candidate_roster(root):
 def acquire(storage,capture_dir=None):
     local_only(storage);captures={}
     try:
-        for name in URLS:
+        def fetch_one(name, url):
             if capture_dir is not None:
                 body=bounded_input(Path(capture_dir)/(name+'.body'),15_000_000)
                 # Retain attempted bytes before any receipt decoding. A malformed
@@ -212,7 +213,8 @@ def acquire(storage,capture_dir=None):
             else:
                 url=URLS[name]
                 limit=15_000_000 if name.startswith('source_page_') else 2_000_000
-                for attempt in range(3):
+                def capture_attempt(attempt_number):
+                    attempt = attempt_number - 1
                     body=bytearray();receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                     try:
                         with httpx.Client(follow_redirects=False,timeout=90,headers={'Accept-Encoding':'identity'}) as client,client.stream('GET',url) as response:
@@ -231,11 +233,17 @@ def acquire(storage,capture_dir=None):
                             # when the server ignores our identity request.
                             if response.status_code!=200 or (receipt['content_length'] is not None and int(receipt['content_length'])!=receipt['wire_bytes_downloaded']):
                                 raise FerryRouteQuarantineError('non200_or_incomplete_http_response')
-                        captures[name]=(bytes(body),receipt);break
+                        captures[name]=(bytes(body),receipt);return body, receipt
                     except (httpx.HTTPError,OSError,ValueError) as exc:
                         receipt.update(bytes=len(body),sha256=digest(body),complete_body=False)
                         quarantine(storage,{name:(bytes(body),receipt)},str(exc))
                         if attempt==2: raise FerryRouteQuarantineError('bounded_fetch_exhausted:'+str(exc)) from exc
+                        raise
+                body, receipt = retry_capture_request(
+                    capture_attempt, attempts=3, schedule=(),
+                    retryable=lambda exc, attempt: isinstance(exc, (httpx.HTTPError, OSError, ValueError)),
+                    preserve_failed=lambda exc, attempt: None)
+        capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
         return captures
     except (OSError,ValueError,TypeError) as exc:
         where=quarantine(storage,captures,str(exc))

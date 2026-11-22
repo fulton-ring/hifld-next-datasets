@@ -42,6 +42,7 @@ from dagster_hifld.sources.capture_common import processing_identity as shared_p
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
 
 FIDELITY_FILES = ('baseline_comparison.json','baseline_comparison.md','baseline_differences.jsonl','baseline_field_changes.jsonl')
 SLUG = 'current-dart-deployments'
@@ -131,7 +132,7 @@ def validate_receipt(body: bytes, receipt: dict, url: str) -> None:
 def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     require_local(storage)
     captures = {}
-    for name,url in URLS.items():
+    def fetch_one(name, url):
         if capture_dir is not None:
             body = b''; receipt_body=b''; receipt = {'capture_path':str(capture_dir),'url':url}
             try:
@@ -146,7 +147,8 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                 immutable(storage,f'{location}/original-receipt.body',receipt_body)
                 raise DartQuarantineError(f'{exc}; retained:{location}') from exc
         else:
-            for attempt in range(3):
+            def capture_attempt(attempt_number):
+                attempt = attempt_number - 1
                 body=b'';receipt={'url':url,'fetched_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                 try:
                     with httpx.Client(follow_redirects=False,timeout=45,headers={'Accept-Encoding':'identity'}) as client:
@@ -164,14 +166,20 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                             if (response.headers.get('content-length') is not None
                                     and int(response.headers['content-length'])!=receipt['wire_bytes']):
                                 raise DartQuarantineError('incomplete_content_length')
-                    break
+                    return body, receipt
                 except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
                     receipt.update(bytes=len(body),sha256=sha(body),partial=True)
                     location=quarantine(storage,body,receipt,str(exc))
                     if attempt==2: raise DartQuarantineError(f'bounded_fetch_exhausted:{exc}; retained:{location}') from exc
+                    raise
+            body, receipt = retry_capture_request(
+                capture_attempt, attempts=3, schedule=(),
+                retryable=lambda exc, attempt: isinstance(exc, (httpx.HTTPError, OSError, ValueError, TypeError)),
+                preserve_failed=lambda exc, attempt: None)
         captures[name]=(body,receipt)
         immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',body)
         immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json',encode(receipt))
+    capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
     return captures
 
 

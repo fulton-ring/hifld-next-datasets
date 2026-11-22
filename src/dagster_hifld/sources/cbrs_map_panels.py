@@ -38,6 +38,7 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import compare_full_rows, sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
 
 SLUG = 'cbrs-map-panels-1'
 LANDING = 'https://www.fws.gov/program/coastal-barrier-resources-act/maps-and-data'
@@ -122,7 +123,7 @@ def validate_receipt(body: bytes, receipt: dict, url: str) -> None:
 def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     require_local(storage)
     captures = {}
-    for name,url in URLS.items():
+    def fetch_one(name, url):
         if capture_dir is not None:
             body = b''; receipt_body=b''; receipt = {'capture_path':str(capture_dir),'requested_url':url}
             try:
@@ -137,7 +138,8 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                 immutable(storage,f'{location}/original-receipt.body',receipt_body)
                 raise CBRSQuarantineError(f'{exc}; retained:{location}') from exc
         else:
-            for attempt in range(3):
+            def capture_attempt(attempt_number):
+                attempt = attempt_number - 1
                 response=None
                 body=b'';receipt={'requested_url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                 try:
@@ -153,15 +155,21 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                             validate_receipt(body,receipt,url)
                             if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=response.num_bytes_downloaded:
                                 raise CBRSQuarantineError('incomplete_content_length')
-                    break
+                    return body, receipt
                 except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
                     receipt.update(byte_length=len(body),sha256=sha(body),partial=True)
                     if response is not None:receipt['wire_byte_length']=response.num_bytes_downloaded
                     location=quarantine(storage,body,receipt,str(exc))
                     if attempt==2: raise CBRSQuarantineError(f'bounded_fetch_exhausted:{exc}; retained:{location}') from exc
+                    raise
+            body, receipt = retry_capture_request(
+                capture_attempt, attempts=3, schedule=(),
+                retryable=lambda exc, attempt: isinstance(exc, (httpx.HTTPError, OSError, ValueError, TypeError)),
+                preserve_failed=lambda exc, attempt: None)
         captures[name]=(body,receipt)
         immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',body)
         immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json',encode(receipt))
+    capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
     return captures
 
 

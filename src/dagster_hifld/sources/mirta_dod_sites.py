@@ -53,6 +53,7 @@ from dagster_hifld.sources.capture_common import (
     processing_identity as packaged_processing_identity,
     validate_staged_release_derivatives,
 )
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 
 SLUG = 'mirta-dod-sites-boundaries'
 PRODUCER = ('Defense Installation Spatial Data Infrastructure (DISDI) Program, '
@@ -346,7 +347,7 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     """Live-capture the producer roster, or replay a retained capture directory."""
     require_local(storage)
     captures = {}
-    for name, url in URLS.items():
+    def fetch_one(name, url):
         if capture_dir is not None:
             body = b''
             receipt_body = b''
@@ -368,6 +369,7 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
         captures[name] = (body, receipt)
         immutable(storage, f'_raw-captures/{SLUG}/{sha(body)}/{name}.body', body)
         immutable(storage, f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json', encode(receipt))
+    capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
     return captures
 
 

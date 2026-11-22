@@ -16,7 +16,7 @@ import stat
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
-from time import sleep, time_ns
+from time import time_ns
 from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
@@ -38,6 +38,7 @@ from dagster_hifld.sources.capture_common import (
     content_derived_version, seal_ready_candidate, verify_cached_candidate,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
 
 DATASET_SLUG = FILE_SLUG = "trails-2"
 PUBLISHER = "U.S. Geological Survey, The National Map Transportation"
@@ -136,17 +137,19 @@ def _capture(client: httpx.Client, url: str, root: Path, name: str,
     # under refused/ and retried a bounded number of times before the capture
     # fails closed, so a capture that succeeds on a later attempt stays
     # replayable.
-    for attempt in range(_RETRY_ATTEMPTS):
-        try:
-            body, receipt = capture_get(client, url, root, name,
-                                        max_bytes=MAX_RESPONSE_BYTES, reserve=reserve)
-            return body, receipt, refused_bytes[0]
-        except ValueError as exc:
-            if attempt + 1 >= _RETRY_ATTEMPTS or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            refused_bytes[0] += _witness_refused(root, name)
-            sleep(_RETRY_BASE_DELAY_SECONDS * attempt)
-    raise AssertionError("unreachable_retry_state")
+    def preserve_failed(exc, attempt):
+        refused_bytes[0] += _witness_refused(root, name)
+
+    body, receipt = retry_capture_request(
+        lambda attempt: capture_get(client, url, root, name,
+                                    max_bytes=MAX_RESPONSE_BYTES, reserve=reserve),
+        attempts=_RETRY_ATTEMPTS,
+        schedule=tuple(_RETRY_BASE_DELAY_SECONDS * attempt for attempt in range(_RETRY_ATTEMPTS - 1)),
+        retryable=lambda exc, attempt: isinstance(exc, ValueError)
+            and str(exc).startswith("incomplete_source_capture:"),
+        preserve_failed=preserve_failed,
+    )
+    return body, receipt, refused_bytes[0]
 
 
 def _capture_into(captures: dict, client: httpx.Client, url: str, root: Path, name: str,
@@ -645,30 +648,34 @@ def capture_trails(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(120, connect=20),
                               headers={"User-Agent": "hifld-next-datasets/usgs-tnm-trails-draft"}) as client:
-                requests = [("service_before", SERVICE_URL + "?f=pjson"), ("layer_before", LAYER_URL + "?f=pjson"),
-                    ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                    ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
-                for name, url in requests:
-                    retained += _capture_into(captures, client, url, root, name, retained)
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                ids = validate_capture_witness(json.loads(captures["count_before"][0]).get("count"), ids,
-                    json.loads(captures["count_before"][0]).get("count"), ids)
-                if not ids:
-                    raise ValueError("trails_dimensions_probe_without_ids")
-                probe_url = _query({"objectIds": str(ids[0]), "outFields": "OBJECTID", "returnGeometry": "true",
-                                    "returnZ": "true", "returnM": "true", "f": "json"})
-                retained += _capture_into(captures, client, probe_url, root, "dimensions_probe", retained)
-                for start in range(0, len(ids), BATCH_SIZE):
-                    name = f"page_{start:05d}"
-                    url = _query({"where": "1=1", "outFields": "*", "returnGeometry": "true",
-                                  "returnZ": "true", "returnM": "true",
-                                  "orderByFields": "objectid ASC", "resultOffset": start,
-                                  "resultRecordCount": BATCH_SIZE, "f": "json"})
-                    retained += _capture_into(captures, client, url, root, name, retained)
-                for name, url in [("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                    ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
-                    ("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson")]:
-                    retained += _capture_into(captures, client, url, root, name, retained)
+                def request_steps(retained):
+                    requests = [("service_before", SERVICE_URL + "?f=pjson"), ("layer_before", LAYER_URL + "?f=pjson"),
+                        ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
+                        ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
+                    for name, url in requests:
+                        retained += (yield (name, url, retained,))
+                    ids = json.loads(captures["ids_before"][0]).get("objectIds")
+                    ids = validate_capture_witness(json.loads(captures["count_before"][0]).get("count"), ids,
+                        json.loads(captures["count_before"][0]).get("count"), ids)
+                    if not ids:
+                        raise ValueError("trails_dimensions_probe_without_ids")
+                    probe_url = _query({"objectIds": str(ids[0]), "outFields": "OBJECTID", "returnGeometry": "true",
+                                        "returnZ": "true", "returnM": "true", "f": "json"})
+                    retained += (yield ('dimensions_probe', probe_url, retained,))
+                    for start in range(0, len(ids), BATCH_SIZE):
+                        name = f"page_{start:05d}"
+                        url = _query({"where": "1=1", "outFields": "*", "returnGeometry": "true",
+                                      "returnZ": "true", "returnM": "true",
+                                      "orderByFields": "objectid ASC", "resultOffset": start,
+                                      "resultRecordCount": BATCH_SIZE, "f": "json"})
+                        retained += (yield (name, url, retained,))
+                    for name, url in [("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
+                        ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
+                        ("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson")]:
+                        retained += (yield (name, url, retained,))
+
+                    return retained
+                retained = capture_request_steps(request_steps(retained), lambda name, url, used: _capture_into(captures, client, url, root, name, used))
             layer, audit = _population(captures)
             manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         **_artifact_rosters(root),

@@ -40,6 +40,7 @@ from dagster_hifld.sources.arcgis_layer import (
     capture_page, capture_witness, layer_capture_roster,
 )
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 
 SERVICE_ITEM_ID = "df5f8412d041469692ff4846c7131a56"
 SERVICE_URL = "https://geospatial.sec.usace.army.mil/server/rest/services/Military/FUDS_Data/MapServer"
@@ -348,9 +349,8 @@ def capture_fuds_irm_property_boundary(storage: StagingStorageResource, *, versi
                     or len(set(seed)) != len(seed)):
                 raise ValueError("source_seed_id_count_drift")
             captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _feature_urls(seed):
-                body, receipt = _fetch(client, url, capture_root, name)
-                captures[name] = (body, receipt)
+            capture_request_sequence(captures, (), lambda _: _feature_urls(seed),
+                lambda name, url: _fetch(client, url, capture_root, name))
         layer, fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}

@@ -32,6 +32,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.capture_common import _validate_cached_catalog_sidecars
 from dagster_hifld.validation import sha256_file
 from urllib.parse import urlencode
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 
 SLUG='epa-superfund-enterprise-management-system-sems-sites-1'
 LANDING='https://catalog.data.gov/dataset/epa-facility-registry-service-frs-sems'
@@ -369,7 +370,7 @@ def acquire(storage,capture_dir=None):
     if root is not None and('..'in root.parts or any(p.is_symlink()for p in[root,*root.parents])):raise SEMSQuarantineError('unsafe_capture_root')
     plan=list(URLS.items())
     try:
-        for name,url in plan:
+        def fetch_one(name, url):
             if root is not None:
                 body=bounded_input(root/(name+'.body'),MAX_BODY_BYTES)
                 immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body)
@@ -409,6 +410,7 @@ def acquire(storage,capture_dir=None):
                 ids=id_roster(body,INITIAL_COUNT);count=strict_json(captures['count_before'][0]).get('count')
                 if type(count)is not int or count!=len(ids):raise SEMSQuarantineError('initial_count_or_ID_coverage_drift_requires_review')
                 plan.extend((n,u)for n,u in capture_urls(ids).items()if n not in URLS)
+        capture_request_steps(((name, url) for name, url in plan), fetch_one)
         return captures
     except Exception as exc:
         immutable(storage,attempt+'/failure.json',encode({'approved':False,'reason_type':type(exc).__name__}))

@@ -40,6 +40,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.catalog import summarize_staged_catalog
 from dagster_hifld.sources.capture_common import validate_staged_release_derivatives
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
 
 SLUG='epa-region-boundaries-exclusive-economic-zone-eez'
 SLUG_WITH_EEZ='epa-region-boundaries-with-exclusive-economic-zone'
@@ -232,7 +233,7 @@ def acquire(storage,capture_dir=None,identity=EEZ_IDENTITY):
     local_only(storage);captures={};attempt=f'_acquisition-attempts/{identity.slug}/{uuid4().hex}';root=Path(capture_dir).absolute()if capture_dir is not None else None
     if root is not None and('..'in root.parts or any(p.is_symlink()for p in[root,*root.parents])):raise EpaEezQuarantineError('unsafe_capture_root')
     try:
-        for name,url in URLS.items():
+        def fetch_one(name, url):
             if root is not None:
                 body=bounded_input(root/(name+'.body'),MAX_BODY_BYTES)
                 immutable(storage,f'_raw-captures/{identity.slug}/{digest(body)}/{name}.body',body)
@@ -270,6 +271,7 @@ def acquire(storage,capture_dir=None,identity=EEZ_IDENTITY):
                 immutable(storage,f'_raw-captures/{identity.slug}/{digest(body)}/{name}.body',body);raw=encode(receipt)
             immutable(storage,f'{attempt}/{name}.raw-receipt.body',raw)
             receipt=strict_json(raw);validate_receipt(name,body,receipt);captures[name]=(body,receipt)
+        capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
         return captures
     except Exception as exc:
         immutable(storage,attempt+'/failure.json',encode({'approved':False,'reason_type':type(exc).__name__}))
