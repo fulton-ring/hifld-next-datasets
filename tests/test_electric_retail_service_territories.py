@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import shutil
 import tempfile
 import unittest
 import zipfile
@@ -167,7 +168,7 @@ def _tiger_zip() -> bytes:
     return sink.getvalue()
 
 
-def _client(eia_body=None, tiger_body=None):
+def _client(eia_body=None, tiger_body=None, requests=None):
     payloads = {
         source.PAGE_URL: b'<a href="zip/f8612025.zip">2025</a>',
         source.PAGE_URL + 'zip/f8612025.zip': eia_body if eia_body is not None else _eia_zip(),
@@ -176,8 +177,13 @@ def _client(eia_body=None, tiger_body=None):
         source.TIGER_ROOT + 'TIGER2026/COUNTY/': b'<a href="tl_2026_us_county.zip">zip</a>',
         source.TIGER_ROOT + 'TIGER2026/COUNTY/tl_2026_us_county.zip': tiger_body if tiger_body is not None else _tiger_zip(),
     }
-    return httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(
-        200, stream=httpx.ByteStream(payloads[str(request.url)])) ))
+
+    def handle(request):
+        if requests is not None:
+            requests.append(str(request.url))
+        return httpx.Response(200, stream=httpx.ByteStream(payloads[str(request.url)]))
+
+    return httpx.Client(transport=httpx.MockTransport(handle))
 
 
 class ElectricRetailTerritoryTests(unittest.TestCase):
@@ -685,6 +691,117 @@ class ElectricRetailTerritoryReplayTests(unittest.TestCase):
                     run_config={"ops": {
                         assets.electric_retail_service_territories_eia861_candidate.op.name: {
                             "config": {"replay_version": first["version"]}}}})
+            self.assertTrue(result.success)
+            self.assertEqual(requests, [])
+            self.assertEqual(result.output_for_node(
+                assets.electric_retail_service_territories_eia861_candidate.op.name), first)
+
+    def test_retained_capture_directory_replays_with_zero_network(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(source, "MIN_COUNTY_COUNT", 1), \
+                patch.object(capture_common, "datetime") as clock:
+            storage = StagingStorageResource(use_local=True, local_dir=str(Path(tmp) / "stage"))
+            root = Path(tmp) / "capture"
+            requests = []
+            with _client(requests=requests) as client:
+                clock.now.return_value = datetime(2026, 11, 20, tzinfo=timezone.utc)
+                first = source.capture_electric_retail_service_territories(
+                    storage, client=client, capture_directory=str(root))
+            self.assertEqual(len(requests), 6)
+            staged = {key: storage.read_key(key) for key in storage.list_prefix()}
+            retained = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+            with _client(requests=requests) as client, patch.object(
+                    StagingStorageResource, "write_key_if_unchanged",
+                    side_effect=AssertionError("replay attempted a staged write")):
+                clock.now.return_value = datetime(2026, 11, 21, tzinfo=timezone.utc)
+                replayed = source.capture_electric_retail_service_territories(
+                    storage, client=client, capture_directory=str(root))
+            self.assertEqual(len(requests), 6)
+            self.assertEqual(replayed, first)
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix()}, staged)
+            self.assertEqual({path: path.read_bytes() for path in root.rglob("*") if path.is_file()},
+                             retained)
+            self.assertEqual(sorted(path.name for path in Path(tmp).iterdir()),
+                             ["capture", "stage"])
+
+    def test_retained_capture_directory_rebuilds_purged_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(source, "MIN_COUNTY_COUNT", 1):
+            stage_root = Path(tmp) / "stage"
+            storage = StagingStorageResource(use_local=True, local_dir=str(stage_root))
+            root = Path(tmp) / "capture"
+            with _client() as client:
+                first = source.capture_electric_retail_service_territories(
+                    storage, client=client, capture_directory=str(root))
+            staged = {key: storage.read_key(key) for key in storage.list_prefix()}
+            shutil.rmtree(stage_root)
+            requests = []
+            with _client(requests=requests) as client:
+                rebuilt = source.capture_electric_retail_service_territories(
+                    storage, client=client, capture_directory=str(root))
+            self.assertEqual(requests, [])
+            self.assertEqual(rebuilt, first)
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix()}, staged)
+
+    def test_retained_capture_directory_partial_or_forged_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(source, "MIN_COUNTY_COUNT", 1):
+            stage_root = Path(tmp) / "stage"
+            storage = StagingStorageResource(use_local=True, local_dir=str(stage_root))
+            root = Path(tmp) / "capture"
+            with _client() as client:
+                source.capture_electric_retail_service_territories(
+                    storage, client=client, capture_directory=str(root))
+            staged = {key: storage.read_key(key) for key in storage.list_prefix()}
+            retained = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+            cases = [
+                # Partial: one retained object removed.
+                (root / "tiger_county_zip.wire", None, "incomplete_retained_capture"),
+                # Forged: receipt names a different endpoint than the producer page.
+                (root / "eia861_page.receipt.json",
+                 retained[root / "eia861_page.receipt.json"].replace(b"https://", b"http://", 1),
+                 "retained_capture_request_identity_mismatch"),
+                # Truncated: body no longer matches the retained receipt hash.
+                (root / "eia861_zip.body",
+                 retained[root / "eia861_zip.body"][:-64],
+                 "retained_capture_body_mismatch"),
+            ]
+            for path, replacement, error in cases:
+                with self.subTest(error=error, path=path.name):
+                    before = path.read_bytes()
+                    if replacement is None:
+                        path.unlink()
+                    else:
+                        path.write_bytes(replacement)
+                    requests = []
+                    try:
+                        with _client(requests=requests) as client, patch.object(
+                                StagingStorageResource, "write_key_if_unchanged",
+                                side_effect=AssertionError("failed replay attempted a staged write")):
+                            with self.assertRaisesRegex(ValueError, error):
+                                source.capture_electric_retail_service_territories(
+                                    storage, client=client, capture_directory=str(root))
+                    finally:
+                        path.write_bytes(before)
+                    self.assertEqual(requests, [])
+            self.assertEqual({key: storage.read_key(key) for key in storage.list_prefix()}, staged)
+            self.assertEqual({path: path.read_bytes() for path in root.rglob("*") if path.is_file()},
+                             retained)
+
+    def test_asset_capture_directory_replay_runs_offline(self):
+        with tempfile.TemporaryDirectory() as tmp, DagsterInstance.ephemeral() as instance, \
+                patch.object(source, "MIN_COUNTY_COUNT", 1):
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            root = Path(tmp) / "capture"
+            with _client() as client:
+                first = source.capture_electric_retail_service_territories(
+                    storage, client=client, capture_directory=str(root))
+            requests = []
+            with patch.object(source.httpx, "Client",
+                    side_effect=lambda *a, **k: _client(requests=requests)):
+                result = materialize(
+                    [assets.electric_retail_service_territories_eia861_candidate],
+                    instance=instance, resources={"staging_storage": storage},
+                    run_config={"ops": {
+                        assets.electric_retail_service_territories_eia861_candidate.op.name: {
+                            "config": {"capture_directory": str(root)}}}})
             self.assertTrue(result.success)
             self.assertEqual(requests, [])
             self.assertEqual(result.output_for_node(
