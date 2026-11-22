@@ -205,8 +205,8 @@ def validated_capture_view(root: Path, *, receipts: Mapping[str, dict],
                            ) -> Mapping[str, tuple[bytes, dict]]:
     """Check every sealed receipt before exposing a disk-backed replay view.
 
-    Callers must first validate their manifest, exact file roster and artifact
-    digests. Bodies are discarded after each check and never cached by the view.
+    Callers own their native manifest and artifact admission checks. Bodies are
+    discarded after each check and never cached by the view.
     """
     view = RetainedReplayView(root, receipts=receipts, expected_urls=expected_urls,
         load_capture=load_capture, validate_request_identity=validate_request_identity,
