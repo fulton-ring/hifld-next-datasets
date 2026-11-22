@@ -28,8 +28,6 @@ import json
 import re
 import shutil
 from array import array
-from collections import deque
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlencode, urlsplit
@@ -48,7 +46,7 @@ from dagster_hifld.http_capture import validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources import arcgis_layer
+from dagster_hifld.sources import arcgis_layer, nhd_capture
 from dagster_hifld.sources.capture_common import (
     load_checkpoint_receipt_map,
     candidate_prefix,
@@ -454,145 +452,32 @@ def _load_state(capture_root: Path) -> dict[str, object]:
 
 def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
                        url: str) -> tuple[bytes, dict[str, object]]:
-    if (capture_root / f"{name}.body").exists():
-        try:
-            return _read_capture(capture_root, name)
-        except NhdHydrolocationReachCodeExternalConnectionError:
-            _witness_aside(capture_root, name)
-    return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
+    return nhd_capture.retained_capture(
+        client, capture_root, name, url, read_capture=_read_capture,
+        fetch=lambda client, url, root, name: capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES),
+        discard=_witness_aside, error_type=NhdHydrolocationReachCodeExternalConnectionError)
 
 
 def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
-    """Plan the roster gaps that still need a capture this session.
-
-    A retained segment counts as accepted only when its receipt and body
-    verify, its body is not a producer error document, its retained digest
-    still matches the checkpoint, its rows still serve exactly the roster
-    slice the segment name requests, and it already sits in the capture
-    state; anything else is witnessed aside and refetched.
-    """
-    state = _load_state(capture_root)
-    accepted = {entry.get("name"): entry for entry in state["segments"] if isinstance(entry, dict)}
-    retained: list[tuple[int, int]] = []
-    for path in sorted(capture_root.glob("page_*.body")):
-        name = path.name.removesuffix(".body")
-        match = _SEGMENT_NAME_PATTERN.fullmatch(name)
-        if match is None:
-            # Witnessed refusal evidence (page_*.error-*.body) and other
-            # non-canonical names are not roster segments; skip them.
-            continue
-        try:
-            body, _receipt = _read_capture(capture_root, name)
-        except NhdHydrolocationReachCodeExternalConnectionError:
-            _witness_aside(capture_root, name)
-            continue
-        if _producer_error_doc(body) or name not in accepted:
-            _witness_aside(capture_root, name)
-            continue
-        offset, count = _parse_segment_name(name)
-        try:
-            rows = json.loads(body).get("features")
-            actual = [row.get("attributes", {}).get("OBJECTID") for row in rows]
-        except (ValueError, TypeError, AttributeError):
-            actual = None
-        if (count < 1 or offset + count > len(roster)
-                or actual != roster[offset:offset + count]
-                or accepted[name].get("body_sha256") != _sha(body)):
-            _witness_aside(capture_root, name)
-            continue
-        retained.append((offset, count))
-    gaps: list[tuple[int, int]] = []
-    covered = bytearray(len(roster))
-    for offset, count in sorted(retained):
-        if offset < 0 or count < 1 or offset + count > len(roster) \
-                or any(covered[offset:offset + count]):
-            _witness_aside(capture_root, _segment_name(offset, count))
-            continue
-        covered[offset:offset + count] = b"\x01" * count
-    cursor = 0
-    while cursor < len(roster):
-        if covered[cursor]:
-            cursor += 1
-            continue
-        start = cursor
-        while cursor < len(roster) and not covered[cursor]:
-            cursor += 1
-        chunk_start = start
-        while chunk_start < cursor:
-            count_chunk = min(SEGMENT_START_RECORDS, cursor - chunk_start)
-            gaps.append((chunk_start, count_chunk))
-            chunk_start += count_chunk
-    return gaps
+    return nhd_capture.plan_segment_gaps(
+        capture_root, roster, load_state=_load_state, read_capture=_read_capture,
+        witness=_witness_aside, name_pattern=_SEGMENT_NAME_PATTERN,
+        parse_name=_parse_segment_name, segment_name=_segment_name,
+        producer_error=_producer_error_doc, error_type=NhdHydrolocationReachCodeExternalConnectionError,
+        chunk_size=SEGMENT_START_RECORDS, strict_resume=True)
 
 
 def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
                     state: dict[str, object]) -> bool:
-    """Capture the complete layer as adaptively bisected roster segments.
-
-    Segments start at SEGMENT_START_RECORDS. A segment the producer keeps
-    refusing is bisected until the producer serves both halves, whether the
-    refusal is a persistent error document or a persistent incomplete transport
-    capture; the refused segment's final body and receipts stay on disk as
-    evidence under witnessed names. A single-record segment that still fails
-    ends the capture explicitly.
-    """
-    segments = state.setdefault("segments", [])
-    todo: deque[tuple[int, int]] = deque(_plan_segment_gaps(capture_root, roster))
-    refreshed = bool(todo)
-    if refreshed:
-        state["complete"] = False
-        if segments:
-            _save_state(capture_root, state)
-    while todo:
-        offset, count = todo.popleft()
-        name = _segment_name(offset, count)
-        try:
-            body, receipt = _capture_with_retry(
-                client, _segment_query(offset, count), capture_root, name,
-                attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS,
-                max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            # The producer cap can also manifest as truncation/connection reset
-            # instead of a clean error document; a multi-record segment whose
-            # attempts were still incomplete is bisected like an error
-            # document, while a single-record segment keeps failing explicitly.
-            if count > 1 and str(exc).startswith("incomplete_source_capture:"):
-                middle = count // 2
-                todo.appendleft((offset + middle, count - middle))
-                todo.appendleft((offset, middle))
-                continue
-            raise NhdHydrolocationReachCodeExternalConnectionError(
-                "source_capture_failed:" + type(exc).__name__) from exc
-        if _producer_error_doc(body):
-            _witness_aside(capture_root, name)
-            if count == 1:
-                raise NhdHydrolocationReachCodeExternalConnectionError("source_single_feature_unservable")
-            middle = count // 2
-            todo.appendleft((offset + middle, count - middle))
-            todo.appendleft((offset, middle))
-            continue
-        page = json.loads(body)
-        if not isinstance(page, dict) or "error" in page:
-            _witness_aside(capture_root, name)
-            raise NhdHydrolocationReachCodeExternalConnectionError("source_page_error:" + name)
-        rows = page.get("features")
-        if not isinstance(rows, list) or len(rows) != count:
-            _witness_aside(capture_root, name)
-            raise NhdHydrolocationReachCodeExternalConnectionError("source_page_row_count_incomplete:" + name)
-        expected = roster[offset:offset + count]
-        actual = [row.get("attributes", {}).get("OBJECTID") for row in rows
-                  if isinstance(row, dict)]
-        if actual != expected:
-            _witness_aside(capture_root, name)
-            raise NhdHydrolocationReachCodeExternalConnectionError("source_page_id_slice_incomplete_or_reordered")
-        segments[:] = [entry for entry in segments if entry.get("name") != name]
-        segments.append({"name": name, "offset": offset, "count": count,
-                         "features": len(rows), "captured_at": receipt["observed_at"],
-                         "body_sha256": _sha(body)})
-        _save_state(capture_root, state)
-    return refreshed
+    return nhd_capture.fetch_segments(
+        client, capture_root, roster, state, plan_gaps=_plan_segment_gaps,
+        segment_name=_segment_name, segment_query=_segment_query,
+        capture_retry=_capture_with_retry, witness=_witness_aside,
+        producer_error=_producer_error_doc, save_state=_save_state,
+        error_type=NhdHydrolocationReachCodeExternalConnectionError, probe_attempts=SEGMENT_PROBE_ATTEMPTS,
+        doc_attempts=DOC_CAPTURE_ATTEMPTS, probe_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS,
+        doc_delay=DOC_CAPTURE_BASE_DELAY_SECONDS, max_body_bytes=MAX_BODY_BYTES,
+        strict_resume=True)
 
 
 def fetch_nhd_hydrolocation_reach_code_external_connection_pages(
@@ -605,81 +490,17 @@ def fetch_nhd_hydrolocation_reach_code_external_connection_pages(
     """
     capture_root = Path(capture_root).absolute()
     _preflight_capture(capture_root)
-    capture_root.mkdir(parents=True, exist_ok=True)
-    state = _load_state(capture_root)
-    owner_client = client is None
-    owner_doc = doc_client is None
-    active = client or _default_client()
-    docs_active = doc_client or _doc_client()
-    segments: list[dict[str, object]] = list(state.get("segments", []))
-    first_captured_at = (segments[0]["captured_at"] if segments
-                         else datetime.now(timezone.utc).isoformat())
-    urls = _document_urls()
-    try:
-        for name in METADATA_NAMES:
-            active_client = docs_active if name == "service_doc" else active
-            body, _receipt = _retained_or_fetch(active_client, capture_root, name, urls[name])
-            if name != "service_doc" and _producer_error_doc(body):
-                raise NhdHydrolocationReachCodeExternalConnectionError("source_page_error:" + name)
-        seed = json.loads(_read_capture(capture_root, "ids_seed")[0]).get("objectIds")
-        ids = _validate_roster(seed, "ids_seed")
-        before = json.loads(_read_capture(capture_root, "ids_before")[0])
-        if before.get("objectIdFieldName") != "OBJECTID":
-            raise NhdHydrolocationReachCodeExternalConnectionError("source_id_field_changed")
-        roster = _validate_roster(before.get("objectIds"), "ids_before")
-        if sorted(roster) != ids:
-            raise NhdHydrolocationReachCodeExternalConnectionError("source_id_population_drift:ids_seed_vs_before")
-        count_before = json.loads(_read_capture(capture_root, "count_before")[0])
-        if type(count_before.get("count")) is not int or count_before["count"] != len(roster):
-            raise NhdHydrolocationReachCodeExternalConnectionError("source_count_drift")
-        refreshed = _fetch_segments(active, capture_root, roster, state)
-        segments = list(state["segments"])
-        refresh_closing = refreshed or state.get("complete") is not True
-        if not refresh_closing:
-            for name in AFTER_NAMES:
-                try:
-                    body, _receipt = _read_capture(capture_root, name)
-                    document = json.loads(body)
-                    if not isinstance(document, dict) or "error" in document:
-                        raise NhdHydrolocationReachCodeExternalConnectionError("source_page_error:" + name)
-                except (OSError, ValueError):
-                    refresh_closing = True
-                    break
-        if refresh_closing:
-            state["complete"] = False
-            _save_state(capture_root, state)
-            for name in AFTER_NAMES:
-                _witness_aside(capture_root, name)
-            for name in AFTER_NAMES:
-                body, _receipt = capture_get(active, urls[name], capture_root, name, max_bytes=MAX_BODY_BYTES)
-                if _producer_error_doc(body):
-                    raise NhdHydrolocationReachCodeExternalConnectionError("source_page_error:" + name)
-        count_after = json.loads(_read_capture(capture_root, "count_after")[0])
-        if type(count_after.get("count")) is not int or count_after["count"] != len(roster):
-            raise NhdHydrolocationReachCodeExternalConnectionError(
-                "source_metadata_or_count_changed_during_capture")
-        after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
-        if after_ids.get("objectIdFieldName") != "OBJECTID" \
-                or sorted(_validate_roster(after_ids.get("objectIds"), "ids_after")) != ids:
-            raise NhdHydrolocationReachCodeExternalConnectionError("source_id_population_drift:ids_after")
-    except NhdHydrolocationReachCodeExternalConnectionError:
-        if owner_client:
-            active.close()
-        if owner_doc:
-            docs_active.close()
-        raise
-    except Exception as exc:
-        if owner_client:
-            active.close()
-        if owner_doc:
-            docs_active.close()
-        raise NhdHydrolocationReachCodeExternalConnectionError("source_capture_failed:" + type(exc).__name__) from exc
-    if owner_client:
-        active.close()
-    if owner_doc:
-        docs_active.close()
-    last_captured_at = max((str(entry.get("captured_at", "")) for entry in segments),
-                           default=first_captured_at)
+    segments, count_before, first_captured_at, last_captured_at = nhd_capture.capture_roster_layer(
+        capture_root, client=client, doc_client=doc_client,
+        default_client=_default_client, document_client=_doc_client,
+        load_state=_load_state, save_state=_save_state,
+        retained_or_fetch=_retained_or_fetch, read_capture=_read_capture,
+        capture_get=capture_get, witness=_witness_aside,
+        producer_error=_producer_error_doc, validate_roster=_validate_roster,
+        fetch_segments=_fetch_segments, metadata_names=METADATA_NAMES,
+        after_names=AFTER_NAMES, urls=_document_urls(),
+        error_type=NhdHydrolocationReachCodeExternalConnectionError, max_body_bytes=MAX_BODY_BYTES,
+        refresh_witnesses=True)
     extracted = _stream_validate(capture_root, parquet_sink=None)
     _save_state(capture_root, {"segments": segments, "complete": True})
     (capture_root / "computed_baseline.json").write_bytes(_canonical({

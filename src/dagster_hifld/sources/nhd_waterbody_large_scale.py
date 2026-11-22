@@ -59,7 +59,6 @@ import json
 import shutil
 import time
 from array import array
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Mapping
 from urllib.parse import urlencode, urlsplit
@@ -71,6 +70,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.sources import nhd_capture
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -389,18 +389,8 @@ def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, objec
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
-    path = capture_root / "capture_state.json"
-    if not path.exists():
-        return {"pages": [], "tail": None, "refused": {}, "complete": False}
-    try:
-        state = json.loads(path.read_bytes())
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise NhdWaterbodyLargeScaleError("capture_state_invalid") from exc
-    if (not isinstance(state, dict) or not isinstance(state.get("pages"), list)
-            or not isinstance(state.get("refused"), dict)
-            or not (state.get("tail") is None or isinstance(state.get("tail"), dict))):
-        raise NhdWaterbodyLargeScaleError("capture_state_invalid")
-    return state
+    return nhd_capture.load_keyset_state(
+        capture_root, error_type=NhdWaterbodyLargeScaleError, pages_key="pages", with_refused=True)
 
 
 def _budget_guard(budget: list[int]) -> Callable[[str, bytes], None]:
@@ -419,18 +409,12 @@ def _budget_check(budget: list[int]) -> None:
 def _retained_or_fetch(client: httpx.Client | None, capture_root: Path, name: str,
                        url: str, *, budget: list[int] | None = None
                        ) -> tuple[bytes, dict[str, object]]:
-    if (capture_root / f"{name}.body").exists():
-        try:
-            return _read_capture(capture_root, name)
-        except NhdWaterbodyLargeScaleError:
-            if client is None:
-                raise
-            for suffix in ("body", "wire", "receipt.json"):
-                (capture_root / f"{name}.{suffix}").unlink(missing_ok=True)
-    if client is None:
-        raise NhdWaterbodyLargeScaleError("retained_capture_file_missing:" + name)
-    return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES,
-                       before_retain=_budget_guard(budget) if budget is not None else None)
+    return nhd_capture.retained_capture(
+        client, capture_root, name, url, read_capture=_read_capture,
+        fetch=lambda client, url, root, name: capture_get(
+            client, url, root, name, max_bytes=MAX_BODY_BYTES,
+            before_retain=_budget_guard(budget) if budget is not None else None),
+        discard=nhd_capture.discard_capture, error_type=NhdWaterbodyLargeScaleError)
 
 
 def _witness_attempt(capture_root: Path, name: str) -> None:
@@ -527,9 +511,7 @@ def _fetch_page(active: httpx.Client, capture_root: Path, budget: list[int],
 
 
 def _bisect(size: int) -> int:
-    if size <= 1:
-        raise AssertionError("bisect_below_single_record")
-    return max(1, size // 2)
+    return nhd_capture.bisect_page_size(size)
 
 
 def _capture_attrs_row(active: httpx.Client, capture_root: Path, budget: list[int],
@@ -638,14 +620,6 @@ def _code_identity() -> dict[str, object]:
     return processing_identity(Path(__file__).parents[3])
 
 
-def _close_owned(owner_client: bool, owner_doc: bool, owner_alias: bool,
-                 active: httpx.Client, docs_active: httpx.Client, alias: httpx.Client) -> None:
-    if owner_client:
-        active.close()
-    if owner_doc:
-        docs_active.close()
-    if owner_alias:
-        alias.close()
 
 
 def fetch_nhd_waterbody_large_scale_pages(capture_root: Path, *,
@@ -668,141 +642,27 @@ def fetch_nhd_waterbody_large_scale_pages(capture_root: Path, *,
     """
     capture_root = Path(capture_root).absolute()
     capture_root.mkdir(parents=True, exist_ok=True)
-    state = dict(_load_state(capture_root))
-    pages: list[dict[str, object]] = list(state.get("pages", []))
-    tail: dict[str, object] | None = state.get("tail")
-    refused: dict[str, object] = dict(state.get("refused", {}))
 
-    def persist() -> None:
-        _save_state(capture_root, {"pages": pages, "tail": tail, "refused": refused,
-                                   "complete": False})
+    def validate_cursor(features, cursor):
+        for feature in features:
+            cursor, _rings, _verts = _validate_feature(
+                feature, tuple(entry[0] for entry in NATIVE_FIELDS), cursor)
+        return cursor
 
-    owner_client = client is None
-    owner_doc = doc_client is None
-    owner_alias = alias_client is None
-    active = client or _default_client()
-    docs_active = doc_client or _doc_client()
-    alias = alias_client or _default_client()
-    budget = [0]
-    first_captured_at = pages[0]["captured_at"] if pages else datetime.now(timezone.utc).isoformat()
-    try:
-        retained: dict[str, tuple[bytes, dict[str, object]]] = {}
-        for name in METADATA_NAMES:
-            url = {"service_doc": SERVICE_DOC_URL,
-                   "alias_service": ALIAS_SERVICE_URL + "?f=pjson",
-                   "service_before": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url()}[name]
-            active_client = docs_active if name == "service_doc" else active
-            retained[name] = _retained_or_fetch(active_client, capture_root, name, url,
-                                                budget=budget)
-            if name != "service_doc":
-                _reject_error_response(capture_root, name, retained[name][0])
-        count_before = json.loads(retained["count_before"][0]).get("count")
-        if type(count_before) is not int or count_before <= 0:
-            raise NhdWaterbodyLargeScaleError("source_count_drift")
-        last_objectid = pages[-1]["last_objectid"] if pages else 0
-        while not (capture_root / "page_tail.body").exists():
-            size = PAGE_SIZE
-            while True:
-                try:
-                    body, receipt = _fetch_page(active, capture_root, budget,
-                                                last_objectid, size)
-                except NhdWaterbodyLargeScaleError as exc:
-                    bisectable = (exc.code == "source_page_error"
-                                  or exc.code.startswith("source_page_error:")
-                                  or exc.code == "source_page_body_limit"
-                                  or exc.code.startswith("source_page_body_limit:"))
-                    if not bisectable:
-                        raise
-                    if size > 1:
-                        size = _bisect(size)
-                        continue
-                    oid, rescued = _refuse_single_record(
-                        active, alias, capture_root, budget, last_objectid, pages, persist)
-                    if not rescued:
-                        refused[str(oid)] = {"attrs_name": f"refused_attrs_{oid:09d}",
-                                             "captured_at": datetime.now(timezone.utc).isoformat()}
-                        persist()
-                    last_objectid = oid
-                    break
-                page = json.loads(body)
-                if not isinstance(page, dict) or "error" in page:
-                    raise NhdWaterbodyLargeScaleError("source_page_error")
-                features = page.get("features")
-                if not isinstance(features, list):
-                    raise NhdWaterbodyLargeScaleError("source_page_missing_features")
-                if not features:
-                    if last_objectid == 0:
-                        raise NhdWaterbodyLargeScaleError("source_page_population_incomplete")
-                    # The population ends here: retain the canonical empty tail
-                    # page (same walk position, producer page size) as the
-                    # completeness witness.
-                    tail_body, tail_receipt = _retained_or_fetch(
-                        active, capture_root, "page_tail",
-                        _page_url(last_objectid, PAGE_SIZE), budget=budget)
-                    _reject_error_response(capture_root, "page_tail", tail_body)
-                    if json.loads(tail_body).get("features") != []:
-                        raise NhdWaterbodyLargeScaleError("source_tail_page_not_empty")
-                    tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                            "captured_at": tail_receipt["observed_at"],
-                            "body_sha256": _sha(tail_body)}
-                    persist()
-                    break
-                cursor = last_objectid
-                for feature in features:
-                    cursor, _rings, _verts = _validate_feature(
-                        feature, tuple(entry[0] for entry in NATIVE_FIELDS), cursor)
-                more = page.get("exceededTransferLimit")
-                if len(features) < size and more is True:
-                    raise NhdWaterbodyLargeScaleError("source_page_transfer_truncated")
-                pages.append({"name": _page_name(last_objectid, size),
-                              "start_after": last_objectid, "size": size,
-                              "last_objectid": cursor, "features": len(features),
-                              "exceeded_transfer_limit": more,
-                              "captured_at": receipt["observed_at"],
-                              "body_sha256": _sha(body)})
-                last_objectid = cursor
-                persist()
-                if len(pages) > count_before:
-                    raise NhdWaterbodyLargeScaleError("source_page_count_exceeds_reported_count")
-                if len(features) < size and more is not True:
-                    # The accepted short page is the final data page: retain the
-                    # canonical empty tail witness at the producer page size.
-                    tail_body, tail_receipt = _retained_or_fetch(
-                        active, capture_root, "page_tail",
-                        _page_url(last_objectid, PAGE_SIZE), budget=budget)
-                    _reject_error_response(capture_root, "page_tail", tail_body)
-                    if json.loads(tail_body).get("features") != []:
-                        raise NhdWaterbodyLargeScaleError("source_tail_page_not_empty")
-                    tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                            "captured_at": tail_receipt["observed_at"],
-                            "body_sha256": _sha(tail_body)}
-                    persist()
-                    break
-                break
-        if tail is None and (capture_root / "page_tail.body").exists():
-            tail_receipt = json.loads((capture_root / "page_tail.receipt.json").read_bytes())
-            tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                    "captured_at": tail_receipt["observed_at"]}
-        if tail is None or not (capture_root / "page_tail.body").exists():
-            raise NhdWaterbodyLargeScaleError("source_tail_page_not_empty")
-        for name, url in (("layer_after", LAYER_URL + "?f=pjson"),
-                          ("service_after", SERVICE_URL + "?f=pjson"),
-                          ("count_after", _count_url())):
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url, budget=budget)
-            _reject_error_response(capture_root, name, body)
-            retained[name] = (body, _read_capture(capture_root, name)[1])
-        if json.loads(retained["count_after"][0]).get("count") != count_before:
-            raise NhdWaterbodyLargeScaleError("source_metadata_or_count_changed_during_capture")
-    except NhdWaterbodyLargeScaleError:
-        _close_owned(owner_client, owner_doc, owner_alias, active, docs_active, alias)
-        raise
-    except Exception as exc:
-        _close_owned(owner_client, owner_doc, owner_alias, active, docs_active, alias)
-        raise NhdWaterbodyLargeScaleError("source_capture_failed:" + type(exc).__name__) from exc
-    _close_owned(owner_client, owner_doc, owner_alias, active, docs_active, alias)
-
+    pages, tail, refused, first_captured_at = nhd_capture.capture_keyset_layer(
+        capture_root, client=client, doc_client=doc_client, alias_client=alias_client,
+        load_state=_load_state, save_state=_save_state, default_client=_default_client,
+        document_client=_doc_client, retained_or_fetch=_retained_or_fetch,
+        reject_error_response=_reject_error_response, fetch_page=_fetch_page,
+        refuse_single_record=_refuse_single_record, validate_cursor=validate_cursor,
+        page_url=_page_url, page_name=_page_name, read_capture=_read_capture,
+        metadata_urls={
+            "service_doc": SERVICE_DOC_URL, "alias_service": ALIAS_SERVICE_URL + "?f=pjson",
+            "service_before": SERVICE_URL + "?f=pjson", "layer_before": LAYER_URL + "?f=pjson",
+            "count_before": _count_url()}, closing_urls={
+            "layer_after": LAYER_URL + "?f=pjson", "service_after": SERVICE_URL + "?f=pjson",
+            "count_after": _count_url()}, error_type=NhdWaterbodyLargeScaleError, page_size=PAGE_SIZE,
+        clear_rescued_refusal=False)
     last_captured_at = str(tail["captured_at"])
     # Construction happens once at seal time (capture_nhd_waterbody_large_scale);
     # retention and validation stay the only fetch-time side effects.

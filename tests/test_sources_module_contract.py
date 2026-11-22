@@ -21,7 +21,7 @@ SHARED_SOURCES = frozenset({
     "epa_frs_national_archive", "epa_icis_wastewater_common", "epa_regions_common",
     "esri_common", "esri_geometry", "gnis_capture",
     "national_inventory_of_dams_common", "nces_edge_common", "usace_ienc_common",
-    "wbd_hu_family",
+    "wbd_hu_family", "nhd_capture",
 })
 
 

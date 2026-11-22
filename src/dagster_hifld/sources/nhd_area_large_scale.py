@@ -31,8 +31,6 @@ import json
 import shutil
 import tempfile
 import time
-from collections import deque
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -44,6 +42,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.sources import nhd_capture
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -256,87 +255,14 @@ def _validate_attrs_types(attrs: Mapping[str, object], fields: list[dict[str, ob
 def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path,
                      budget: list[int]) -> tuple[dict[str, tuple[bytes, dict[str, object]]],
                                                  dict[str, list[int]]]:
-    """Capture every roster window, bisecting oversized or persistently failing windows.
-
-    Each accepted window is one exact ``objectIds`` request over a contiguous
-    roster slice. A window that answers with an Esri error document, exceeds the
-    response byte cap or reports a truncated result set is bisected into two
-    smaller windows over the same roster slice: those producer answers are
-    deterministic for the requested window (observed: oversized windows persistently
-    refuse with the same HTTP 200 error document), so retrying the same window
-    only burns bounded backoff time — bisection is completeness-neutral and only
-    changes page boundaries. Transport faults (connection/reset/truncation) are
-    still retried a bounded number of times with backoff for transient producer
-    faults, and failed attempts are preserved on disk as ``.attempt-NN`` evidence
-    that never enters the capture roster. Bisection continues down to
-    single-OBJECTID windows: a single id that still answers with the error
-    document after the bounded retries is recorded as refused (its attempt
-    evidence stays on disk and its id is read from the capture state) instead
-    of aborting the whole capture, because the producer is known to persistently
-    refuse serving the geometry of specific records (dated evidence on the
-    capture manifest). The before/after count and ID witnesses plus per-page
-    slice equality make bisection completeness-neutral: it can only change page
-    boundaries, never population.
-    """
-    pages: dict[str, tuple[bytes, dict[str, object]]] = {}
-    refused: dict[str, list[int]] = {}
-    plan: deque[tuple[int, int]] = deque((start, PAGE_IDS) for start in range(0, len(roster), PAGE_IDS))
-    while plan:
-        start, size = plan.popleft()
-        window_ids = roster[start:start + size]
-        size = len(window_ids)
-        name = f"page_{window_ids[0]:07d}"
-        url = _window_url(window_ids)
-        accepted = False
-        last_error: Exception | None = None
-        for attempt in range(1, PAGE_CAPTURE_ATTEMPTS + 1):
-            _budget_check(budget)
-            try:
-                body, receipt = capture_get(client, url, capture_root, name,
-                                            max_bytes=MAX_BODY_BYTES,
-                                            before_retain=_budget_guard(budget))
-            except ValueError as exc:
-                if "source_capture_budget_exceeded" in str(exc):
-                    raise
-                last_error = exc
-                error_code = _failed_receipt_error_code(capture_root, name)
-                # Every failed attempt — including the terminal one before a
-                # bisection — is preserved under its collision-free evidence
-                # name first, so the next child capture cannot overwrite the
-                # producer's actual response at the shared base paths.
-                _preserve_failed_attempt(capture_root, name, attempt)
-                if error_code in ("wire_limit_exceeded", "decoded_limit_exceeded"):
-                    break
-                if attempt < PAGE_CAPTURE_ATTEMPTS:
-                    time.sleep(PAGE_CAPTURE_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
-                    continue
-                break
-            if _producer_error_doc(body):
-                last_error = ValueError("source_window_error_document")
-                _preserve_failed_attempt(capture_root, name, attempt)
-                if size > 1:
-                    break
-                if attempt < PAGE_CAPTURE_ATTEMPTS:
-                    time.sleep(PAGE_CAPTURE_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
-                    continue
-                break
-            doc = json.loads(body)
-            if doc.get("exceededTransferLimit"):
-                last_error = ValueError("source_window_transfer_truncated")
-                _preserve_failed_attempt(capture_root, name, attempt)
-                break
-            pages[name] = (body, receipt)
-            accepted = True
-            break
-        if accepted:
-            continue
-        if size > 1:
-            mid = size // 2
-            plan.appendleft((start + mid, size - mid))
-            plan.appendleft((start, mid))
-            continue
-        refused[name] = window_ids
-    return pages, refused
+    return nhd_capture.capture_id_windows(
+        client, roster, capture_root, budget, page_size=PAGE_IDS,
+        attempts=PAGE_CAPTURE_ATTEMPTS, base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS,
+        max_body_bytes=MAX_BODY_BYTES, window_url=_window_url,
+        budget_check=_budget_check, budget_guard=_budget_guard,
+        failed_receipt_error_code=_failed_receipt_error_code,
+        preserve_failed_attempt=_preserve_failed_attempt,
+        producer_error_doc=_producer_error_doc, fetch=capture_get, sleep=time.sleep)
 
 
 def _validate_polygon_geometry(geometry: object) -> None:
