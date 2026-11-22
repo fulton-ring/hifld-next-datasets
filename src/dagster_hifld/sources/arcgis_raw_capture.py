@@ -201,3 +201,233 @@ def validate_population_snapshot(count_before, before, count_after, after, featu
     fetched_ids = [feature['attributes']['OBJECTID'] for feature in features]
     if count_before != count_after or before != after or fetched_ids != before or len(features) != len(before):
         raise ValueError('source_population_changed_during_capture')
+
+
+@dataclass(frozen=True)
+class FileRequestPolicy:
+    response_limit: int
+    space_floor: int
+    raw_prefix: str
+    receipt_first: bool = False
+
+
+@dataclass(frozen=True)
+class MemoryRequestPolicy:
+    wire_limit: int
+    decoded_limit: int
+    space_floor: int
+    raw_prefix: str
+    error: type[ValueError]
+
+
+def _retain_file_fragment(path, body, read):
+    import os
+
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    try:
+        if os.write(descriptor, body) != len(body):
+            raise OSError('short_pending_capture_write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    if read(path, len(body)) != body:
+        raise OSError('pending_capture_readback_mismatch')
+
+
+def _preserve_file_transfer(path, result, read, encode):
+    from dagster_hifld.validation import sha256_file
+
+    transfer = {key: value for key, value in vars(result).items()
+                if key not in ('pending_wire', 'pending_decoded')}
+    for label in ('wire', 'decoded'):
+        pending = getattr(result, 'pending_' + label)
+        if pending:
+            _retain_file_fragment(path / ('pending_' + label + '.body'), pending, read)
+        transfer['pending_' + label + '_artifact'] = {
+            'bytes': len(pending), 'sha256': _sha(pending),
+            'path': 'pending_' + label + '.body' if pending else None,
+        }
+        observed = path / (label + '.body')
+        transfer['physical_' + label] = {'bytes': observed.stat().st_size, 'sha256': sha256_file(observed)}
+    readback = (transfer['physical_wire']['bytes'] == result.wire_bytes_retained
+                and transfer['physical_wire']['sha256'] == result.wire_sha256
+                and transfer['physical_decoded']['bytes'] == result.decoded_bytes_retained
+                and transfer['physical_decoded']['sha256'] == result.decoded_sha256)
+    transfer['independent_physical_readback_matches_acknowledged_sinks'] = readback
+    _retain_file_fragment(path / 'transfer.json', encode(transfer), read)
+    return readback
+
+
+def _retain_verified_block(stream, block, target):
+    import os
+    import stat
+
+    before = os.fstat(stream.fileno())
+    written = stream.write(block)
+    stream.flush()
+    os.fsync(stream.fileno())
+    if written != len(block):
+        raise OSError('short_capture_write')
+    reader = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        actual = os.fstat(reader)
+        if (not stat.S_ISREG(actual.st_mode) or actual.st_nlink != 1
+                or (actual.st_dev, actual.st_ino) != (before.st_dev, before.st_ino)
+                or actual.st_size != before.st_size + len(block)
+                or os.pread(reader, len(block), before.st_size) != block):
+            raise OSError('capture_block_readback_mismatch')
+    finally:
+        os.close(reader)
+
+
+def _capture_file_response(url, path, *, policy, read, encode, client=None):
+    """Retain a GET in exclusive dual file sinks and verify every acknowledged block.
+
+    Failed sink blocks and the independent transfer/readback record remain beside
+    the physical prefixes. ``read`` preserves the source's existing file-admission
+    errors; receipt serialization and final source validation stay with callers.
+    """
+    from contextlib import nullcontext
+    from pathlib import Path
+    import shutil
+
+    path = Path(path)
+    path.mkdir(parents=True)
+    with (path / 'wire.body').open('xb') as wire, (path / 'decoded.body').open('xb') as decoded:
+        def reserve(progress):
+            if shutil.disk_usage(path).free < policy.space_floor + progress.reserve_bytes:
+                raise OSError('disk_floor_before_read')
+
+        receipt = {'url': url, 'observed_at': datetime.now(timezone.utc).isoformat()}
+        result = None
+        try:
+            context = (nullcontext(client) if client is not None else
+                       httpx.Client(follow_redirects=False, timeout=60, headers={'Accept-Encoding': 'identity'}))
+            with context as active, active.stream('GET', url) as response:
+                result = capture_http_response(
+                    response, max_wire_bytes=policy.response_limit, max_decoded_bytes=policy.response_limit,
+                    reserve=reserve,
+                    retain_wire=lambda block: _retain_verified_block(wire, block, path / 'wire.body'),
+                    retain_decoded=lambda block: _retain_verified_block(decoded, block, path / 'decoded.body'),
+                )
+                receipt.update(final_url=str(response.url), status=response.status_code, complete_body=result.complete,
+                    bytes=result.decoded_bytes_retained, sha256=result.decoded_sha256,
+                    wire_bytes=result.wire_bytes_received, error_code=result.error_code)
+        finally:
+            if result is not None:
+                readback = _preserve_file_transfer(path, result, read, encode)
+            wire.flush()
+            decoded.flush()
+    receipt['complete_body'] = result.complete and readback
+    receipt['independent_sink_readback_matches'] = readback
+    return read(path / 'decoded.body', policy.response_limit + 1024 * 1024), receipt
+
+
+def _capture_memory_response(url, name, *, policy, space_root, write, encode,
+                            pieces, on_interrupt, client=None):
+    """Own bounded dual memory sinks, native receipts and successful raw custody."""
+    from contextlib import nullcontext
+    import shutil
+
+    wire, decoded = bytearray(), bytearray()
+
+    def reserve(progress):
+        if shutil.disk_usage(space_root()).free < (policy.space_floor + len(wire) + len(decoded)
+                                                   + progress.reserve_bytes):
+            raise policy.error('capture_reserve_before_pull_or_decode')
+
+    context = (nullcontext(client) if client is not None else
+               httpx.Client(timeout=60, follow_redirects=False, headers={'Accept-Encoding': 'identity'}))
+    with context as active:
+        with active.stream('GET', url) as response:
+            try:
+                result = capture_http_response(
+                    response, max_wire_bytes=policy.wire_limit, max_decoded_bytes=policy.decoded_limit,
+                    reserve=reserve, retain_wire=wire.extend, retain_decoded=decoded.extend,
+                )
+            except (KeyboardInterrupt, SystemExit):
+                on_interrupt({'wire.body': bytes(wire), 'response.body': bytes(decoded)})
+                raise
+            body = bytes(decoded)
+            pieces.update({'wire.body': bytes(wire), 'response.body': body,
+                           'pending-wire.body': result.pending_wire, 'pending-decoded.body': result.pending_decoded})
+            if (len(wire) != result.wire_bytes_retained or _sha(bytes(wire)) != result.wire_sha256
+                    or len(body) != result.decoded_bytes_retained or _sha(body) != result.decoded_sha256):
+                raise policy.error('capture_sink_readback_mismatch')
+            receipt = {'requested_url': url, 'final_url': str(response.url), 'status': response.status_code,
+                'observed_at': datetime.now(timezone.utc).isoformat(), 'bytes': len(body), 'sha256': _sha(body),
+                'complete': result.complete, 'wire_bytes': result.wire_bytes_received,
+                'wire_sha256': result.received_wire_sha256, 'content_encoding': result.content_encoding,
+                'content_length': result.content_length, 'capture_error': result.error_code}
+            receipt_body = encode(receipt)
+            pieces['receipt.json'] = receipt_body
+            write(f'{policy.raw_prefix}/{_sha(body)}/{name}.body', body)
+            write(f'{policy.raw_prefix}/receipts/{_sha(receipt_body)}.body', receipt_body)
+            if not result.complete:
+                raise policy.error(result.error_code or 'incomplete_transfer')
+    return body, receipt, receipt_body
+
+
+def capture_file_request(url, name, storage_root, request_path, *, policy, read, encode,
+                         parse_receipt, validate, write, write_receipt, replay_root=None,
+                         write_replay_reference=None, client=None):
+    """Own file-backed capture/replay custody before exposing a lazy raw reference."""
+    from pathlib import Path
+
+    def body_key(body):
+        return f'{policy.raw_prefix}/{_sha(body)}/{name}.body'
+
+    if replay_root is not None:
+        body = read(Path(replay_root) / (name + '.body'), policy.response_limit)
+        if not policy.receipt_first:
+            write(body_key(body), body)
+            if write_replay_reference is not None:
+                write_replay_reference(encode({'bytes': len(body), 'sha256': _sha(body),
+                                               'body_key': body_key(body)}))
+        raw = read(Path(replay_root) / (name + '.receipt.json'), 65536)
+    else:
+        body, receipt = _capture_file_response(
+            url, request_path, policy=policy, read=read, encode=encode, client=client)
+        if not policy.receipt_first:
+            write(body_key(body), body)
+        raw = encode(receipt)
+    write_receipt(raw)
+    if policy.receipt_first:
+        write(body_key(body), body)
+    receipt = parse_receipt(raw)
+    validate(body, receipt)
+    return Path(storage_root) / body_key(body), receipt
+
+
+def capture_memory_request(url, name, *, policy, space_root, write, encode,
+                           read, parse_receipt, validate, diagnostic,
+                           replay_root=None, client=None):
+    """Own memory capture/replay, original receipt storage and failure diagnostics."""
+    from pathlib import Path
+
+    body = receipt_body = b''
+    pieces = {}
+    try:
+        if replay_root is not None:
+            body, error = read(Path(replay_root) / (name + '.body'), policy.decoded_limit)
+            pieces['response.body'] = body
+            write(f'{policy.raw_prefix}/{_sha(body)}/{name}.body', body)
+            if error:
+                raise policy.error(error)
+            receipt_body, error = read(Path(replay_root) / (name + '.receipt.json'), 65536)
+            pieces['original-receipt.prefix.body' if error else 'original-receipt.body'] = receipt_body
+            write(f'{policy.raw_prefix}/receipts/{_sha(receipt_body)}.body', receipt_body)
+            if error:
+                raise policy.error(error)
+            receipt = parse_receipt(receipt_body)
+        else:
+            body, receipt, receipt_body = _capture_memory_response(
+                url, name, policy=policy, space_root=space_root, write=write, encode=encode,
+                pieces=pieces, on_interrupt=lambda value: diagnostic(value, 'capture_interrupted_no_retry'),
+                client=client,
+            )
+        validate(body, receipt)
+        return body, receipt, receipt_body
+    except (OSError, ValueError, TypeError, httpx.HTTPError) as exc:
+        where = diagnostic(pieces, str(exc))
+        raise policy.error(f'{exc}; preserved:{where}') from exc

@@ -18,7 +18,7 @@ from collections import Counter
 from urllib.parse import urlparse, parse_qs, urlencode
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 import httpx
@@ -29,7 +29,6 @@ import pyproj
 import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
-from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
@@ -37,6 +36,8 @@ from dagster_hifld.release_approval import validate_release_provenance, verifier
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.arcgis_raw_capture import FileRequestPolicy, capture_file_request
 
 SLUG='historical-significant-earthquake-locations'
 LANDING='https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/earthquakes'
@@ -195,74 +196,19 @@ def validate_receipt(name,body,receipt):
         'release_date_unknown_reason':'No verified dated data release. Event YEAR/MONTH/DAY, service editingInfo, portal modification and retrieval are separate values, never invented release dates.'}
 
 
-def retain_capture_fragment(path,body):
-    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
-    try:
-        if os.write(descriptor,body)!=len(body):raise OSError('short_pending_capture_write')
-        os.fsync(descriptor)
-    finally:os.close(descriptor)
-    if bounded_input(path,len(body))!=body:raise OSError('pending_capture_readback_mismatch')
-
-
-def preserve_transfer_result(path,result):
-    transfer={key:value for key,value in vars(result).items()if key not in('pending_wire','pending_decoded')}
-    for label in('wire','decoded'):
-        pending=getattr(result,'pending_'+label)
-        if pending:retain_capture_fragment(path/('pending_'+label+'.body'),pending)
-        transfer['pending_'+label+'_artifact']={'bytes':len(pending),'sha256':digest(pending),'path':'pending_'+label+'.body'if pending else None}
-        observed=path/(label+'.body')
-        transfer['physical_'+label]={'bytes':observed.stat().st_size,'sha256':sha256_file(observed)}
-    readback=(transfer['physical_wire']['bytes']==result.wire_bytes_retained
-        and transfer['physical_wire']['sha256']==result.wire_sha256
-        and transfer['physical_decoded']['bytes']==result.decoded_bytes_retained
-        and transfer['physical_decoded']['sha256']==result.decoded_sha256)
-    transfer['independent_physical_readback_matches_acknowledged_sinks']=readback
-    retain_capture_fragment(path/'transfer.json',encode(transfer))
-    return readback
-
-
 def acquire(storage,capture_dir=None):
-    local_only(storage);captures={};attempt=f'_acquisition-attempts/{SLUG}/{uuid4().hex}';root=Path(capture_dir).absolute()if capture_dir is not None else None
+    local_only(storage);captures=RetainedCaptureView(Path(storage.local_dir));attempt=f'_acquisition-attempts/{SLUG}/{uuid4().hex}';root=Path(capture_dir).absolute()if capture_dir is not None else None
     if root is not None and('..'in root.parts or any(p.is_symlink()for p in[root,*root.parents])):raise EarthquakeQuarantineError('unsafe_capture_root')
     try:
         def fetch_one(name, url):
-            if root is not None:
-                body=bounded_input(root/(name+'.body'),MAX_BODY_BYTES)
-                immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body)
-                raw=bounded_input(root/(name+'.receipt.json'),65536)
-            else:
-                path=Path(storage.local_dir)/attempt/name;path.mkdir(parents=True)
-                with(path/'wire.body').open('xb')as wire,(path/'decoded.body').open('xb')as decoded:
-                    def retain(stream,block,target):
-                        before=os.fstat(stream.fileno());written=stream.write(block)
-                        stream.flush();os.fsync(stream.fileno())
-                        if written!=len(block):raise OSError('short_capture_write')
-                        reader=os.open(target,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
-                        try:
-                            actual=os.fstat(reader)
-                            if(not stat.S_ISREG(actual.st_mode)or actual.st_nlink!=1
-                                or(actual.st_dev,actual.st_ino)!=(before.st_dev,before.st_ino)
-                                or actual.st_size!=before.st_size+len(block)
-                                or os.pread(reader,len(block),before.st_size)!=block):raise OSError('capture_block_readback_mismatch')
-                        finally:os.close(reader)
-                    def reserve(progress):
-                        if shutil.disk_usage(path).free<SPACE_FLOOR+progress.reserve_bytes:raise OSError('disk_floor_before_read')
-                    receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat()};result=None
-                    try:
-                        with httpx.Client(follow_redirects=False,timeout=60,headers={'Accept-Encoding':'identity'})as client,client.stream('GET',url)as response:
-                            result=capture_http_response(response,max_wire_bytes=MAX_BODY_BYTES,max_decoded_bytes=MAX_BODY_BYTES,
-                                reserve=reserve,retain_wire=lambda b:retain(wire,b,path/'wire.body'),retain_decoded=lambda b:retain(decoded,b,path/'decoded.body'))
-                            receipt.update(final_url=str(response.url),status=response.status_code,complete_body=result.complete,
-                                bytes=result.decoded_bytes_retained,sha256=result.decoded_sha256,wire_bytes=result.wire_bytes_received,error_code=result.error_code)
-                    finally:
-                        if result is not None:readback=preserve_transfer_result(path,result)
-                        wire.flush();decoded.flush()
-                receipt['complete_body']=result.complete and readback
-                receipt['independent_sink_readback_matches']=readback
-                body=bounded_input(path/'decoded.body',MAX_BODY_BYTES+1024*1024)
-                immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body);raw=encode(receipt)
-            immutable(storage,f'{attempt}/{name}.raw-receipt.body',raw)
-            receipt=strict_json(raw);validate_receipt(name,body,receipt);captures[name]=(body,receipt)
+            captures[name] = capture_file_request(
+                url, name, Path(storage.local_dir), Path(storage.local_dir) / attempt / name,
+                policy=FileRequestPolicy(MAX_BODY_BYTES, SPACE_FLOOR, f"_raw-captures/{SLUG}"),
+                read=bounded_input, encode=encode, parse_receipt=strict_json, replay_root=root,
+                validate=lambda body, receipt: validate_receipt(name, body, receipt),
+                write=lambda key, value: immutable(storage, key, value),
+                write_receipt=lambda value: immutable(storage, f"{attempt}/{name}.raw-receipt.body", value),
+            )
         capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
         return captures
     except Exception as exc:
@@ -310,12 +256,13 @@ def original_context(storage,version,fingerprint,captures,identity,manifest,*,cr
         inspect_captures(captures);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
         body=seal_first_construction(storage,key,version,fingerprint,canonical_construction_bundle(version,fingerprint,{'manifest':manifest,'captures':{n:{'body_key':f'_raw-captures/{SLUG}/{digest(b)}/{n}.body','receipt':r}for n,(b,r)in captures.items()}}))
     else:body=load_first_construction(storage,key,version,fingerprint)
-    payload=strict_json(body)['payload'];original={}
+    payload=strict_json(body)['payload'];original=RetainedCaptureView(Path(storage.local_dir))
     if set(payload)!={'manifest','captures'}or set(payload['captures'])!=set(URLS):raise EarthquakeQuarantineError('invalid_original_context')
     for n,item in payload['captures'].items():
         key=f"_raw-captures/{SLUG}/{item['receipt']['sha256']}/{n}.body"
         if item['body_key']!=key:raise EarthquakeQuarantineError('invalid_original_raw_key')
-        original[n]=(bounded_input(Path(storage.local_dir)/key,MAX_BODY_BYTES),item['receipt'])
+        bounded_input(Path(storage.local_dir)/key,MAX_BODY_BYTES)
+        original[n]=(Path(storage.local_dir)/key,item['receipt'])
     a,_=inspect_captures(original);b,_=inspect_captures(captures)
     if not a.equals(b,check_metadata=True):raise EarthquakeQuarantineError('original_source_population_drift')
     old=payload['manifest'];obj=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
@@ -449,7 +396,7 @@ def inspect_captures(captures):
         if type(count)is not int or count!=INITIAL_COUNT:raise EarthquakeQuarantineError('complete_count_drift')
     ids=id_roster(captures['ids_before'][0],INITIAL_COUNT)
     if id_roster(captures['ids_after'][0],INITIAL_COUNT)!=ids or digest(encode(ids))!=INITIAL_SOURCE_ID_SHA256:raise EarthquakeQuarantineError('original_ID_roster_drift_requires_review')
-    pages=[];geometry_hash=hashlib.sha256();single_differences=0
+    geometry_hash=hashlib.sha256();single_differences=0
     for name,url in URLS.items():
         if not name.startswith('page_'):continue
         offset=int(parse_qs(urlparse(url).query)['resultOffset'][0]);expected=ids[offset:offset+500];page=strict_json(captures[name][0])
@@ -459,7 +406,7 @@ def inspect_captures(captures):
             geometry_hash.update(encode([feature['attributes']['OBJECTID'],feature.get('geometry')]))
             v=feature['attributes']['SECOND']
             if v is not None and float(v)!=struct.unpack('<f',struct.pack('<f',v))[0]:single_differences+=1
-        pages.append(page)
     if geometry_hash.hexdigest()!='c539fd759ff2d36b849aea84123a68f533bf79e0324cac21685c57165b90d7a7':raise EarthquakeQuarantineError('native_geometry_drift_requires_review')
+    pages=(strict_json(captures[name][0])for name in URLS if name.startswith('page_'))
     table=decode_pages(pages,ids);years=[x for x in table['YEAR'].to_pylist()if x is not None];audit={'count':table.num_rows,'original_OBJECTIDs':ids,'original_event_IDs':table['ID'].to_pylist(),'countries':sorted(Counter(table['COUNTRY'].to_pylist()).items(),key=lambda x:repr(x[0])),'crs':'EPSG3857','field_count':67,'BCE_count':sum(y<0 for y in years),'unknown_years':table['YEAR'].null_count,'minimum_YEAR':min(years),'maximum_YEAR':max(years),'null_geometry_count':table['geometry'].null_count,'native_geometry_sha256':geometry_hash.hexdigest(),'SECOND_wire_to_declared_binary32_differences':single_differences,'date_semantics':'Original BCE YEAR/date/time components and DATE_STRING; no invented timestamp.','editingInfo':before.get('editingInfo'),'release_date_established':False}
     return table,audit

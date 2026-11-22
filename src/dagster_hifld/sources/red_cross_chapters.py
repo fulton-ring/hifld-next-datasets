@@ -22,7 +22,7 @@ import sqlite3
 import stat
 import tempfile
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -40,13 +40,13 @@ from shapely.geometry import mapping, shape
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
-from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_raw_capture import MemoryRequestPolicy, capture_memory_request
 
 SLUG = 'american-red-cross-chapter-1'
 SERVICE = 'https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer'
@@ -200,51 +200,16 @@ def validate_receipt(name, body, receipt):
 def acquire(storage, capture_directory=None):
     local_root(storage); captures = {}
     def fetch_one(name, url):
-        body = receipt_body = b''; pieces = {}; receipt = {}; result = None
-        try:
-            if capture_directory is not None:
-                body, error = read_input(Path(capture_directory) / (name + '.body'), MAX_BODY if name == 'features' else 1024 * 1024)
-                pieces['response.body'] = body
-                immutable(storage, f'_raw/{SLUG}/{digest(body)}/{name}.body', body)
-                if error: raise RedCrossChaptersError(error)
-                receipt_body, error = read_input(Path(capture_directory) / (name + '.receipt.json'), 65536)
-                pieces['original-receipt.prefix.body' if error else 'original-receipt.body'] = receipt_body
-                immutable(storage, f'_raw/{SLUG}/receipts/{digest(receipt_body)}.body', receipt_body)
-                if error: raise RedCrossChaptersError(error)
-                receipt = strict_json(receipt_body)
-            else:
-                wire = bytearray(); decoded = bytearray()
-                def reserve(progress):
-                    if shutil.disk_usage(local_root(storage)).free < FLOOR + len(wire) + len(decoded) + progress.reserve_bytes:
-                        raise RedCrossChaptersError('capture_reserve_before_pull_or_decode')
-                with httpx.Client(timeout=60, follow_redirects=False, headers={'Accept-Encoding': 'identity'}) as client:
-                    with client.stream('GET', url) as response:
-                        try:
-                            result = capture_http_response(response, max_wire_bytes=MAX_BODY, max_decoded_bytes=MAX_BODY if name == 'features' else 1024 * 1024,
-                                reserve=reserve, retain_wire=wire.extend, retain_decoded=decoded.extend)
-                        except (KeyboardInterrupt, SystemExit):
-                            diagnostic(storage, {'wire.body': bytes(wire), 'response.body': bytes(decoded)}, 'capture_interrupted_no_retry')
-                            raise
-                        body = bytes(decoded)
-                        pieces.update({'wire.body': bytes(wire), 'response.body': body,
-                            'pending-wire.body': result.pending_wire, 'pending-decoded.body': result.pending_decoded})
-                        if (len(wire) != result.wire_bytes_retained or digest(bytes(wire)) != result.wire_sha256
-                                or len(body) != result.decoded_bytes_retained or digest(body) != result.decoded_sha256):
-                            raise RedCrossChaptersError('capture_sink_readback_mismatch')
-                        receipt = {'requested_url': url, 'final_url': str(response.url), 'status': response.status_code,
-                            'observed_at': datetime.now(timezone.utc).isoformat(), 'bytes': len(body), 'sha256': digest(body),
-                            'complete': result.complete, 'wire_bytes': result.wire_bytes_received, 'wire_sha256': result.received_wire_sha256,
-                            'content_encoding': result.content_encoding, 'content_length': result.content_length,
-                            'capture_error': result.error_code}
-                        receipt_body = encode(receipt); pieces['receipt.json'] = receipt_body
-                        immutable(storage, f'_raw/{SLUG}/{digest(body)}/{name}.body', body)
-                        immutable(storage, f'_raw/{SLUG}/receipts/{digest(receipt_body)}.body', receipt_body)
-                        if not result.complete: raise RedCrossChaptersError(result.error_code or 'incomplete_transfer')
-            validate_receipt(name, body, receipt)
-            captures[name] = (body, receipt, receipt_body)
-        except (OSError, ValueError, TypeError, httpx.HTTPError) as exc:
-            where = diagnostic(storage, pieces, str(exc))
-            raise RedCrossChaptersError(f'{exc}; preserved:{where}') from exc
+        captures[name] = capture_memory_request(
+            url, name, policy=MemoryRequestPolicy(
+                MAX_BODY, MAX_BODY if name == "features" else 1024 * 1024, FLOOR, f"_raw/{SLUG}", RedCrossChaptersError),
+            space_root=lambda: local_root(storage),
+            write=lambda key, value: immutable(storage, key, value), encode=encode,
+            read=read_input, parse_receipt=strict_json,
+            validate=lambda body, receipt: validate_receipt(name, body, receipt),
+            diagnostic=lambda pieces, reason: diagnostic(storage, pieces, reason),
+            replay_root=Path(capture_directory) if capture_directory is not None else None,
+        )
     capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
     return captures
 
