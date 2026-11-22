@@ -740,8 +740,7 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
                 if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
                     raise ValueError("source_seed_id_roster_missing_or_invalid")
                 del seed_body
-                for name, url in _source_metadata_urls():
-                    (yield (name, url))
+                yield from ((name, url) for name, url in _source_metadata_urls())
                 pinned_ids, layer_before = _validate_before_page_requests(capture_root, receipts)
                 _pagination_mode, page_plan = _page_plan(pinned_ids, layer_before)
                 # Native URL-length limits may produce unequal object-ID chunks.
