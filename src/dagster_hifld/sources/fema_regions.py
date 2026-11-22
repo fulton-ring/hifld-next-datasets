@@ -34,6 +34,7 @@ import pyogrio
 import pyproj
 import shapely
 from shapely.geometry import shape
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle,load_first_construction,seal_first_construction
@@ -518,8 +519,8 @@ def capture_live_observation(storage,captures):
     folder=checked_path(storage,'_observations/'+SLUG+'/'+uuid4().hex);folder.mkdir(parents=True)
     names=['official-layer','source-count','source-ids','source-attributes']+['source-oid-'+str(x)for x in range(11,21)]+['official-layer-after','source-count-after','source-ids-after','source-attributes-after']
     observed=dict(captures)
-    for name in names:
-        pin=PINS[name];start=datetime.now(timezone.utc).isoformat();path=folder/(name+'.body')
+    def fetch(name,pin):
+        start=datetime.now(timezone.utc).isoformat();path=folder/(name+'.body')
         progress={'requested_url':pin['requested_url'],'started_at':start,'complete':False,
             'trust':'untrusted_capture_in_progress','body_path':path.name,'bounded_read_chunk_limit':HTTP_CHUNK_LIMIT}
         # Establish untrusted status before any read, including interruption.
@@ -538,8 +539,9 @@ def capture_live_observation(storage,captures):
                     'bytes':len(body),'wire_bytes':count,'sha256':digest(body),'complete':True,
                     'headers':{k:v for k,v in response.headers.items()if k.lower()in['content-type','content-length','etag','last-modified','date','content-encoding']}}
             validate_capture(name,body,receipt)
-            (folder/(name+'.receipt.json')).write_bytes(encode(receipt));observed[name]=(path,receipt)
+            (folder/(name+'.receipt.json')).write_bytes(encode(receipt))
             (folder/(name+'.failed-receipt.json')).unlink()
+            return path,receipt
         except BaseException as exc:
             # Do not call guarded storage helpers here: that could refuse to
             # preserve a consumed chunk just because the floor was crossed.
@@ -548,6 +550,8 @@ def capture_live_observation(storage,captures):
                 persisted_sha256=sha256_file(path)if path.exists()else None)
             (folder/(name+'.failed-receipt.json')).write_bytes(encode(progress))
             raise
+    observed.update(capture_request_sequence({}, [(name,PINS[name])for name in names],
+                                             lambda captures:(), fetch))
     return observed
 
 

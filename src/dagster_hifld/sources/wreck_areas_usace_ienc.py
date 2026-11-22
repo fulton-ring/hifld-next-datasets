@@ -387,7 +387,8 @@ def capture_wreck_areas_usace_ienc(storage: StagingStorageResource, *, version: 
                         raise ValueError("source_seed_id_population_drift")
                     return ids
                 captures = RetainedCaptureView(root, captures)
-                capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                # The native roster acquires the population in one full-ID document.
+                capture_layer(LAYER_URL, root, CAPTURE_MAX_BYTES, 1, client=client,
                     captures=captures, seed_name='ids_before', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
                     validate_seed=validate_seed, roster=_capture_urls,
                     fetch=lambda client, url, root, name: _capture(client, url, root, name),

@@ -256,10 +256,19 @@ def capture_fuds_public_properties(storage: StagingStorageResource, *, version: 
                     raise ValueError("source_seed_id_population_drift")
                 return sorted(seed)
             captures = RetainedCaptureView(capture_root, captures)
-            capture_layer(LAYER_URL, capture_root, 192_000_000, PAGE_SIZE, client=client,
+            def fetch(client, url, root, name):
+                per_response = MAX_RESPONSE_BYTES
+                if name != 'ids_seed':
+                    retained = sum(int(receipt['bytes']) + int(receipt['wire_bytes'])
+                                   for receipt in captures.receipts.values())
+                    per_response = min(MAX_RESPONSE_BYTES, (MAX_TOTAL_CAPTURE_BYTES - retained) // 2)
+                    if per_response <= 0:
+                        raise ValueError("source_capture_total_byte_budget_exhausted")
+                return capture_page(client, url, root, name, page_max_bytes=per_response)
+            capture_layer(LAYER_URL, capture_root, MAX_TOTAL_CAPTURE_BYTES, PAGE_SIZE, client=client,
                 captures=captures, seed_name='ids_seed', seed_url=seed_url,
                 validate_seed=validate_seed, roster=_feature_urls,
-                fetch=lambda client, url, root, name: capture_page(client, url, capture_root, name, page_max_bytes=per_response),
+                fetch=fetch,
                 on_validation_error=_validate_captures)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:

@@ -749,7 +749,7 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
                     schedule=PAGE_RETRY_BACKOFF_SECONDS,
                     retryable=lambda exc, attempt: isinstance(exc, ValueError) and str(exc).startswith("incomplete_source_capture:"),
                     preserve_failed=lambda exc, attempt: quarantine_retry_response(storage, capture_root,
-                        DATASET_SLUG, version, name, type(exc).__name__)),
+                        DATASET_SLUG, capture_token, name, type(exc).__name__)),
                 capture_root=capture_root, byte_budget=MAX_CAPTURE_TOTAL_BYTES)
         _plain_fields, audit, parquet = _build_candidate(capture_root, receipts)
     except Exception as exc:
