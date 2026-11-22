@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import httpx
@@ -138,3 +139,32 @@ class FamilyFetchTests(unittest.TestCase):
                         max_capture_bytes=max_total, max_body_bytes=max_body,
                         response_limit_codes={'wire_limit_exceeded', 'decoded_limit_exceeded'})
                 self.assertFalse(json.loads((root / 'page.receipt.json').read_bytes())['complete_body'])
+
+    def test_retry_after_date_and_invalid_header_keep_bounded_native_fallbacks(self):
+        fixed = datetime(2015, 10, 21, 7, 27, 56, tzinfo=timezone.utc)
+        cases = [('Wed, 21 Oct 2015 07:28:00 GMT', 4.0),
+                 ('Wed, 21 Oct 2015 07:28:00', 4.0), ('invalid-date', 1.0)]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for header, expected in cases:
+                with self.subTest(header=header):
+                    (root / 'page.receipt.json').write_text(json.dumps({'status': 429, 'retry_after': header}))
+                    with patch.object(shared, 'datetime') as clock:
+                        clock.now.return_value = fixed
+                        self.assertEqual(shared._retry_after_wait(root, 'page'), expected)
+            (root / 'page.receipt.json').write_text('not JSON')
+            self.assertEqual(shared._retry_after_wait(root, 'page'), 0.25)
+
+    def test_exhausted_bracket_refusals_keep_last_witness_and_return_native_error_body(self):
+        with tempfile.TemporaryDirectory() as tmp, httpx.Client(transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, stream=httpx.ByteStream(b'{"objectIds":null}')))) as client:
+            root = Path(tmp)
+            with patch.object(shared.time, 'sleep') as wait:
+                body, receipt = shared.capture_document_retry(client, 'https://producer.test/query', root,
+                    'ids_before', attempts=2, max_bytes=10000, base_delay=5,
+                    complete=shared.bracket_document_complete)
+            self.assertEqual(body, b'{"objectIds":null}')
+            self.assertEqual(receipt['status'], 200)
+            self.assertEqual(len(list(root.glob('ids_before.error-*.body'))), 2)
+            self.assertFalse((root / 'ids_before.body').exists())
+            wait.assert_called_once_with(0)

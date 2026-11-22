@@ -629,14 +629,14 @@ def fetch_capture_get(client: httpx.Client, url: str, root: Path, name: str, bud
         raise
 
 
-def _retry_after_wait(root: Path, name: str) -> float:
+def _retry_after_wait(root: Path, name: str) -> float | None:
     try:
         receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
     except (OSError, ValueError):
         receipt = {}
     status = receipt.get("status")
     if status not in (None, 200, 429):
-        raise ValueError("incomplete_source_capture:" + name)
+        return None
     if status != 429:
         return 0.25
     raw_delay = receipt.get("retry_after")
@@ -695,11 +695,8 @@ def fetch_capture_retry(client: httpx.Client, url: str, root: Path, name: str, b
             if isinstance(exc, ValueError) and not str(exc).startswith("incomplete_source_capture:"):
                 raise
             if respect_retry_after:
-                try:
-                    delay = _retry_after_wait(root, attempt_name)
-                except ValueError as policy_error:
-                    if str(policy_error).startswith("incomplete_source_capture:"):
-                        raise exc
+                delay = _retry_after_wait(root, attempt_name)
+                if delay is None:
                     raise
                 time.sleep(delay)
     raise last
