@@ -5,10 +5,10 @@ Publication date and all source/baseline/contract acceptance remain unresolved.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources import candidate_transaction
 import collections
 import hashlib
 import io
-import fcntl
 import os
 import json
 import re
@@ -395,33 +395,26 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
 
 def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
     """Install one fully built local version atomically; partial builds are never discoverable."""
-    target=local_candidate_path(storage,prefix)
-    target.parent.mkdir(parents=True,exist_ok=True)
-    # Cooperating refresh processes cannot replace an existing version or race its first commit.
-    lock=target.parent/('.'+target.name+'.lock')
-    descriptor=os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1: raise CBRSQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
+    with candidate_lock(storage, prefix) as target:
         if target.exists() or target.is_symlink():
             raise CBRSQuarantineError('concurrent_or_incomplete_existing_candidate')
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
             private=StagingStorageResource(local_dir=tmp,use_local=True)
-            for name,value in payloads.items(): immutable(private,name,value)
-            immutable(private,'metadata/cbrs_map_panels_candidate_ready.json',encode(ready))
-            os.rename(tmp,target)
+            candidate_transaction.install_private_candidate(
+                Path(tmp), target, payloads.items(),
+                write_one=lambda root, name, body: immutable(private, name, body),
+                ready=lambda root: ('metadata/cbrs_map_panels_candidate_ready.json', encode(ready)))
     # Keep the tiny lock inode: unlinking permits a third process to bypass a waiter.
 
 
 
 @contextmanager
 def candidate_lock(storage: StagingStorageResource, prefix: str):
-    """Serialize lookup, validation and invalid-cache quarantine with installation."""
-    target=local_candidate_path(storage,prefix);target.parent.mkdir(parents=True,exist_ok=True)
-    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:raise CBRSQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
+    target = local_candidate_path(storage, prefix)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with candidate_transaction.lock_path(
+            target.parent / ('.' + target.name + '.lock'), error_type=CBRSQuarantineError,
+            unsafe_code='linked_candidate_lock', require_regular=False):
         yield target
 
 

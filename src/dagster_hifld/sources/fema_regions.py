@@ -5,8 +5,8 @@ All original IDs, field names/types, native mixed polygon geometry and raw bytes
 are preserved. Historical publication compatibility is a separate hard gate.
 """
 from __future__ import annotations
+from dagster_hifld.sources import candidate_transaction
 import collections
-import fcntl
 import hashlib
 import importlib.metadata
 import io
@@ -161,14 +161,13 @@ def parquet_bytes(table):
 
 @contextmanager
 def version_lock(storage, version):
-    folder = checked_path(storage,'_locks'); folder.mkdir(exist_ok=True)
+    folder = checked_path(storage, '_locks'); folder.mkdir(exist_ok=True)
     if folder.is_symlink(): raise FemaQuarantineError('linked_version_lock_directory')
-    descriptor = os.open(folder/(SLUG+'-'+version+'.lock'),os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
-    try:
-        info = os.fstat(descriptor)
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1: raise FemaQuarantineError('linked_version_lock')
-        fcntl.flock(descriptor,fcntl.LOCK_EX); local_root(storage); yield
-    finally: os.close(descriptor)
+    with candidate_transaction.lock_path(
+            folder / (SLUG + '-' + version + '.lock'), error_type=FemaQuarantineError,
+            unsafe_code='linked_version_lock'):
+        local_root(storage)
+        yield
 
 def observed_trust_loss(storage, version, fp, *, candidate=None, restored_manifest=None):
     """Remember an OBSERVED missing/invalid witness before detaching its cache.
@@ -601,19 +600,26 @@ def stage_fema_regions(storage,capture_directory,refresh_official=False):
         building=checked_path(storage,'_building/'+SLUG);building.mkdir(parents=True,exist_ok=True)
         temporary=Path(tempfile.mkdtemp(prefix='candidate-',dir=building))
         try:
-            for name,body in expected.items():
-                path=temporary/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
-            (temporary/'geopackage').mkdir();write_geopackage(table,temporary/'geopackage'/f'{SLUG}.gpkg')
-            reconcile_native(temporary,table)
-            objects={str(p.relative_to(temporary)):{'sha256':sha256_file(p),'bytes':p.stat().st_size}for p in temporary.rglob('*')if p.is_file()}
-            (temporary/READY).write_bytes(encode({'version':version,'processing_fingerprint':fp,'approved':False,'objects':objects}))
-            bundle=canonical_construction_bundle(version,fp,{'manifest':manifest,'captures':{n:{
-                'raw_body_key':f'_raw-captures/{SLUG}/{p["sha256"]}/{n}.body',
-                'raw_receipt_key':f'_raw-captures/{SLUG}/{p["sha256"]}/{n}.body.receipt-'+digest(encode(captures[n][1]))+'.json',
-                'receipt':captures[n][1]}for n,p in PINS.items()}})
-            if seal_first_construction(storage,key,version,fp,bundle)!=bundle:
-                raise FemaQuarantineError('concurrent_original_context_differs')
-            target.parent.mkdir(parents=True,exist_ok=True);os.rename(temporary,target)
+            def ready_marker(private):
+                (private/'geopackage').mkdir()
+                write_geopackage(table, private/'geopackage'/f'{SLUG}.gpkg')
+                reconcile_native(private, table)
+                objects = {str(p.relative_to(private)): {'sha256': sha256_file(p), 'bytes': p.stat().st_size}
+                           for p in private.rglob('*') if p.is_file()}
+                return READY, encode({'version': version, 'processing_fingerprint': fp,
+                                      'approved': False, 'objects': objects})
+            def anchor():
+                bundle=canonical_construction_bundle(version,fp,{'manifest':manifest,'captures':{n:{
+                    'raw_body_key':f'_raw-captures/{SLUG}/{p["sha256"]}/{n}.body',
+                    'raw_receipt_key':f'_raw-captures/{SLUG}/{p["sha256"]}/{n}.body.receipt-'+digest(encode(captures[n][1]))+'.json',
+                    'receipt':captures[n][1]}for n,p in PINS.items()}})
+                candidate_transaction.anchor_first_construction(
+                    storage, key, version, fp, bundle, original=False,
+                    error_type=FemaQuarantineError, changed_code='concurrent_original_context_differs',
+                    require_same_result=True)
+            candidate_transaction.install_private_candidate(
+                temporary, target, expected.items(), write_one=candidate_transaction.write_private_bytes,
+                ready=ready_marker, anchor=anchor)
         except BaseException:
             if temporary.exists():
                 rejected=checked_path(storage,'_quarantine/'+SLUG+'/failed-private-'+uuid4().hex)

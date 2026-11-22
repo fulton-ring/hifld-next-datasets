@@ -10,8 +10,8 @@ context only; no coordinate repair, projection or replacement IDs.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources import candidate_transaction
 import collections
-import fcntl
 import hashlib
 import io
 import json
@@ -408,12 +408,8 @@ def refuse_incident(storage, version):
 @contextmanager
 def version_lock(storage, version):
     path = path_for(storage, f'_locks/{SLUG}-{version}.lock'); path.parent.mkdir(exist_ok=True)
-    descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    try:
-        info = os.fstat(descriptor)
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1: raise RedCrossChaptersError('unsafe_version_lock')
-        fcntl.flock(descriptor, fcntl.LOCK_EX); yield
-    finally: os.close(descriptor)
+    with candidate_transaction.lock_path(path, error_type=RedCrossChaptersError, unsafe_code='unsafe_version_lock'):
+        yield
 
 
 def observe_loss(storage, version, fingerprint, reason):
@@ -531,23 +527,21 @@ def stage_red_cross_chapters(storage, capture_directory=None):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with tempfile.TemporaryDirectory(prefix='.arc-chapter-private-', dir=target.parent) as tmp:
                     private = Path(tmp)
-                    for name, body in {**payloads, READY: encode(ready)}.items():
-                        path = private/name; path.parent.mkdir(parents=True, exist_ok=True)
-                        with path.open('xb') as stream:
-                            written = stream.write(body)
-                            if written != len(body): raise RedCrossChaptersError('private_short_write')
-                            stream.flush(); os.fsync(stream.fileno())
-                    validate_candidate(private, payloads, ready)
-                    payload = {'manifest': manifest, 'objects': objects, 'captures': {name: {
-                        'body_key': f'_raw/{SLUG}/{digest(value[0])}/{name}.body',
-                        'receipt_key': f'_raw/{SLUG}/receipts/{digest(value[2])}.body'} for name, value in captures.items()}}
-                    envelope = canonical_construction_bundle(version, fingerprint, payload)
-                    if original:
-                        anchored = load_first_construction(storage, state_key(version), version, fingerprint)
-                        if anchored != envelope: raise RedCrossChaptersError('original_outside_binding_changed')
-                    else: seal_first_construction(storage, state_key(version), version, fingerprint, envelope)
-                    validate_candidate(private, payloads, ready)
-                    os.rename(private, target)
+                    def anchor():
+                        payload = {'manifest': manifest, 'objects': objects, 'captures': {name: {
+                            'body_key': f'_raw/{SLUG}/{digest(value[0])}/{name}.body',
+                            'receipt_key': f'_raw/{SLUG}/receipts/{digest(value[2])}.body'} for name, value in captures.items()}}
+                        envelope = canonical_construction_bundle(version, fingerprint, payload)
+                        candidate_transaction.anchor_first_construction(
+                            storage, state_key(version), version, fingerprint, envelope,
+                            original=bool(original), error_type=RedCrossChaptersError,
+                            changed_code='original_outside_binding_changed')
+                    candidate_transaction.install_private_candidate(
+                        private, target, {**payloads, READY: encode(ready)}.items(),
+                        write_one=lambda root, name, body: candidate_transaction.write_exclusive_private_file(
+                            root, name, body, error_type=RedCrossChaptersError, short_write_code='private_short_write'),
+                        validate_before=lambda root: validate_candidate(root, payloads, ready),
+                        anchor=anchor, validate_after=lambda root: validate_candidate(root, payloads, ready))
                 reused = False
         return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'staging_prefix': prefix,
             'feature_count': table.num_rows, 'source_invalid_geometry_count': len(audit['invalid_geometry_ids']),
