@@ -15,7 +15,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
-from dagster_hifld.http_capture import CaptureDocuments
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -96,12 +96,10 @@ def _read_replay(root: Path, ids: list[int]):
         raise ValueError("capture_manifest_invalid")
     validate_capture_roster(root,set(roster)|{"capture_manifest.json"})
     if roster!=capture_roster_digests(root,exclude={"capture_manifest.json"}): raise ValueError("capture_artifact_roster_changed")
-    result={}
-    for name in sorted(names):
-        body,wire,receipt=_load_capture(root,name)
-        if receipt!=manifest["receipts"].get(name): raise ValueError("capture_receipt_manifest_mismatch:"+name)
-        result[name]=(body,receipt)
-    return result
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=dict.fromkeys(manifest["receipts"], ""), load_capture=_load_capture,
+        validate_request_identity=lambda name, receipt, url: None,
+        receipt_error="capture_receipt_manifest_mismatch")
 
 
 def _validate(captures: dict[str,tuple[bytes,dict]]):

@@ -9,6 +9,7 @@ from dagster_hifld.http_capture import (
     CaptureDocuments,
     capture_roster_digests,
     validate_retained_capture_replay,
+    validated_capture_view,
 )
 from dagster_hifld.sources.capture_common import validate_capture_request_identity
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -152,6 +153,38 @@ class ValidateRetainedCaptureReplayTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "strict_decoder_refusal"):
             CaptureDocuments(captures, ("beta",), decode=decode,
                              body_from_capture=lambda body: body)
+
+    def test_named_document_reader_preserves_mixed_document_checks(self):
+        reads = []
+        captures = {"html": (b"<html>source</html>", {}), "json": (b'{"value": 1}', {})}
+
+        def document(name):
+            reads.append(name)
+            body = captures[name][0]
+            if name == "html":
+                if not body.startswith(b"<html>"):
+                    raise ValueError("html_source_changed")
+                return body
+            return json.loads(body)
+
+        documents = CaptureDocuments(captures, load_document=document)
+        self.assertEqual(reads, ["html", "json"])
+        self.assertEqual(documents["json"], {"value": 1})
+        self.assertEqual(reads, ["html", "json", "json"])
+        captures["html"] = (b"invalid", {})
+        with self.assertRaisesRegex(ValueError, "html_source_changed"):
+            CaptureDocuments(captures, load_document=document)
+
+    def test_native_receipt_mismatch_label_is_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            _write_capture(root)
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            manifest["receipts"]["beta"]["observed_at"] = "changed"
+            with self.assertRaisesRegex(ValueError, "capture_receipt_manifest_mismatch:beta"):
+                validated_capture_view(root, receipts=manifest["receipts"], expected_urls=URLS,
+                    load_capture=_load_capture, validate_request_identity=validate_capture_request_identity,
+                    receipt_error="capture_receipt_manifest_mismatch")
 
     def test_symlinked_manifest_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

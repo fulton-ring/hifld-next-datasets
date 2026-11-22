@@ -24,7 +24,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
-from dagster_hifld.http_capture import CaptureDocuments
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
@@ -151,13 +151,14 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     names = manifest.get("artifact_names")
     if manifest.get("complete") is not True or not isinstance(names, list) or not names:
         raise ValueError("capture_manifest_invalid")
-    result = {}
-    for name in names:
+    def load(root, name):
         body, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("capture_receipt_manifest_mismatch:" + name)
-        result[name] = (body, receipt)
-    return result
+        return body, b"", receipt
+
+    return validated_capture_view(root, receipts={name: manifest["receipts"].get(name) for name in names},
+        expected_urls=dict.fromkeys(names, ""), load_capture=load,
+        validate_request_identity=lambda name, receipt, url: None,
+        receipt_error="capture_receipt_manifest_mismatch")
 
 
 def _validate_metadata(service: dict, layer: dict) -> None:

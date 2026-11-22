@@ -28,6 +28,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -193,26 +194,21 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("capture_artifact_roster_changed")
     expected_urls = _expected_capture_urls()
-    result = {}
-    for name in sorted(names):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("capture_receipt_manifest_mismatch:" + name)
-        _validate_capture_request_binding(name, receipt, expected_urls[name])
-        result[name] = (body, receipt)
-    return result
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=expected_urls, load_capture=_load_capture,
+        validate_request_identity=_validate_capture_request_binding,
+        receipt_error="capture_receipt_manifest_mismatch")
 
 
 def _docs(captures: dict[str, tuple[bytes, dict]]) -> dict:
-    parsed = {}
-    for name, (body, _receipt) in captures.items():
+    def document(name):
+        body, _receipt = captures[name]
         if name in _HTML_CAPTURE_NAMES:
             if b"<!DOCTYPE html" not in body[:200] and b"<html" not in body[:200]:
                 raise ValueError("source_html_capture_changed:" + name)
-            parsed[name] = body
-        else:
-            parsed[name] = json.loads(body)
-    return parsed
+            return body
+        return json.loads(body)
+    return CaptureDocuments(captures, load_document=document)
 
 
 def _find_webmap_layer(items: list, layer_id: str) -> dict | None:

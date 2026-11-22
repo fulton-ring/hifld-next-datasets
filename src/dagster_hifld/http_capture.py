@@ -147,10 +147,8 @@ class CaptureDocuments(Mapping):
     callbacks preserve byte-only or stricter source document contracts.
     """
     def __init__(self, captures: Mapping, names=None, *, decode=json.loads,
-                 body_from_capture=lambda value: value[0]):
-        self._captures = captures
-        self._decode = decode
-        self._body = body_from_capture
+                 body_from_capture=lambda value: value[0], load_document=None):
+        self._read = load_document or (lambda name: decode(body_from_capture(captures[name])))
         self._names = dict.fromkeys(captures if names is None else names)
         for name in self:
             self[name]
@@ -158,7 +156,7 @@ class CaptureDocuments(Mapping):
     def __getitem__(self, name):
         if name not in self._names:
             raise KeyError(name)
-        return self._decode(self._body(self._captures[name]))
+        return self._read(name)
 
     def __iter__(self):
         return iter(self._names)
@@ -175,18 +173,20 @@ class RetainedReplayView(Mapping):
     validation cannot introduce new bytes into an existing replay.
     """
     def __init__(self, root, *, receipts, expected_urls, load_capture,
-                 validate_request_identity):
+                 validate_request_identity,
+                 receipt_error="retained_capture_manifest_receipt_mismatch"):
         self._root = root
         self._receipts = copy.deepcopy(receipts)
         self._urls = dict(expected_urls)
         self._load = load_capture
         self._validate_identity = validate_request_identity
+        self._receipt_error = receipt_error
 
     def __getitem__(self, name):
         expected = self._receipts[name]
         body, _wire, receipt = self._load(self._root, name)
         if receipt != expected:
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
+            raise ValueError(self._receipt_error + ":" + name)
         self._validate_identity(name, receipt, self._urls[name])
         return body, receipt
 
@@ -201,6 +201,7 @@ def validated_capture_view(root: Path, *, receipts: Mapping[str, dict],
                            expected_urls: Mapping[str, str],
                            load_capture: Callable[[Path, str], tuple[bytes, bytes, dict]],
                            validate_request_identity: Callable[[str, Mapping[str, object], str], None],
+                           receipt_error: str = "retained_capture_manifest_receipt_mismatch",
                            ) -> Mapping[str, tuple[bytes, dict]]:
     """Check every sealed receipt before exposing a disk-backed replay view.
 
@@ -208,7 +209,8 @@ def validated_capture_view(root: Path, *, receipts: Mapping[str, dict],
     digests. Bodies are discarded after each check and never cached by the view.
     """
     view = RetainedReplayView(root, receipts=receipts, expected_urls=expected_urls,
-        load_capture=load_capture, validate_request_identity=validate_request_identity)
+        load_capture=load_capture, validate_request_identity=validate_request_identity,
+        receipt_error=receipt_error)
     for name in sorted(view):
         view[name]
     return view
