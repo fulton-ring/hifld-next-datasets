@@ -5,6 +5,7 @@ Int16/Float32/Int32/Float64 declarations control explicit physical decoding;
 original JSON numeric literals remain separately preserved without modification.
 """
 from __future__ import annotations
+from dagster_hifld.sources import candidate_transaction
 import ast
 import collections
 from contextlib import contextmanager,nullcontext
@@ -139,11 +140,9 @@ def candidate_version_lock(storage: StagingStorageResource, prefix: str):
     """One stable lock inode for lookup, validation, invalid detach and install."""
     target=local_candidate_path(storage,prefix)
     target.parent.mkdir(parents=True,exist_ok=True)
-    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:
-            raise ObservationQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
+    with candidate_transaction.lock_path(
+            target.parent / ('.' + target.name + '.lock'), error_type=ObservationQuarantineError,
+            unsafe_code='linked_candidate_lock', require_regular=False, buffered=True):
         yield target
 
 def quarantine_cached_candidate(storage: StagingStorageResource, prefix: str, reason: str, *, already_locked: bool=False) -> str | None:
@@ -607,12 +606,14 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
         if target.exists() or target.is_symlink():raise ObservationQuarantineError('concurrent_or_incomplete_existing_candidate')
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
             private=StagingStorageResource(local_dir=tmp,use_local=True)
-            for n,b in payloads.items():immutable(private,n,b)
-            immutable(private,'metadata/observations_candidate_ready.json',encode(ready))
-            original,original_manifest=original_provenance_bundle(storage,ready['version'],packs,manifest,identity,create=True)
-            if original!=packs or original_manifest!=manifest:
-                raise ObservationQuarantineError('concurrent_original_provenance_winner_retry_required')
-            os.rename(tmp,target)
+            def anchor():
+                original,original_manifest=original_provenance_bundle(storage,ready['version'],packs,manifest,identity,create=True)
+                if original!=packs or original_manifest!=manifest:
+                    raise ObservationQuarantineError('concurrent_original_provenance_winner_retry_required')
+            candidate_transaction.install_private_candidate(
+                Path(tmp), target, payloads.items(),
+                write_one=lambda root, name, body: immutable(private, name, body),
+                ready=lambda root: ('metadata/observations_candidate_ready.json', encode(ready)), anchor=anchor)
 
 
 def stage_tsunami_observations_candidate(storage: StagingStorageResource,*,capture_dir: Path|None=None) -> dict:

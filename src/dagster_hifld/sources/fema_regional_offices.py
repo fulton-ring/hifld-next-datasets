@@ -4,11 +4,11 @@ All original wire inputs, IDs, native types and EPSG4326 points are preserved.
 Region polygons are a separate dataset; no geocoding or filter to ten offices.
 """
 from __future__ import annotations
+from dagster_hifld.sources import candidate_transaction
 import collections
 import base64
 import io
 import xml.etree.ElementTree as ET
-import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -314,10 +314,10 @@ def manifest_for(captures,identity,parquet_pin):
 @contextmanager
 def candidate_lock(base,prefix):
     target=base/prefix;target.parent.mkdir(parents=True,exist_ok=True)
-    fd=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(fd,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:raise FemaOfficesQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX);yield target
+    with candidate_transaction.lock_path(
+            target.parent / ('.' + target.name + '.lock'), error_type=FemaOfficesQuarantineError,
+            unsafe_code='linked_candidate_lock', require_regular=False, buffered=True):
+        yield target
 
 def construction_record_key(version):
     return f'_construction-state/{SLUG}/{version}.json'
@@ -442,15 +442,23 @@ def stage_fema_regional_offices(storage,*,capture_dir=None):
                 pin={'sha256':sha256_file(parquet),'bytes':parquet.stat().st_size};manifest=manifest_for(captures,identity,pin)
                 # The entire private candidate is complete before first trust state
                 # is installed. A failed metadata/container build cannot bind history.
-                for name,body in source_payloads(captures,identity,audit,manifest,table).items():(private/name).parent.mkdir(parents=True,exist_ok=True);(private/name).write_bytes(body)
-                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'capture_fingerprint':capture_hash,'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
-                (private/READY).write_bytes(encode(ready));verify_outputs(private,table)
-                captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
-                # An existing complete outside witness returns original receipts.
-                # Rebuild only the private candidate from those exact originals.
-                for name,body in source_payloads(captures,identity,audit,manifest,table).items():(private/name).write_bytes(body)
-                ready['objects']={str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY}
-                (private/READY).write_bytes(encode(ready));verify_outputs(private,table);os.rename(private,target)
+                def ready_marker(private, *, final=False):
+                    ready = {'version': version, 'approved': False, 'processing_fingerprint': fingerprint,
+                             'capture_fingerprint': capture_hash,
+                             'objects': candidate_transaction.private_inventory(private, exclude={READY} if final else ())}
+                    return READY, encode(ready)
+                def anchor():
+                    nonlocal captures, manifest
+                    captures, manifest = original_bundle(
+                        storage, version, captures, identity, manifest, create=True)
+                candidate_transaction.install_private_candidate(
+                    private, target, source_payloads(captures, identity, audit, manifest, table).items(),
+                    write_one=candidate_transaction.write_private_bytes,
+                    ready=ready_marker, write_ready=lambda root, name, body: candidate_transaction.write_private_bytes(root, name, body, create_parents=False),
+                    validate_before=lambda private: verify_outputs(private, table), anchor=anchor,
+                    rewrite_objects=lambda: source_payloads(captures, identity, audit, manifest, table).items(),
+                    write_replacement=lambda root, name, body: candidate_transaction.write_private_bytes(root, name, body, create_parents=False), ready_after=lambda private: ready_marker(private, final=True),
+                    validate_after=lambda private: verify_outputs(private, table))
         return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
     except (ValueError,OSError,KeyError,TypeError,RuntimeError,sqlite3.Error,shapely.errors.GEOSException) as exc:
         retained=retain_failure(storage,captures,str(exc));raise FemaOfficesQuarantineError(str(exc)+'; retained:'+retained) from exc

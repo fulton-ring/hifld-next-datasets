@@ -6,11 +6,11 @@ Pinned drift quarantines; historical published IDs remain separately preserved.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources import candidate_transaction
 import collections
 import hashlib
 import importlib.metadata
 import io
-import fcntl
 import os
 import json
 import platform
@@ -494,11 +494,9 @@ def candidate_version_lock(storage: StagingStorageResource, prefix: str):
     """One stable lock inode for lookup, validation, invalid detach and install."""
     target=local_candidate_path(storage,prefix)
     target.parent.mkdir(parents=True,exist_ok=True)
-    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:
-            raise DartQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
+    with candidate_transaction.lock_path(
+            target.parent / ('.' + target.name + '.lock'), error_type=DartQuarantineError,
+            unsafe_code='linked_candidate_lock', require_regular=False, buffered=True):
         yield target
 
 
@@ -509,14 +507,16 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
             raise DartQuarantineError('concurrent_or_incomplete_existing_candidate')
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
             private=StagingStorageResource(local_dir=tmp,use_local=True)
-            for name,value in payloads.items(): immutable(private,name,value)
-            immutable(private,'metadata/current_dart_candidate_ready.json',encode(ready))
-            captures={name:(payloads[f'raw/captures/{name}.body'],strict_json(payloads[f'raw/captures/{name}.receipt.json'])) for name in URLS}
-            manifest=strict_json(payloads['metadata/source_manifest.json'])
-            original_captures,original_manifest=original_provenance_bundle(storage,ready['version'],captures,manifest,strict_json(payloads['metadata/processing_identity.json']),create=True)
-            if original_captures!=captures or original_manifest!=manifest:
-                raise DartQuarantineError('concurrent_original_construction_bundle_changed_retry_with_original')
-            os.rename(tmp,target)
+            def anchor():
+                captures={name:(payloads[f'raw/captures/{name}.body'],strict_json(payloads[f'raw/captures/{name}.receipt.json'])) for name in URLS}
+                manifest=strict_json(payloads['metadata/source_manifest.json'])
+                original_captures,original_manifest=original_provenance_bundle(storage,ready['version'],captures,manifest,strict_json(payloads['metadata/processing_identity.json']),create=True)
+                if original_captures!=captures or original_manifest!=manifest:
+                    raise DartQuarantineError('concurrent_original_construction_bundle_changed_retry_with_original')
+            candidate_transaction.install_private_candidate(
+                Path(tmp), target, payloads.items(),
+                write_one=lambda root, name, body: immutable(private, name, body),
+                ready=lambda root: ('metadata/current_dart_candidate_ready.json', encode(ready)), anchor=anchor)
 
 
 def quarantine_cached_candidate(storage: StagingStorageResource, prefix: str, reason: str, *, already_locked: bool=False) -> str | None:

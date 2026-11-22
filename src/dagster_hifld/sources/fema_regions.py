@@ -607,8 +607,7 @@ def stage_fema_regions(storage,capture_directory,refresh_official=False):
                 (private/'geopackage').mkdir()
                 write_geopackage(table, private/'geopackage'/f'{SLUG}.gpkg')
                 reconcile_native(private, table)
-                objects = {str(p.relative_to(private)): {'sha256': sha256_file(p), 'bytes': p.stat().st_size}
-                           for p in private.rglob('*') if p.is_file()}
+                objects = candidate_transaction.private_inventory(private, with_bytes=True)
                 return READY, encode({'version': version, 'processing_fingerprint': fp,
                                       'approved': False, 'objects': objects})
             def anchor():
@@ -622,7 +621,9 @@ def stage_fema_regions(storage,capture_directory,refresh_official=False):
                     require_same_result=True)
             candidate_transaction.install_private_candidate(
                 temporary, target, expected.items(), write_one=candidate_transaction.write_private_bytes,
-                ready=ready_marker, anchor=anchor)
+                ready=ready_marker,
+                write_ready=lambda root, name, body: candidate_transaction.write_private_bytes(
+                    root, name, body, create_parents=False), anchor=anchor)
         except BaseException:
             if temporary.exists():
                 rejected=checked_path(storage,'_quarantine/'+SLUG+'/failed-private-'+uuid4().hex)

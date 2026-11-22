@@ -5,11 +5,11 @@ No baseline/source/contract or changed published mapping is approved.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources import candidate_transaction
 import collections
 import math
 import urllib.parse
 import shutil
-import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -472,8 +472,7 @@ def stage_ferry_routes(storage,*,capture_dir=None):
             immutable(storage,key,body);immutable(storage,key+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt));depot[name]=base/key
         table,audit=inspect_originals(captures)
         locks=base/'_locks';locks.mkdir(exist_ok=True);lockpath=locks/(SLUG+'.lock')
-        with lockpath.open('a+b') as lock:
-            fcntl.flock(lock,fcntl.LOCK_EX)
+        with candidate_transaction.append_lock_path(lockpath):
             binding=base/f'_source-provenance/{SLUG}/{fingerprint}'
             if root.exists():
                 invalid_bundle=False
@@ -517,14 +516,17 @@ def stage_ferry_routes(storage,*,capture_dir=None):
                 write_native_gpkg(table,temp/'geopackage'/f'{SLUG}.gpkg')
                 pq.write_table(expected_parquet_table(table),temp/'geoparquet/ferry-routes-1.parquet',compression='zstd')
                 reconcile_outputs(temp,table)
-                for name,value in source_payloads(captures,identity,table,audit,manifest).items():
-                    (temp/name).parent.mkdir(parents=True,exist_ok=True);(temp/name).write_bytes(value)
-                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p) for p in temp.rglob('*') if p.is_file()}}
-                (temp/READY).write_bytes(encode(ready))
-                # Only a fully verified private construction can establish a
-                # first anchor. Existing caches can never recreate a lost one.
-                original_provenance_bundle(storage,fingerprint,captures,identity,manifest,create=True)
-                root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+                def ready_marker(private):
+                    ready = {'version': version, 'approved': False, 'processing_fingerprint': fingerprint,
+                             'objects': candidate_transaction.private_inventory(private)}
+                    return READY, encode(ready)
+                candidate_transaction.install_private_candidate(
+                    temp, root, source_payloads(captures, identity, table, audit, manifest).items(),
+                    write_one=candidate_transaction.write_private_bytes, ready=ready_marker,
+                    write_ready=lambda root, name, body: candidate_transaction.write_private_bytes(
+                        root, name, body, create_parents=False),
+                    anchor=lambda: original_provenance_bundle(
+                        storage, fingerprint, captures, identity, manifest, create=True))
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':964,'reused':False}
     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,shapely.errors.GEOSException) as exc:
         where=quarantine(storage,captures,str(exc))

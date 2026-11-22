@@ -116,6 +116,49 @@ class PrivateCandidateTransactionTests(unittest.TestCase):
             self.assertEqual(calls, ['validate', 'anchor', 'validate'])
             self.assertFalse(target.exists())
 
+    def test_original_winner_rewrites_private_objects_before_second_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory); private = base / 'private'; private.mkdir()
+            target = base / 'target'; state = {'body': b'observed'}; calls = []
+            def ready(root):
+                return 'ready', state['body']
+            def validate_before(root):
+                self.assertEqual((root / 'native').read_bytes(), b'observed')
+                self.assertEqual((root / 'ready').read_bytes(), b'observed')
+                calls.append('before')
+            def anchor():
+                self.assertFalse(target.exists())
+                state['body'] = b'original'
+                calls.append('anchor')
+            def validate_after(root):
+                self.assertEqual((root / 'native').read_bytes(), b'original')
+                self.assertEqual((root / 'ready').read_bytes(), b'original')
+                calls.append('after')
+            transaction.install_private_candidate(
+                private, target, [('native', state['body'])],
+                write_one=transaction.write_private_bytes, ready=ready,
+                validate_before=validate_before, anchor=anchor,
+                rewrite_objects=lambda: [('native', state['body'])],
+                ready_after=ready, validate_after=validate_after)
+            self.assertEqual(calls, ['before', 'anchor', 'after'])
+            self.assertEqual((target / 'native').read_bytes(), b'original')
+            self.assertEqual((target / 'ready').read_bytes(), b'original')
+
+    def test_rewrite_failure_retains_anchor_and_never_exposes_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory); private = base / 'private'; private.mkdir()
+            target = base / 'target'; anchored = []
+            def write_replacement(root, name, body):
+                raise ValueError('original_private_incomplete')
+            with self.assertRaisesRegex(ValueError, 'original_private_incomplete'):
+                transaction.install_private_candidate(
+                    private, target, [('native', b'observed')], write_one=transaction.write_private_bytes,
+                    anchor=lambda: anchored.append(True), rewrite_objects=lambda: [('native', b'original')],
+                    write_replacement=write_replacement)
+            self.assertEqual(anchored, [True])
+            self.assertFalse(target.exists())
+            self.assertEqual((private / 'native').read_bytes(), b'observed')
+
     def test_ready_is_written_last_and_native_artifacts_survive_exactly(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory); private = base / 'private'; private.mkdir()

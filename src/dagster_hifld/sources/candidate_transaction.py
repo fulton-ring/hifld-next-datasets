@@ -14,6 +14,15 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from dagster_hifld.construction_state import load_first_construction, seal_first_construction
+from dagster_hifld.validation import sha256_file
+
+
+@contextmanager
+def append_lock_path(path: Path):
+    """Keep the native append-file flock protocol for its existing callers."""
+    with path.open('a+b') as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        yield
 
 
 def _acquire_lock(handle, *, error_type: type[ValueError], unsafe_code: str,
@@ -46,9 +55,10 @@ def lock_path(path: Path, *, error_type: type[ValueError], unsafe_code: str,
             os.close(descriptor)
 
 
-def write_private_bytes(root: Path, name: str, body: bytes) -> None:
+def write_private_bytes(root: Path, name: str, body: bytes, *, create_parents: bool = True) -> None:
     path = root / name
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if create_parents:
+        path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(body)
 
 
@@ -62,6 +72,17 @@ def write_exclusive_private_file(root: Path, name: str, body: bytes, *,
             raise error_type(short_write_code)
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def write_verified_private_bytes(root: Path, name: str, body: bytes, *,
+                                 readback: Callable[[Path, str], bytes],
+                                 error_type: type[ValueError], error_code: str,
+                                 create_parents: bool = False) -> None:
+    path = root / name
+    if create_parents:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    if path.write_bytes(body) != len(body) or readback(root, name) != body:
+        raise error_type(error_code)
 
 
 def write_checked_private_file(root: Path, name: str, body: bytes, *,
@@ -100,10 +121,29 @@ def anchor_first_construction(storage, key: str, version: str, fingerprint: str,
             raise error_type(changed_code)
 
 
+def private_inventory(root: Path, *, exclude: Iterable[str] = (), with_bytes: bool = False) -> dict:
+    """Describe the completed private files using the caller's native marker shape."""
+    excluded = set(exclude)
+    objects = {}
+    for path in root.rglob('*'):
+        if not path.is_file():
+            continue
+        name = str(path.relative_to(root))
+        if name in excluded:
+            continue
+        digest = sha256_file(path)
+        objects[name] = {'sha256': digest, 'bytes': path.stat().st_size} if with_bytes else digest
+    return objects
+
+
 def install_private_candidate(
     private: Path, target: Path, objects: Iterable[tuple[str, bytes]], *,
     write_one: Callable[[Path, str, bytes], None],
     ready: Callable[[Path], tuple[str, bytes]] | None = None,
+    write_ready: Callable[[Path, str, bytes], None] | None = None,
+    rewrite_objects: Callable[[], Iterable[tuple[str, bytes]]] | None = None,
+    write_replacement: Callable[[Path, str, bytes], None] | None = None,
+    ready_after: Callable[[Path], tuple[str, bytes]] | None = None,
     validate_before: Callable[[Path], None] | None = None,
     anchor: Callable[[], None] | None = None,
     validate_after: Callable[[Path], None] | None = None,
@@ -113,11 +153,17 @@ def install_private_candidate(
         write_one(private, name, body)
     if ready is not None:
         name, body = ready(private)
-        write_one(private, name, body)
+        (write_ready or write_one)(private, name, body)
     if validate_before is not None:
         validate_before(private)
     if anchor is not None:
         anchor()
+    if rewrite_objects is not None:
+        for name, body in rewrite_objects():
+            (write_replacement or write_one)(private, name, body)
+    if ready_after is not None:
+        name, body = ready_after(private)
+        (write_ready or write_one)(private, name, body)
     if validate_after is not None:
         validate_after(private)
     target.parent.mkdir(parents=True, exist_ok=True)

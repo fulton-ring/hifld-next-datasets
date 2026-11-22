@@ -4,7 +4,7 @@ All67 original attributes, distinct IDs, BCE/date components, physical types,
 literal strings/nulls and native EPSG3857 Point WKB remain preserved.
 """
 from __future__ import annotations
-import fcntl
+from dagster_hifld.sources import candidate_transaction
 import hashlib
 import importlib.metadata
 import json
@@ -166,17 +166,9 @@ def record_observed_loss(storage,version,fingerprint,reason):
     seal_first_construction(storage,key,version,fingerprint,body)
 
 
-def write_private(root,name,body):
-    path=root/name;path.parent.mkdir(parents=True,exist_ok=True)
-    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
-    try:
-        info=os.fstat(descriptor)
-        if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise EarthquakeQuarantineError('private_write_alias_or_special_file_refused')
-        os.ftruncate(descriptor,0)
-        if os.write(descriptor,body)!=len(body):raise EarthquakeQuarantineError('incomplete_private_write:'+name)
-        os.fsync(descriptor)
-    finally:os.close(descriptor)
-    if candidate_bytes(root,name)!=body:raise EarthquakeQuarantineError('incomplete_private_write:'+name)
+def write_private(root, name, body):
+    candidate_transaction.write_checked_private_file(
+        root, name, body, readback=candidate_bytes, error_type=EarthquakeQuarantineError)
 
 
 def validate_receipt(name,body,receipt):
@@ -299,10 +291,10 @@ def stage_significant_earthquakes(storage,*,capture_dir=None):
         where=quarantine(storage,captures,str(exc));raise EarthquakeQuarantineError('source_drift_quarantined:'+where)from exc
     identity=processing_identity();fingerprint=digest(encode(identity));version='v0.0.0-draft-noaa-earthquakes-'+fingerprint[:16]
     base=Path(storage.local_dir).absolute();prefix=f'{SLUG}/{SLUG}/{version}';root=base/prefix;locks=base/'_locks';locks.mkdir(exist_ok=True)
-    descriptor=os.open(locks/(SLUG+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b')as lock:
-        if os.fstat(lock.fileno()).st_nlink!=1:raise EarthquakeQuarantineError('linked_lock')
-        fcntl.flock(lock,fcntl.LOCK_EX);refuse_observed_loss(storage,version)
+    with candidate_transaction.lock_path(
+            locks / (SLUG + '.lock'), error_type=EarthquakeQuarantineError, unsafe_code='linked_lock',
+            require_regular=False, buffered=True):
+        refuse_observed_loss(storage, version)
         # A private deterministic output provides the pin before any trust seal.
         build=base/'_building'/SLUG;build.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='candidate-',dir=build)as temporary:
@@ -323,10 +315,16 @@ def stage_significant_earthquakes(storage,*,capture_dir=None):
                     except Exception as exc:
                         q=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);q.parent.mkdir(parents=True,exist_ok=True);os.rename(root,q);raise EarthquakeQuarantineError('invalid_cache_moved_intact:'+str(q))from exc
                     return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'source_null_geometry_count':audit['null_geometry_count'],'reused':True}
-            for n,b in source_payloads(captures,identity,audit,manifest).items():write_private(temp,n,b)
-            ready={'approved':False,'version':version,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};write_private(temp,READY,encode(ready));validate_candidate(temp,table,identity,captures,audit,manifest,version)
-            captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest,create=True)
-            validate_candidate(temp,table,identity,captures,audit,manifest,version);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+            def ready_marker(private):
+                ready = {'approved': False, 'version': version, 'processing_fingerprint': fingerprint, 'objects': candidate_transaction.private_inventory(private)}
+                return READY, encode(ready)
+            def anchor():
+                nonlocal captures, manifest
+                captures, manifest = original_context(storage, version, fingerprint, captures, identity, manifest, create=True)
+            candidate_transaction.install_private_candidate(
+                temp, root, source_payloads(captures, identity, audit, manifest).items(), write_one=write_private,
+                ready=ready_marker, validate_before=lambda private: validate_candidate(private, table, identity, captures, audit, manifest, version),
+                anchor=anchor, validate_after=lambda private: validate_candidate(private, table, identity, captures, audit, manifest, version))
     return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'source_null_geometry_count':audit['null_geometry_count'],'reused':False}
 
 

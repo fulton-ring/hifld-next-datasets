@@ -374,8 +374,7 @@ def stage_epa_regions_common(storage,*,capture_dir=None,dataset=REGIONS_IDENTITY
                     return {'dataset_slug':dataset.slug,'file_slug':dataset.slug,'version':version,'feature_count':table.num_rows,'source_null_geometry_count':audit['null_geometry_count'],'source_invalid_geometry_count':audit['invalid_geometry_count'],'reused':True}
             def ready_marker(private):
                 ready = {'approved': False, 'version': version, 'processing_fingerprint': fingerprint,
-                         'objects': {str(p.relative_to(private)): sha256_file(p)
-                                     for p in private.rglob('*') if p.is_file()}}
+                         'objects': candidate_transaction.private_inventory(private)}
                 return dataset.ready_name, encode(ready)
             def anchor():
                 nonlocal captures, manifest

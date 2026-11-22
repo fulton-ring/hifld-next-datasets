@@ -1,10 +1,10 @@
 """Complete official NOAA tsunami-capable tide-station draft; no release accepted."""
 from __future__ import annotations
+from dagster_hifld.sources import candidate_transaction
 import collections
 import math
 import urllib.parse
 import shutil
-import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -347,8 +347,7 @@ def stage_tide_stations(storage,*,capture_dir=None):
             key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body';immutable(storage,key,body);immutable(storage,key+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt))
         record=f'_construction-state/{SLUG}/{fingerprint}.json';record_path=base/record
         locks=base/'_locks';locks.mkdir(exist_ok=True)
-        with(locks/(SLUG+'.lock')).open('a+b')as lock:
-            fcntl.flock(lock,fcntl.LOCK_EX)
+        with candidate_transaction.append_lock_path(locks / (SLUG + '.lock')):
             has_history=record_path.exists()or Path(str(record_path)+'.first-construction.json').exists()or Path(str(record_path)+'.evidence').exists()
             if root.exists():
                 try:
@@ -363,18 +362,28 @@ def stage_tide_stations(storage,*,capture_dir=None):
             root.parent.mkdir(parents=True,exist_ok=True)
             with tempfile.TemporaryDirectory(prefix='.private-tsunami-tide-',dir=root.parent)as tmp:
                 private=Path(tmp);values=source_payloads(captures,identity,table,audit,manifest)
-                for name,body in values.items():path=private/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
-                (private/'geopackage').mkdir();(private/'geoparquet').mkdir();write_native_gpkg(table,private/'geopackage'/f'{SLUG}.gpkg');pq.write_table(expected_parquet_table(table),private/'geoparquet'/f'{SLUG}.parquet',compression='zstd',version='2.6')
-                reconcile_outputs(private,table)
-                roster={str(p.relative_to(private)):sha256_file(p)for p in private.rglob('*')if p.is_file()}
-                (private/READY).write_bytes(encode({'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':roster}))
-                # Complete private file roster and bytes precede the shared
-                # write-once first-state CAS/marker/alias protocol.
-                assert all(sha256_file(private/name)==pin for name,pin in roster.items())
-                original,original_manifest=original_bundle(storage,record,version,identity,create=(captures,manifest))
-                if encode(original_manifest)!=encode(manifest)or any(original[n][0]!=captures[n][0]or encode(original[n][1])!=encode(captures[n][1])for n in URLS):raise TideStationQuarantineError('first_construction_winner_differs')
-                if root.exists():raise TideStationQuarantineError('concurrent_candidate_winner_preserved')
-                os.rename(private,root)
+                roster = {}
+                def ready_marker(private):
+                    (private/'geopackage').mkdir(); (private/'geoparquet').mkdir()
+                    write_native_gpkg(table, private/'geopackage'/f'{SLUG}.gpkg')
+                    pq.write_table(expected_parquet_table(table), private/'geoparquet'/f'{SLUG}.parquet',
+                                   compression='zstd', version='2.6')
+                    reconcile_outputs(private, table)
+                    roster.update(candidate_transaction.private_inventory(private))
+                    return READY, encode({'version': version, 'approved': False,
+                                          'processing_fingerprint': fingerprint, 'objects': roster})
+                def anchor():
+                    # Complete private file roster and bytes precede the shared
+                    # write-once first-state CAS/marker/alias protocol.
+                    assert all(sha256_file(private/name)==pin for name,pin in roster.items())
+                    original,original_manifest=original_bundle(storage,record,version,identity,create=(captures,manifest))
+                    if encode(original_manifest)!=encode(manifest)or any(original[n][0]!=captures[n][0]or encode(original[n][1])!=encode(captures[n][1])for n in URLS):raise TideStationQuarantineError('first_construction_winner_differs')
+                    if root.exists():raise TideStationQuarantineError('concurrent_candidate_winner_preserved')
+                candidate_transaction.install_private_candidate(
+                    private, root, values.items(), write_one=candidate_transaction.write_private_bytes,
+                    ready=ready_marker,
+                    write_ready=lambda root, name, body: candidate_transaction.write_private_bytes(
+                        root, name, body, create_parents=False), anchor=anchor)
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':374,'approved':False,'reused':False}
     except(ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error)as exc:
         where=quarantine(storage,captures,str(exc));raise TideStationQuarantineError(f'{exc}; retained:{where}')from exc

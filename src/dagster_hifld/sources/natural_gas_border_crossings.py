@@ -4,13 +4,13 @@ No filtering, source substitution acceptance, casts, ID mapping or publication.
 All native attributes/IDs/points and separate pinned US51 baselines survive.
 """
 from __future__ import annotations
+from dagster_hifld.sources import candidate_transaction
 import collections
 import shutil
 from dataclasses import asdict
 from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.http_capture import capture_http_response
 import io
-import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -343,10 +343,10 @@ def manifest_for(captures,identity,parquet_pin):
 @contextmanager
 def candidate_lock(base,prefix):
     target=base/prefix;target.parent.mkdir(parents=True,exist_ok=True)
-    fd=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(fd,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:raise NaturalGasCrossingsQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX);yield target
+    with candidate_transaction.lock_path(
+            target.parent / ('.' + target.name + '.lock'), error_type=NaturalGasCrossingsQuarantineError,
+            unsafe_code='linked_candidate_lock', require_regular=False, buffered=True):
+        yield target
 
 def construction_record_key(version):
     return f'_construction-state/{SLUG}/{version}.json'
@@ -395,9 +395,11 @@ def source_payloads(captures,identity,audit,manifest,table):
     for name,(body,receipt) in captures.items():values['raw/captures/'+name+'.body']=body;values['raw/captures/'+name+'.receipt.json']=encode(receipt)
     return values
 
-def checked_ready_write(path,body):
-    if path.write_bytes(body)!=len(body) or bounded_input(path,2*1024*1024)!=body:
-        raise NaturalGasCrossingsQuarantineError('private_ready_incomplete_write')
+def checked_ready_write(path, body):
+    candidate_transaction.write_verified_private_bytes(
+        path.parent, path.name, body,
+        readback=lambda root, name: bounded_input(root / name, 2 * 1024 * 1024),
+        error_type=NaturalGasCrossingsQuarantineError, error_code='private_ready_incomplete_write')
 
 def verify_private(root,version,capture_hash,captures,identity,audit,manifest,table):
     """Bind the complete source-owned inventory before first seal and exposure."""
@@ -472,21 +474,27 @@ def stage_natural_gas_border_crossings(storage,*,capture_dir=None):
                 pin={'sha256':sha256_file(parquet),'bytes':parquet.stat().st_size};manifest=manifest_for(captures,identity,pin)
                 # The entire private candidate is complete before first trust state
                 # is installed. A failed metadata/container build cannot bind history.
-                for name,body in source_payloads(captures,identity,audit,manifest,table).items():
-                    (private/name).parent.mkdir(parents=True,exist_ok=True)
-                    if (private/name).write_bytes(body)!=len(body)or(private/name).read_bytes()!=body:raise NaturalGasCrossingsQuarantineError('private_source_object_incomplete_write')
-                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'capture_fingerprint':capture_hash,'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
-                checked_ready_write(private/READY,encode(ready))
-                verify_private(private,version,capture_hash,captures,identity,audit,manifest,table)
-                captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
-                # An existing complete outside witness returns original receipts.
-                # Rebuild only the private candidate from those exact originals.
-                for name,body in source_payloads(captures,identity,audit,manifest,table).items():
-                    if (private/name).write_bytes(body)!=len(body)or(private/name).read_bytes()!=body:raise NaturalGasCrossingsQuarantineError('original_private_source_object_incomplete_write')
-                ready['objects']={str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY}
-                checked_ready_write(private/READY,encode(ready))
-                verify_private(private,version,capture_hash,captures,identity,audit,manifest,table)
-                os.rename(private,target)
+                def ready_marker(private, *, final=False):
+                    ready = {'version': version, 'approved': False, 'processing_fingerprint': fingerprint,
+                             'capture_fingerprint': capture_hash,
+                             'objects': candidate_transaction.private_inventory(private, exclude={READY} if final else ())}
+                    return READY, encode(ready)
+                def anchor():
+                    nonlocal captures, manifest
+                    captures, manifest = original_bundle(
+                        storage, version, captures, identity, manifest, create=True)
+                candidate_transaction.install_private_candidate(
+                    private, target, source_payloads(captures, identity, audit, manifest, table).items(),
+                    write_one=lambda root, name, body: candidate_transaction.write_verified_private_bytes(
+                        root, name, body, readback=lambda root, name: (root / name).read_bytes(),
+                        error_type=NaturalGasCrossingsQuarantineError, error_code='private_source_object_incomplete_write', create_parents=True),
+                    ready=ready_marker, write_ready=lambda root, name, body: checked_ready_write(root / name, body),
+                    validate_before=lambda private: verify_private(private, version, capture_hash, captures, identity, audit, manifest, table), anchor=anchor,
+                    rewrite_objects=lambda: source_payloads(captures, identity, audit, manifest, table).items(),
+                    write_replacement=lambda root, name, body: candidate_transaction.write_verified_private_bytes(
+                        root, name, body, readback=lambda root, name: (root / name).read_bytes(),
+                        error_type=NaturalGasCrossingsQuarantineError, error_code='original_private_source_object_incomplete_write'), ready_after=lambda private: ready_marker(private, final=True),
+                    validate_after=lambda private: verify_private(private, version, capture_hash, captures, identity, audit, manifest, table))
         return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
     except (ValueError,OSError,KeyError,TypeError,RuntimeError,sqlite3.Error,shapely.errors.GEOSException) as exc:
         retained=retain_failure(storage,captures,str(exc));raise NaturalGasCrossingsQuarantineError(str(exc)+'; retained:'+retained) from exc
