@@ -106,10 +106,9 @@ def _stable_item(item: dict) -> dict:
 
 
 def validate_capture_documents(captures: Mapping[str, bytes], *,
-                               expected_schema_sha256: str | None = EXPECTED_SCHEMA_SHA256,
-                               body_from_capture=lambda body: body) -> tuple[dict, list[dict], dict]:
+                               expected_schema_sha256: str | None = EXPECTED_SCHEMA_SHA256) -> tuple[dict, list[dict], dict]:
     """Validate exact item, source identity, schema and complete ordered feature roster."""
-    docs = CaptureDocuments(captures, body_from_capture=body_from_capture)
+    docs = CaptureDocuments(captures, body_from_capture=lambda body: body)
     required = {"epa_item", "service_before", "layer_before", "count_before", "ids_before",
                 "ids_seed", "layer_after", "service_after", "count_after", "ids_after"}
     if not required.issubset(docs):
@@ -304,8 +303,8 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
                 captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
                 validate_seed=validate_seed, roster=lambda ids: [*_urls(ids), ("epa_item_after", EPA_ITEM_URL)],
                 fetch=lambda client, url, root, name: capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES),
-                on_validation_error=lambda c: validate_capture_documents(c, body_from_capture=lambda value: value[0]))
-        layer, fields, extracted = validate_capture_documents(captures, body_from_capture=lambda value: value[0])
+                on_validation_error=lambda c: validate_capture_documents(CaptureDocuments(c, decode=lambda body: body)))
+        layer, fields, extracted = validate_capture_documents(CaptureDocuments(captures, decode=lambda body: body))
     except Exception as exc:
         (capture_root / "capture_manifest.json").write_bytes(_canonical({"complete":False,"error_code":type(exc).__name__,"receipts":{n:r for n,(_,r) in captures.items()}})+b"\n")
         if captures:

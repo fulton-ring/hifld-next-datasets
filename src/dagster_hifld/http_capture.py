@@ -127,7 +127,11 @@ def capture_roster_digests(root: Path, *, exclude: set[str] = frozenset()) -> di
 
 
 class CaptureDocuments(Mapping):
-    """Read JSON captures one at a time, preserving eager JSON validity checks."""
+    """Read capture documents one at a time with eager decoder validity checks.
+
+    Tuple captures default to JSON decoding. Explicit projection and decoder
+    callbacks preserve byte-only or stricter source document contracts.
+    """
     def __init__(self, captures: Mapping, names=None, *, decode=json.loads,
                  body_from_capture=lambda value: value[0]):
         self._captures = captures
