@@ -40,7 +40,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
-from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request, quarantine_retry_response
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps, retry_capture_request, quarantine_retry_response
 from dagster_hifld.sources.capture_common import (
     CaptureProgress, candidate_prefix, capture_get, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate,
@@ -744,12 +744,26 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
                     (yield (name, url))
                 pinned_ids, layer_before = _validate_before_page_requests(capture_root, receipts)
                 _pagination_mode, page_plan = _page_plan(pinned_ids, layer_before)
-                for name, url, expected_page_ids in page_plan:
-                    page_body = (yield (name, url))
-                    _validate_page_ids(page_body, expected_page_ids)
-                    del page_body
-                for name, url in _source_after_urls():
-                    (yield (name, url))
+                # Native URL-length limits may produce unequal object-ID chunks.
+                # Keep their request metadata; the common owner advances offsets.
+                offset = 0
+                requests_by_offset = {}
+                for name, url, expected in page_plan:
+                    requests_by_offset[offset] = (name, url, len(expected))
+                    offset += len(expected)
+
+                def validate_page(offset, expected, body):
+                    _validate_page_ids(body, expected)
+                    return json.loads(body)['features']
+
+                yield ExactIdCapturePlan(
+                    ids=pinned_ids,
+                    page_size=lambda offset, remaining: requests_by_offset[offset][2],
+                    page_request=lambda offset, expected: requests_by_offset[offset][:2],
+                    validate_page=validate_page,
+                    read_page=lambda offset: _read_capture_body(
+                        capture_root, requests_by_offset[offset][0]),
+                    closing_requests=tuple(_source_after_urls()))
             capture_request_steps(acquisition_steps(), lambda name, url: retry_capture_request(
                     lambda attempt: capture_one(client, name, url), attempts=PAGE_ATTEMPTS,
                     schedule=PAGE_RETRY_BACKOFF_SECONDS,

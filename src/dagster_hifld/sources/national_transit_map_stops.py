@@ -32,7 +32,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.sources.arcgis_capture_sequence import (
-    capture_request_steps, retry_capture_request, quarantine_retry_response,
+    ExactIdCapturePlan, capture_request_steps, retry_capture_request, quarantine_retry_response,
 )
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
@@ -456,10 +456,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
                     raise ValueError("source_page_size_contract_drift")
                 if 10 + math.ceil(count/PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
                     raise ValueError("source_request_count_exceeded")
-                features=[]
-                for page_no, offset in enumerate(range(0,count,PAGE_SIZE)):
-                    expected = seed[offset:offset+PAGE_SIZE]
-                    page = (yield (f'page_{page_no:03d}', _page_url(offset, len(expected), has_z, has_m)))
+                def validate_page(offset, expected, page):
                     rows = page.get("features")
                     if not isinstance(rows,list) or len(rows)!=len(expected):
                         raise ValueError("source_page_incomplete")
@@ -477,12 +474,22 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
                     if (len(page_ids) != len(rows) or any(type(value) is not int for value in page_ids)
                             or sorted(page_ids) != expected or len(set(page_ids)) != len(expected)):
                         raise ValueError("source_page_id_slice_mismatch")
-                    features.extend(rows)
-                layer_after=(yield ('layer_after', _metadata_url('layer_after')))
-                service_after=(yield ('service_after', _metadata_url('service_after')))
-                count_after=(yield ('count_after', _metadata_url('count_after'))).get("count")
-                ids_after_doc=(yield ('ids_after', _metadata_url('ids_after')))
-                ids_after=ids_after_doc.get("objectIds")
+                    return rows
+
+                features, _pages, closed = yield ExactIdCapturePlan(
+                    ids=seed, page_size=PAGE_SIZE,
+                    page_request=lambda offset, expected: (
+                        f'page_{offset // PAGE_SIZE:03d}',
+                        _page_url(offset, len(expected), has_z, has_m)),
+                    validate_page=validate_page,
+                    read_page=lambda offset: captures[f'page_{offset // PAGE_SIZE:03d}'][0],
+                    closing_requests=tuple((name, _metadata_url(name)) for name in
+                        ('layer_after', 'service_after', 'count_after', 'ids_after')))
+                layer_after = closed['layer_after']
+                service_after = closed['service_after']
+                count_after = closed['count_after'].get('count')
+                ids_after_doc = closed['ids_after']
+                ids_after = ids_after_doc.get('objectIds')
                 return (fields, features, count, count_after, ids, ids_after, ids_after_doc, layer, layer_after, service, service_after, has_z, has_m, seed, portal)
             (fields, features, count, count_after, ids, ids_after, ids_after_doc, layer, layer_after, service, service_after, has_z, has_m, seed, portal) = capture_request_steps(acquisition_steps(), lambda name, url, *params: get(client, name, url, *params),
                 capture_root=root, byte_budget=max_capture_bytes)
@@ -513,7 +520,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
         if (len(features)!=count or any(type(value) is not int for value in got)
                 or sorted(got)!=seed or len(set(got))!=count):
             raise ValueError("source_population_incomplete")
-        features.sort(key=lambda x:x["attributes"]["OBJECTID"])
+        features = sorted(features, key=lambda x:x["attributes"]["OBJECTID"])
         if offline is not None and set(captures) != set(offline["captures"]):
             raise ValueError("retained_capture_request_roster_mismatch")
     except Exception as exc:

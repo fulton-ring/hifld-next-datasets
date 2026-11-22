@@ -44,7 +44,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources import arcgis_layer as capture_shared
-from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_count_capture import capture_observed_count_population
 from dagster_hifld.sources.arcgis_layer import _arrow_type, _esri_polyline_wkb, _load_capture
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, seal_ready_candidate,
@@ -781,38 +781,29 @@ def _capture_attempt(root: Path) -> dict[str, dict]:
                 receipts[name] = retained[name]
     with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(240, connect=15),
                       headers={"User-Agent": "hifld-next-datasets/census-tigerweb-draft"}) as client:
-        def steps():
-            nonlocal count
-            fixed = _fixed_urls()
-            for name in ("folder", "service_before", "layer_before", "count_before"):
-                if name in receipts:
-                    continue
-                _body, receipts[name] = yield name, fixed[name], False
-                _write_progress(root, receipts)
-            if count is None:
-                count = _count_from_body(_load_capture(root, "count_before")[0])
-            urls = _capture_urls(count)
-            for name in _roster_names("before", count):
-                if name in receipts:
-                    continue
-                _body, receipts[name] = yield name, urls[name], False
-                _write_progress(root, receipts)
-            for index in range(page_count(count)):
-                name = f"page_{index:04d}"
-                if name in receipts:
-                    continue
-                _body, receipts[name] = yield name, urls[name], True
-                _write_progress(root, receipts)
-            for name in _after_names(count):
-                _body, receipts[name] = yield name, urls[name], False
-            return receipts
+        fixed = _fixed_urls()
+        planned_urls = {}
 
-        def fetch(name, url, page):
-            try:
-                return _capture(client, url, root, name, max_bytes=MAX_PAGE_BYTES)
-            except Exception as exc:
-                if page:
-                    _write_progress(root, receipts, error_code=type(exc).__name__)
-                raise
+        def urls_for(count):
+            if not planned_urls:
+                planned_urls.update(_capture_urls(count))
+            return planned_urls
 
-        return capture_request_steps(steps(), fetch, capture_root=root, byte_budget=MAX_CAPTURE_BYTES)
+        def requests(count, names):
+            urls = urls_for(count)
+            return tuple((name, urls[name]) for name in names(count))
+
+        def page_request(count, index):
+            name = f"page_{index:04d}"
+            return name, urls_for(count)[name]
+
+        return capture_observed_count_population(
+            root=root, byte_budget=MAX_CAPTURE_BYTES, receipts=receipts,
+            opening=tuple((name, fixed[name]) for name in
+                          ("folder", "service_before", "layer_before", "count_before")),
+            observed_count=lambda: _count_from_body(_load_capture(root, "count_before")[0]),
+            before_requests=lambda count: requests(count, lambda n: _roster_names("before", n)),
+            page_count=page_count, page_request=page_request,
+            closing_requests=lambda count: requests(count, _after_names),
+            fetch=lambda name, url: _capture(client, url, root, name, max_bytes=MAX_PAGE_BYTES),
+            checkpoint=lambda captured, error: _write_progress(root, captured, error_code=error))
