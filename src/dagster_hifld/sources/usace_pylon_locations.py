@@ -14,7 +14,11 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 from shapely import wkb
-from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.sources.arcgis_raw_capture import (
+    RawCapturePolicy, request_raw, capture_exact_id_population, population_snapshot,
+    validate_population_snapshot,
+)
+
 from dagster_hifld.sources.arcgis_layer import validate_crs as _validate_crs, validate_dimensions as _validate_dimensions
 
 DATASET_SLUG = "pylon-locations-usace-ienc"
@@ -46,44 +50,11 @@ def _digest(body: bytes) -> str:
 
 
 def _request(client: httpx.Client, params: dict[str, object], staging, version_key: str, name: str, budget: list[int]) -> dict:
-    url = LAYER_URL if name == "layer" else LAYER_URL + "/query"
-    raw_parts: list[bytes] = []
-    wire_parts: list[bytes] = []
-    try:
-        with client.stream("GET", url, params=params, headers={"Accept-Encoding": "identity"}) as response:
-            capture = capture_http_response(
-                response, max_wire_bytes=8_000_000, max_decoded_bytes=8_000_000,
-                reserve=lambda progress: _reserve(budget, progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes),
-                retain_wire=wire_parts.append, retain_decoded=raw_parts.append,
-            )
-    except Exception as exc:
-        raise ValueError("source_transport_error:" + type(exc).__name__) from exc
-    body = b"".join(raw_parts)
-    wire = b"".join(wire_parts)
-    receipt = {
-        "method": "GET", "url": str(response.request.url), "status": capture.status_code,
-        "observed_at": datetime.now(timezone.utc).isoformat(), "bytes": len(body),
-        "sha256": _digest(body), "wire_bytes": len(wire), "wire_sha256": _digest(wire),
-        "content_type": response.headers.get("content-type"), "content_encoding": capture.content_encoding,
-        "complete": capture.complete, "error_code": capture.error_code,
-    }
-    budget[0] += len(body) + len(wire)
-    if budget[0] > 128_000_000:
-        raise ValueError("source_total_capture_budget_exceeded")
-    staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.json", body)
-    staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.wire", wire)
-    staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.receipt.json", _json_bytes(receipt))
-    if not capture.complete or not 200 <= capture.status_code < 300:
-        raise ValueError("incomplete_source_response:" + name)
-    parsed = json.loads(body)
-    if not isinstance(parsed, dict) or "error" in parsed:
-        raise ValueError(f"invalid_arcgis_response:{name}")
-    return parsed
-
-
-def _reserve(budget: list[int], upcoming: int) -> None:
-    if budget[0] + upcoming > 128_000_000:
-        raise ValueError("source_total_capture_budget_exceeded")
+    retained = None
+    return request_raw(client, LAYER_URL if name == "layer" else LAYER_URL + "/query", params, name, budget,
+        write=lambda relative, data: staging.write(DATASET_SLUG, FILE_SLUG, version_key, relative, data),
+        encode=_json_bytes, retained=retained.read_response if retained is not None else None,
+        policy=RawCapturePolicy(8_000_000, 128_000_000, attempts=1))
 
 
 def _metadata(client: httpx.Client, staging, version_key: str, budget: list[int]) -> dict:
@@ -224,18 +195,19 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
     try:
         budget = [0]
         metadata = _metadata(client, staging, version_key, budget)
-        count_before = _count_snapshot(client, staging, version_key, "count_before", budget)
-        before = _id_snapshot(client, staging, version_key, "ids_before", budget)
+        count_before, before = population_snapshot(
+            lambda: _count_snapshot(client, staging, version_key, "count_before", budget),
+            lambda: _id_snapshot(client, staging, version_key, "ids_before", budget))
         if count_before != len(before):
             raise ValueError("source_count_or_id_roster_drift")
-        features = []
-        pages = []
-        for offset in range(0, len(before), PAGE_SIZE):
-            requested = before[offset:offset + PAGE_SIZE]
+        def fetch_page(offset, requested):
             result = _request(client, {
                 "f": "json", "objectIds": ",".join(map(str, requested)), "outFields": "*",
                 "returnGeometry": "true", "outSR": "4326",
             }, staging, version_key, f"page_{offset:07d}", budget)
+            return result
+
+        def validate_page(offset, requested, result):
             page = result.get("features")
             if not isinstance(page, list) or len(page) > metadata["maxRecordCount"] or result.get("exceededTransferLimit") is True:
                 raise ValueError(f"source_incomplete_page:{offset}")
@@ -262,13 +234,20 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
                     raise ValueError("source_dimension_drift")
                 if "spatialReference" in geometry:
                     _validate_crs(geometry["spatialReference"])
-            features.extend(page)
-            pages.append({"offset": offset, "requested_ids": requested, "returned_ids": page_ids, "count": len(page)})
-        after = _id_snapshot(client, staging, version_key, "ids_after", budget)
-        count_after = _count_snapshot(client, staging, version_key, "count_after", budget)
-        fetched_ids = [feature["attributes"]["OBJECTID"] for feature in features]
-        if count_before != count_after or before != after or fetched_ids != before or len(features) != len(before):
-            raise ValueError("source_population_changed_during_capture")
+            return page
+
+        def close_witnesses():
+            return population_snapshot(
+                lambda: _count_snapshot(client, staging, version_key, "count_after", budget),
+                lambda: _id_snapshot(client, staging, version_key, "ids_after", budget), ids_first=True)
+
+        features, pages, (count_after, after) = capture_exact_id_population(
+            before, PAGE_SIZE, fetch_page=fetch_page, validate_page=validate_page,
+            close_witnesses=close_witnesses,
+            read_page=lambda offset: staging.read_key(
+                f"{DATASET_SLUG}/{FILE_SLUG}/{version_key}/raw/page_{offset:07d}.json"))
+        validate_population_snapshot(count_before, before, count_after, after, features)
+        features = list(features)
         rows = [{"attributes": f["attributes"], "geometry": f["geometry"]} for f in features]
         row_digest = _digest(_json_bytes(rows))
         ids_digest = _digest(_json_bytes(before))

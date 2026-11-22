@@ -3,6 +3,9 @@ import copy
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
+
+import httpx
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -289,6 +292,37 @@ class HistoricPerimetersSourceTests(unittest.TestCase):
         manifest_path.write_bytes(source._canonical(manifest) + b"\n")
         with self.assertRaises(ValueError):
             source.capture_historic_perimeters(self.storage, capture_directory=str(root), page_size=2)
+
+
+    def test_live_torn_population_keeps_closing_witnesses_and_incomplete_manifest(self):
+        docs = _capture_docs()
+        docs["page_00002"]["features"].pop()
+        urls = {name: source.ITEM_URL if name == "item" else source._scope_query(name, 2)
+                for name in docs}
+        bodies = {urls[name]: json.dumps(doc, ensure_ascii=False, allow_nan=False).encode()
+                  for name, doc in docs.items()}
+        requested = []
+        real_client = httpx.Client
+
+        def serve(request):
+            requested.append(str(request.url))
+            return httpx.Response(200, stream=httpx.ByteStream(bodies[str(request.url)]))
+
+        with patch.object(source.httpx, "Client", side_effect=lambda **kwargs:
+                          real_client(transport=httpx.MockTransport(serve), **kwargs)):
+            with self.assertRaisesRegex(ValueError, "ifph_page_population_incomplete:page_00002"):
+                source.capture_historic_perimeters(self.storage, version="torn",
+                    capture_directory=str(Path(self.tmp.name) / "live"), page_size=2)
+        root = Path(self.tmp.name) / "live" / "torn"
+        manifest = json.loads((root / "capture_manifest.json").read_bytes())
+        self.assertFalse(manifest["complete"])
+        self.assertEqual(set(manifest["receipts"]), set(docs))
+        self.assertTrue((root / "ids_after.body").is_file())
+        expected_order = ["item", "service_before", "layer_before", "count_before", "ids_before",
+                          "page_00000", "page_00002", "page_00004", "count_after", "ids_after",
+                          "layer_after", "service_after"]
+        self.assertEqual(requested, [urls[name] for name in expected_order])
+        self.assertFalse(self.storage.list_prefix(f"{source.DATASET_SLUG}/"))
 
 
 if __name__ == "__main__":

@@ -17,6 +17,12 @@ path, which requires a real WKB geometry column. No geometry is invented.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import seal_candidate_objects
+
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs,
+)
+
 import json
 import shutil
 from datetime import datetime, timezone
@@ -29,11 +35,16 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.sources.arcgis_layer import read_capture
+from dagster_hifld.sources.capture_common import validate_capture_request_identity
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.epa_capture import OffsetCaptureSpec, capture_offset_pages
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -107,7 +118,7 @@ def _row_count_from_candidate(storage: StagingStorageResource, prefix: str) -> i
 def _capture_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict], dict,
         dict[str, tuple[bytes, dict]]]:
     """Fetch and retain exact GET responses, bracketing all rows with count/ID reads."""
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures = RetainedCaptureView(capture_root)
 
     def request(name: str, url: str, params: Mapping[str, object]) -> dict:
         request_url = url + "?" + urlencode(params)
@@ -148,19 +159,14 @@ def _capture_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict]
         raise EpaFrsSicCaptureError("source_object_id_roster_is_invalid")
 
     rows: list[dict] = []
-    for page_number, offset in enumerate(range(0, count_before, PAGE_SIZE)):
-        page = request(
-            f"page_{page_number:03d}", TABLE_URL + "/query",
-            {"where": "1=1", "outFields": ",".join(FIELD_NAMES), "returnGeometry": "false",
-             "orderByFields": "OBJECTID ASC", "resultOffset": offset,
-             "resultRecordCount": PAGE_SIZE, "f": "json"},
-        )
-        features = page.get("features")
-        wanted = min(PAGE_SIZE, count_before - offset)
-        if not isinstance(features, list) or len(features) != wanted:
-            raise EpaFrsSicCaptureError("source_page_row_count_incomplete")
-        if page.get("exceededTransferLimit") is True and wanted < PAGE_SIZE:
-            raise EpaFrsSicCaptureError("source_final_page_exceeded_transfer_limit")
+    spec = OffsetCaptureSpec(
+        table_url=TABLE_URL, page_size=PAGE_SIZE,
+        page_name=lambda number: f"page_{number:03d}", error=EpaFrsSicCaptureError,
+        query={"where": "1=1", "outFields": ",".join(FIELD_NAMES),
+               "returnGeometry": "false", "orderByFields": "OBJECTID ASC"},
+    )
+    for captured in capture_offset_pages(spec, count_before, request=request):
+        features = captured.features
         for feature in features:
             if not isinstance(feature, dict) or feature.get("geometry") is not None:
                 raise EpaFrsSicCaptureError("source_table_returned_unexpected_geometry")
@@ -207,7 +213,12 @@ def _capture_table(client: httpx.Client, capture_root: Path) -> tuple[list[dict]
         "fields": list(fields),
         "response_receipts": {name: receipt for name, (_body, receipt) in captures.items()},
     }
-    return rows, manifest, captures
+    return rows, manifest, validated_capture_view(capture_root,
+        receipts=captures.receipts,
+        expected_urls={name: receipt["url"] for name, receipt in captures.receipts.items()},
+        load_capture=lambda root, name: read_capture(root, name, EpaFrsSicCaptureError),
+        capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=validate_capture_request_identity)
 
 
 def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
@@ -254,7 +265,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures = RetainedCaptureView(capture_root)
     current_capture_url = TABLE_URL + "/query?where=1%3D1&returnCountOnly=true&f=json"
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
@@ -306,7 +317,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
          "attribution": "EPA FRS; producer metadata states U.S. public domain; rights review remains pending.",
          "release_date": None,
          "release_date_unknown_reason": "ArcGIS service metadata carries no source release date."}
-        for name, (_body, receipt) in sorted(captures.items())]
+        for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))]
     release_manifest = {
         "schema_version": 1, "approved": False,
         "title": "EPA Facility Registry Service - SIC Codes",
@@ -356,7 +367,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
                                  "metadata/source_audit.json": _canonical(audit) + b"\n",
                                  "metadata/processing_identity.json": _canonical(identity) + b"\n",
                                  "metadata/candidate_ready.json": _canonical(ready) + b"\n"}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         for suffix, raw in (("body", body), ("wire", (capture_root / f"{name}.wire").read_bytes()),
                             ("receipt.json", _canonical(receipt) + b"\n")):
             objects[f"raw/{name}.{suffix}"] = raw
@@ -372,15 +383,15 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
                                        identity, record_sha, schema_sha, descriptors,
                                        payload["capture_receipts"])
     try:
-        for name, body in objects.items():
-            write_immutable(storage, f"{prefix}/{name}", body)
-        for name, descriptor in descriptors.items():
-            key = f"{prefix}/{name}"
-            snapshot = storage.object_snapshot(key)
-            if (snapshot is None or snapshot.size != descriptor["bytes"]
-                    or storage.sha256_key(key) != descriptor["sha256"]):
-                raise ValueError("candidate_output_physical_readback_failed:" + name)
-        seal_ready_candidate(storage, state_key, version, identity_fingerprint, payload)
+        write_candidate_outputs(
+            storage, prefix, objects, snapshot_check="content", readback_order="after-all",
+            error_prefix="candidate_output_physical_readback_failed:")
+        seal_candidate_objects(
+            storage, state_key, version,
+            payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+            source_record_sha256=payload['source_record_sha256'],
+            source_schema_sha256=payload['source_schema_sha256'],
+            fingerprint=identity_fingerprint)
     except Exception as exc:
         quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, captures,
                                       getattr(exc, "code", type(exc).__name__))
@@ -389,7 +400,7 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
     (capture_root / "capture_manifest.json").write_bytes(_canonical({
         "captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
         "row_count": len(rows), "source_record_sha256": record_sha,
-        "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())}}) + b"\n")
+        "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}}) + b"\n")
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "row_count": len(rows), "source_population_complete": True,
             "source_record_sha256": record_sha, "source_schema_sha256": schema_sha,

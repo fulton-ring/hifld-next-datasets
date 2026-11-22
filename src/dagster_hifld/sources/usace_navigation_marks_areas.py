@@ -5,9 +5,12 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import hashlib
 import json
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -19,12 +22,16 @@ import pyarrow.parquet as pq
 import shapely
 from pyproj import CRS
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import esri_polygon_wkb as _esri_polygon
 from dagster_hifld.sources.arcgis_layer import (
@@ -69,30 +76,7 @@ EXPECTED_FIELD_DECLARATIONS = [
 ]
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            if type(value[key]) is not int or value[key] != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                crs = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not crs.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
+_validate_spatial_reference = crs_validation.validate_spatial_reference
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
@@ -124,9 +108,9 @@ def _load_prefilled(root: Path, name: str, expected_url: str) -> tuple[bytes, di
     return body, receipt
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     description = item.get("description")
     if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
@@ -268,9 +252,12 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
             names=["ids_seed", *[name for name, _url in roster]]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures={name:_load_replay(root,name) for name in names}
-            if any(receipt!=retained_manifest["receipts"][name] for name,(_body,receipt) in captures.items()):
-                raise ValueError("retained_capture_manifest_receipt_mismatch")
+            captures=validated_capture_view(root,
+                receipts={name: retained_manifest["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_manifest_receipt_mismatch")
             expected_urls = {name: url for name, url in roster}
             expected_urls["ids_seed"] = _query({"where":"1=1","returnIdsOnly":"true","f":"json"})
             for name, (_body, receipt) in captures.items():
@@ -322,13 +309,16 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
             if existing_bytes>MAX_CAPTURE_BYTES: raise ValueError("source_capture_budget_exceeded_before_request")
             captures.update(prefilled)
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
-                seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
-                ids=json.loads(seed_body).get("objectIds")
-                if not isinstance(ids,list) or len(ids)!=len(features): raise ValueError("source_seed_id_count_drift")
-                captures["ids_seed"]=(seed_body,seed_receipt)
-                for name,url in _capture_roster(ids):
-                    if name not in captures:
-                        captures[name]=_fetch_retry(client,url,root,name,capture_budget)
+                def validate_seed(seed_body):
+                    ids=json.loads(seed_body).get("objectIds")
+                    if not isinstance(ids,list): raise ValueError("source_seed_id_count_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_seed', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, capture_budget),
+                    on_validation_error=_validate)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         retained={}
@@ -343,13 +333,13 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
     capture_evidence={}
-    for name,(body,receipt) in sorted(captures.items()):
+    for name,(body,receipt) in ((name, captures[name]) for name in sorted(captures)):
         wire=(root/f"{name}.wire").read_bytes()
         capture_evidence[name]={"decoded_sha256":_sha(body),"wire_sha256":_sha(wire),
             "request_url":receipt["url"],"observed_at":receipt["observed_at"]}
     capture_sha=_sha(_canonical(capture_evidence))
     audit.update({"source_capture_sha256":capture_sha,"source_capture_evidence":capture_evidence,
-        "source_receipts":{name:receipt for name,(_body,receipt) in sorted(captures.items())},
+        "source_receipts":{name:receipt for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_population_complete":True,"source_release_accepted":False,"source_freshness_accepted":False,
         "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,
         "rights_accepted":False,"mapping_approved":False,"release_accepted":False,"baseline_accepted":False})
@@ -358,7 +348,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     inputs=[]
-    for name,(_body,receipt) in sorted(captures.items()):
+    for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures)):
         distributor=name=="bts_item"
         inputs.append({"input_id":name,
             "producer":"USDOT BTS IENC public ArcGIS item" if distributor else PUBLISHER,
@@ -406,7 +396,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/navigation-system-of-marks-areas-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"

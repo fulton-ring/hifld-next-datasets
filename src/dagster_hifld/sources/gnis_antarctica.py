@@ -714,7 +714,7 @@ def capture_gnis_antarctica(storage: StagingStorageResource, *, version: str,
             "license": "Public domain (U.S. Geological Survey).",
             "attribution": "U.S. Geological Survey, National Geospatial Program; U.S. Board on "
                            "Geographic Names (Advisory Committee on Antarctic Names).",
-        } for name, (_, receipt) in sorted(captures.items())],
+        } for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))],
         "transformations": [{
             "operation": "native_gpkg_to_geoparquet_candidate",
             "parameters": {
@@ -774,7 +774,7 @@ def capture_gnis_antarctica(storage: StagingStorageResource, *, version: str,
                         "source_record_sha256": audit["source_record_sha256"],
                         "source_geometry_sha256": audit["source_geometry_sha256"],
                         "artifact_roster": capture_roster_digests(capture_root),
-                        "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}
+                        "receipts": {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))}}
                        ) + b"\n")
         _read_replay(capture_root)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"

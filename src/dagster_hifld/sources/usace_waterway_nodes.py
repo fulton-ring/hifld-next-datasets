@@ -1,6 +1,12 @@
 """Native, unapproved FileGDB candidate for BTS NTAD waterway network nodes."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import (
+    verify_cached_objects, verify_cached_source_snapshots, verify_cached_raw_bodies,
+)
+
+from dagster_hifld.sources.capture_common import write_candidate_outputs
+
 import hashlib
 import json
 import math
@@ -14,6 +20,7 @@ from uuid import uuid4
 
 import httpx
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -278,27 +285,11 @@ def _validate_cached_candidate(storage, prefix: str, state_key: str, version: st
     allowed = expected | set(extracted_cache) | {f"{prefix}/{name}" for name in allowed_sidecars}
     if not expected.issubset(actual) or actual - allowed:
         raise ValueError("cached_node_candidate_roster_changed")
-    for name, descriptor in objects.items():
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_node_candidate_object_integrity_failed:" + name)
+    verify_cached_objects(storage, prefix, objects,
+        error_prefix="cached_node_candidate_object_integrity_failed:")
     source_snapshots = {name for name in allowed_sidecars if name.startswith("metadata/source/")}
-    for name in source_snapshots & {key[len(prefix) + 1:] for key in actual}:
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if name.endswith("source_manifest.json"):
-            descriptor = source_manifest
-        else:
-            source_name = name.removeprefix("metadata/source/")
-            primary_key = f"{prefix}/metadata/{source_name}"
-            primary = storage.object_snapshot(primary_key)
-            descriptor = ({"bytes": primary.size, "sha256": storage.sha256_key(primary_key)}
-                          if primary is not None else None)
-        if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_node_catalog_source_snapshot_changed:" + name)
+    verify_cached_source_snapshots(storage, prefix, source_snapshots & {key[len(prefix) + 1:] for key in actual}, source_manifest,
+        error_prefix="cached_node_catalog_source_snapshot_changed:")
     resolved_key = f"{prefix}/metadata/resolved_provenance.json"
     if resolved_key in actual:
         resolved = json.loads(storage.read_key(resolved_key))
@@ -388,7 +379,7 @@ def capture_usace_waterway_nodes(
                           headers={"User-Agent": "hifld-next-datasets/usace-waterway-node-draft"}) as client:
             for name, url in urls.items():
                 captured[name] = _capture(client, url, capture_root, name)
-            docs = {name: json.loads(body) for name, (body, _) in captured.items()}
+            docs = CaptureDocuments(captured)
             fields, source_ids = _validate_source(
                 docs["bts_item"], docs["usace_item"], docs["service_before"],
                 docs["layer_before"], docs["count_before"], docs["ids_before"],
@@ -400,7 +391,7 @@ def capture_usace_waterway_nodes(
             captured["filegdb_export"] = (archive_path.read_bytes(), archive_receipt)
             for name, url in (("layer_after", urls["layer_before"]), ("count_after", count_url), ("ids_after", ids_url)):
                 captured[name] = _capture(client, url, capture_root, name)
-        after = {name: json.loads(body) for name, (body, _) in captured.items() if name.endswith("_after")}
+        after = CaptureDocuments(captured, (name for name in captured if name.endswith('_after')))
         if (after["layer_after"] != docs["layer_before"]
                 or after["count_after"].get("count") != docs["count_before"].get("count")
                 or sorted(after["ids_after"].get("objectIds", [])) != source_ids):
@@ -536,9 +527,7 @@ def capture_usace_waterway_nodes(
         "source_release_date": None, **manifest["publication_gate"]}
     metadata = {"metadata/source_manifest.json": canonical_json(manifest) + b"\n",
                 "metadata/source_audit.json": canonical_json(audit) + b"\n"}
-    for name, body in metadata.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        objects[name] = {"bytes": len(body), "sha256": sha256(body)}
+    objects.update(write_candidate_outputs(storage, prefix, metadata, snapshot_check="none"))
     # Catalog owns the resolved projection after catalog materialization. Keep
     # the initial candidate projection for pre-catalog consumers, but do not
     # overwrite the catalog-enriched version during a strict cached replay.

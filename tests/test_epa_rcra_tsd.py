@@ -6,11 +6,11 @@ import hashlib
 import subprocess
 import tempfile
 import unittest
-from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -117,17 +117,26 @@ class EpaRcraTsdTests(unittest.TestCase):
         payloads["ids_after"] = json.dumps(docs["ids_after"]).encode()
         payloads["count_before"] = json.dumps(docs["count_before"]).encode()
         payloads["count_after"] = json.dumps(docs["count_after"]).encode()
-        tick = {"value":0}
+        real_client = httpx.Client
+        metadata = dict(rcra._urls([]))
+        planned = [(name, metadata[name]) for name in
+                   ("epa_item", "service_before", "layer_before", "count_before", "ids_before")]
+        planned += [("ids_seed", metadata["ids_before"]), *rcra._urls([1, 2]),
+                    ("epa_item_after", rcra.EPA_ITEM_URL)]
+        responses = {}
+        for name, url in planned:
+            responses.setdefault(str(httpx.URL(url)), []).append(payloads[name])
+        request_counts = {}
 
-        def fake_capture(_client, url, capture_root, name, *, max_bytes):
-            tick["value"] += 1
-            body = payloads[name]
-            capture_root.mkdir(parents=True, exist_ok=True)
-            (capture_root / f"{name}.wire").write_bytes(body)
-            receipt = {"method":"GET","url":url,"final_url":url,"observed_at":datetime.now(timezone.utc).isoformat(),
-                       "status":200,"complete_body":True,"wire_bytes":len(body),"wire_sha256":hashlib.sha256(body).hexdigest(),
-                       "bytes":len(body),"sha256":hashlib.sha256(body).hexdigest()}
-            return body, receipt
+        def serve(request):
+            url = str(request.url)
+            choices = responses[url]
+            index = request_counts.get(url, 0)
+            request_counts[url] = index + 1
+            return httpx.Response(200, stream=httpx.ByteStream(choices[index % len(choices)]))
+
+        def client_factory(*args, **kwargs):
+            return real_client(*args, transport=httpx.MockTransport(serve), **kwargs)
 
         repo = Path(__file__).resolve().parents[1]
         commit = subprocess.check_output(["git","rev-parse","HEAD"],cwd=repo,text=True).strip()
@@ -137,7 +146,7 @@ class EpaRcraTsdTests(unittest.TestCase):
             root = Path(tmp)
             storage = StagingStorageResource(local_dir=str(root / "stage"), use_local=True, backend="local")
             (root / "stage").mkdir()
-            with (patch.object(rcra, "capture_get", side_effect=fake_capture),
+            with (patch.object(rcra.httpx, "Client", side_effect=client_factory),
                   patch.object(rcra, "validate_capture_documents", side_effect=lambda captured: original_validator(captured, expected_schema_sha256=None)),
                   patch.object(rcra, "_identity", return_value=identity),
                   patch.object(rcra, "validate_construction_code_identity"),

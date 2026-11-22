@@ -6,6 +6,7 @@ Source, rights, historical equivalence and release acceptance remain false.
 """
 from __future__ import annotations
 
+
 import json
 import re
 import shutil
@@ -21,10 +22,13 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import validate_capture_roster
 from dagster_hifld.construction_state import load_first_construction
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.arcgis_layer import layer_capture_roster, load_replay
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
@@ -33,6 +37,8 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
     quarantine_incomplete_capture, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -130,7 +136,7 @@ def _field_profile(fields: object) -> tuple[list[dict[str, object]], str]:
 
 
 def validate_captures(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    docs = {n:json.loads(body) for n,(body,_) in captures.items()}
+    docs = CaptureDocuments(captures)
     if "ids_seed" not in docs:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
     seed = _validate_seed(docs["ids_seed"].get("objectIds"))
@@ -224,10 +230,11 @@ def _load_retained_capture(directory: Path, destination: Path) -> dict[str, tupl
     urls = dict(_capture_roster(seed))
     if set(receipts) != set(urls) or len(seed) != source_count:
         raise ValueError("retained_capture_receipt_roster_changed")
-    captures = {"ids_seed": seed_capture}
-    for name, url in urls.items():
-        if name != "ids_seed":
-            captures[name] = load(name, url)
+    ordered_receipts = {name: receipts[name] for name in ("ids_seed", *[name for name in urls if name != "ids_seed"])}
+    captures = validated_capture_view(root, receipts=ordered_receipts, expected_urls=urls,
+        load_capture=lambda _root, name: load(name, urls[name]),
+        capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
     validate_captures(captures)
     for name in captures:
         for suffix in ("body", "wire", "receipt.json"):
@@ -273,16 +280,15 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
         if not replay_capture_directory:
             with httpx.Client(follow_redirects=False, timeout=60, headers={
                     "User-Agent": "hifld-next-datasets/national-transit-map-agencies-draft"}) as client:
-                seed_url = dict(_capture_roster([]))["ids_seed"]
-                captures["ids_seed"] = _fetch(client, seed_url, root, "ids_seed")
-                seed = _validate_seed(json.loads(captures["ids_seed"][0]).get("objectIds"))
-                for name, url in _capture_roster(seed):
-                    if name != "ids_seed":
-                        captures[name] = _fetch(client, url, root, name)
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name="ids_seed", seed_url=dict(_capture_roster([]))["ids_seed"],
+                    validate_seed=lambda body: _validate_seed(json.loads(body).get("objectIds")),
+                    roster=_capture_roster, fetch=_fetch, on_validation_error=validate_captures)
         fields,features=validate_captures(captures)
     except Exception as exc:
         _admit_capture_directory(root)
-        retained=dict(captures)
+        retained=RetainedCaptureView(root, captures)
         # Preserve a response whose stream failed before _fetch could return it.
         for receipt_path in root.glob("*.receipt.json"):
             name=receipt_path.name.removesuffix(".receipt.json")
@@ -309,7 +315,7 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
     version=content_derived_version(record_sha,geometry_sha,schema_sha,identity)
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     source_objects={f"geoparquet/{DATASET_SLUG}.parquet":{"bytes":len(data),"sha256":_sha(data)}}
-    receipts={n:dict(r) for n,(_,r) in sorted(captures.items())}
+    receipts={n:dict(r) for n,(_,r) in ((name, captures[name]) for name in sorted(captures))}
     item = json.loads(captures["item"][0])
     compilation_date = _compilation_date(item)
     attribution = str(item.get("accessInformation") or
@@ -355,12 +361,14 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
         original_audit = json.loads(storage.read_key(prefix + "/metadata/source_audit.json"))
         compilation_date = original_audit.get("producer_stated_compilation_date")
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_null_geometry_count":0,"producer_stated_compilation_date":compilation_date,"reused":True,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    for n,b in outputs.items(): write_immutable(storage,f"{prefix}/{n}",b)
-    descriptors={n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
-    for n,d in descriptors.items():
-        snap=storage.object_snapshot(f"{prefix}/{n}")
-        if snap is None or snap.size!=d["bytes"] or storage.sha256_key(f"{prefix}/{n}")!=d["sha256"] or storage.object_snapshot(f"{prefix}/{n}")!=snap: raise ValueError("candidate_readback_failed:"+n)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_readback_failed:')
     from dagster_hifld.sources.capture_common import seal_ready_candidate
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipts,"objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=record_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_null_geometry_count":0,"producer_stated_compilation_date":compilation_date,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}

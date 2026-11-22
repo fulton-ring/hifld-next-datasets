@@ -1,6 +1,7 @@
 """Source contract tests for the complete official IENC LOCK_BASIN_AREA layer."""
 
 from __future__ import annotations
+from dagster_hifld.sources import arcgis_layer as shared_fetch
 
 import copy
 import io
@@ -238,8 +239,8 @@ class CaptureResponseBudget(unittest.TestCase):
             error_type=None,
         )
         with tempfile.TemporaryDirectory() as directory, patch.object(
-            source, "capture_http_response", return_value=limited
-        ), patch.object(source.time, "sleep", return_value=None):
+            shared_fetch, "capture_http_response", return_value=limited
+        ), patch.object(shared_fetch.time, "sleep", return_value=None):
             with self.assertRaisesRegex(ValueError, "source_response_limit_exceeded:wire_limit_exceeded"):
                 source._fetch_retry(client, "https://example.test/layer", Path(directory), "page", [0],
                                     schedule=(0.0, 0.0, 0.0))
@@ -735,7 +736,7 @@ class CachedCatalogSidecarValidation(unittest.TestCase):
 
             capture_root = root / "capture"
             with patch.object(source.httpx, "Client", fixture_client), patch.object(
-                source.time, "sleep", return_value=None
+                shared_fetch.time, "sleep", return_value=None
             ), patch.object(
                 source.shutil, "disk_usage", return_value=SimpleNamespace(free=400_000_000)
             ):

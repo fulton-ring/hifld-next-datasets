@@ -65,14 +65,19 @@ class DialysisTests(unittest.TestCase):
                 with self.assertRaises(ValueError):f.write_private(Path(d),'metadata/test.json',b'{}\n')
             with self.assertRaises(ValueError):f.strict_json(b'{"x":1,"x":2}')
 
-    def test_HTTPX_consumed_oversize_block_retained(self):
+    def test_HTTPX_consumed_oversize_block_has_bounded_evidence(self):
             class Stream(httpx.SyncByteStream):
                 def __iter__(self):yield b'x'*37
             with tempfile.TemporaryDirectory()as d:
                 client=httpx.Client(transport=httpx.MockTransport(lambda req:httpx.Response(200,stream=Stream())))
                 with mock.patch.object(f.httpx,'Client',return_value=client),mock.patch.object(f,'MAX_BODY_BYTES',36):
                     with self.assertRaises(ValueError):f.acquire(StagingStorageResource(local_dir=d))
-                wire=list(Path(d).glob('_acquisition-attempts/*/*/*/wire.body'));self.assertEqual(len(wire),1);self.assertEqual(wire[0].read_bytes(),b'x'*37)
+                wire=list(Path(d).glob('_acquisition-attempts/*/*/*/wire.body'));self.assertEqual(len(wire),1);self.assertEqual(wire[0].read_bytes(),b'')
+                self.assertEqual(wire[0].with_name('pending_wire.body').read_bytes(),b'x'*36)
+                transfer=json.loads(wire[0].with_name('transfer.json').read_bytes());evidence=transfer['pending_wire_artifact']
+                self.assertEqual(evidence['bytes'],37);self.assertEqual(evidence['sha256'],f.digest(b'x'*37));self.assertTrue(evidence['truncated'])
+                self.assertEqual(evidence['retained_bytes'],36);self.assertEqual(evidence['retained_sha256'],f.digest(b'x'*36))
+                self.assertFalse(transfer['complete']);self.assertEqual(transfer['error_code'],'wire_block_limit_exceeded');self.assertEqual(transfer['wire_bytes_received'],37)
 
     def test_partial_wire_and_decoded_blocks_retained_before_rejection(self):
             delivered=bytes(range(64));original=Path.open

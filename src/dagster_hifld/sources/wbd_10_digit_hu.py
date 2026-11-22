@@ -66,6 +66,8 @@ the bounded-memory replay that returns receipts instead of retaining every body.
 """
 from __future__ import annotations
 
+
+from functools import partial
 import struct
 import hashlib
 import json
@@ -85,6 +87,8 @@ import pyarrow.parquet as pq
 from shapely import from_wkb, is_valid_reason
 from shapely.geometry import LinearRing, MultiPolygon
 
+from dagster_hifld.sources import wbd_capture
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_state import load_first_construction
@@ -98,6 +102,10 @@ from dagster_hifld.sources.capture_common import (
     processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, validate_capture_request_identity,
     verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
+    write_candidate_captures,
+    upload_candidate_local_file,
 )
 from dagster_hifld.sources.arcgis_layer import (
     _canonical, _load_capture, _sha,
@@ -193,7 +201,6 @@ METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before
                   "ids_before", "count_after", "ids_after", "layer_after", "service_after")
 
 _EPSG3857_PROJJSON = family.EPSG3857_PROJJSON
-
 
 
 GATE_MODES: frozenset = frozenset()
@@ -346,7 +353,6 @@ def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
                  ("layer_after", LAYER_URL + "?f=pjson"),
                  ("service_after", SERVICE_URL + "?f=pjson")])
     return urls
-
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str,
@@ -682,69 +688,19 @@ def _is_pbf_refusal(body: bytes) -> bool:
 
 def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
                          root: Path) -> tuple[dict[str, dict], list[str]]:
-    """Capture one nominal page window, bisecting refusing windows deterministically.
-
-    The producer persistently refuses some windows (content-dependent
-    server-side failure, observed 2026-11-14: windows that answer without
-    geometry, or at half size earlier the same day, refuse with full geometry,
-    and a window that refuses at 50 ids answers at 25). Each refusal document
-    is retained as evidence under the refused window's own slot name, bound to
-    that window's exact GET URL, and the window is re-fetched as two half-size
-    parts whose URLs are re-derived from the pinned roster. Bisection is
-    bounded: a window at or below ``MIN_WINDOW_IDS`` that still refuses fails
-    the capture — unless the same first-party service serves the identical
-    window through its protobuf serializer (``f=pbf``), whose decoded window
-    is validated against the same row contracts and retained under the
-    window's own ``_pbf`` slot; a window refused by both serializers still
-    fails the capture — never a repair loop. Bodies are written to disk by
-    ``_capture`` and only the receipts are returned, so the caller never holds
-    a population-wide set of response bodies.
-    """
-    parts: dict[str, dict] = {}
-    refusals: list[str] = []
-
-    def retain(name: str, receipt: dict, suffix: str) -> None:
-        for file_suffix in (".body", ".wire", ".receipt.json"):
-            (root / (name + file_suffix)).replace(root / (name + suffix + file_suffix))
-        refusals.append(name + suffix)
-        parts[name + suffix] = receipt
-
-    def walk(path: str) -> None:
-        name = f"page_{index:04d}" + path
-        sub = _window_slice(roster, index, path)
-        body, receipt = _capture(client, _window_url(roster, index, path), root, name)
-        if not _is_refusal(body):
-            parts[name] = receipt
-            return
-        # Retain the refusal document as evidence under its own slot name: the
-        # window is never served a feature page, so the refusal body, wire and
-        # receipt are bound to the window's GET URL under the refusal name.
-        retain(name, receipt, "_refusal")
-        if len(sub) <= MIN_WINDOW_IDS:
-            # Bisection floor reached: rescue the exact window through the
-            # producer's protobuf serializer before failing the capture.
-            pbf_name = name + "_pbf"
-            pbf_body, pbf_receipt = _capture(
-                client, _window_url(roster, index, path, fmt="pbf"), root, pbf_name)
-            if not _is_pbf_refusal(pbf_body):
-                parts[pbf_name] = pbf_receipt
-                return
-            retain(pbf_name, pbf_receipt, "_refusal")
-            raise ValueError("source_page_window_refused_after_bisection:" + name)
-        half = (len(sub) + 1) // 2
-        walk(path + "a")
-        walk(path + "b")
-
-    walk("")
-    return parts, refusals
+    return wbd_capture.capture_window_receipts(client, roster, index, root,
+        policy=wbd_capture.WindowPolicy(page_size=PAGE_SIZE, byte_budget=CAPTURE_MAX_BYTES,
+                                       minimum_ids=MIN_WINDOW_IDS),
+        window_url=_window_url, capture=_capture, is_refusal=_is_refusal,
+        at_floor=partial(wbd_capture.capture_protobuf_fallback,
+            pbf_url=lambda path: _window_url(roster, index, path, fmt="pbf"),
+            is_pbf_refusal=_is_pbf_refusal))
 
 
-
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    return family.validate_spatial_reference(value, label, required=required,
-                                             native_wkid=NATIVE_WKID,
-                                             native_latest_wkid=NATIVE_LATEST_WKID,
-                                             source_crs_wkid=SOURCE_CRS_WKID)
+_validate_spatial_reference = partial(
+    crs_validation.validate_native_spatial_reference,
+    native_wkid=NATIVE_WKID, native_latest_wkid=NATIVE_LATEST_WKID,
+    source_crs_wkid=SOURCE_CRS_WKID)
 
 
 def _validate_service(service: dict, label: str) -> None:
@@ -1331,35 +1287,12 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
             with httpx.Client(follow_redirects=False,
                               timeout=httpx.Timeout(120, connect=20, read=600),
                               headers={"User-Agent": USER_AGENT}) as client:
-                ids_body, ids_receipt = _capture(client, _ids_url(), root, "ids_before")
-                roster = _validate_roster_document(json.loads(ids_body), "seed")
-                del ids_body
-                captures["ids_before"] = ids_receipt
-                doc_client = httpx.Client(follow_redirects=True,
-                                          timeout=httpx.Timeout(60, connect=20, read=300),
-                                          headers={"Connection": "close",
-                                                   "User-Agent": DOC_USER_AGENT})
-                page_parts: dict[str, list[str]] = {}
-                page_refusals: list[str] = []
-                try:
-                    for name, url in _capture_roster(roster):
-                        if name in captures:
-                            continue
-                        if name.startswith("page_"):
-                            window, window_refusals = _capture_page_window(
-                                client, roster, int(name[5:9]), root)
-                            captures.update(window)
-                            page_parts[name] = [part for part in sorted(window)
-                                                if not part.endswith("_refusal")]
-                            page_refusals.extend(window_refusals)
-                            continue
-                        active = doc_client if name == "service_doc" else client
-                        _body, captures[name] = _capture(active, url, root, name,
-                                                         max_bytes=DOC_MAX_BYTES
-                                                         if name == "service_doc" else PAGE_MAX_BYTES)
-                        del _body
-                finally:
-                    doc_client.close()
+                page_parts, page_refusals = wbd_capture.capture_ordered_windows(
+                    wbd_capture.OrderedWindowPolicy(byte_budget=CAPTURE_MAX_BYTES,
+                        seed_url=_ids_url(), page_max_bytes=PAGE_MAX_BYTES,
+                        doc_max_bytes=DOC_MAX_BYTES, doc_user_agent=DOC_USER_AGENT),
+                    client, root, captures, capture=_capture, validate_seed=_validate_roster_document,
+                    roster=_capture_roster, window_capture=_capture_page_window)
         except Exception as exc:
             receipts = {}
             for path in sorted(root.glob("*.receipt.json")):
@@ -1519,44 +1452,24 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
             audit["source_schema_sha256"], original.get("objects", {}), original_receipts)
         return _candidate_result(audit, content_version, prefix, capture_hash,
                                  reused=True, root=root)
-    descriptors = {}
-    for name, key, body in (
-            (output_path, f"{prefix}/{output_path}", None),
-            ("metadata/source_manifest.json", f"{prefix}/metadata/source_manifest.json",
-             _canonical(manifest) + b"\n"),
-            ("metadata/source_audit.json", f"{prefix}/metadata/source_audit.json",
-             _canonical(audit) + b"\n"),
-            ("metadata/processing_identity.json", f"{prefix}/metadata/processing_identity.json",
-             _canonical(identity) + b"\n"),
-            ("metadata/candidate_ready.json", f"{prefix}/metadata/candidate_ready.json",
-             _canonical(ready) + b"\n")):
-        if body is None:
-            storage.upload_local_file(parquet_path, key)
-        else:
-            write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        if snapshot is None:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptor = {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-        if name == output_path and descriptor != {"bytes": parquet_bytes, "sha256": parquet_sha}:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    for name in sorted(captures):
-        body, wire, receipt = _load_capture(root, name)
-        for suffix, payload in (("body", body), ("wire", wire),
-                                ("receipt.json", _canonical(receipt) + b"\n")):
-            key = f"{prefix}/raw/{name}.{suffix}"
-            write_immutable(storage, key, payload)
-            snapshot = storage.object_snapshot(key)
-            if snapshot is None or snapshot.size != len(payload) \
-                    or storage.sha256_key(key) != _sha(payload):
-                raise ValueError("candidate_object_readback_failed:raw/" + name + "." + suffix)
-            descriptors[f"raw/{name}.{suffix}"] = {"bytes": len(payload), "sha256": _sha(payload)}
-    seal_ready_candidate(storage, state_key, content_version, fingerprint,
-                         {"processing_identity": identity,
-                          "source_record_sha256": audit["source_record_sha256"],
-                          "source_schema_sha256": audit["source_schema_sha256"],
-                          "capture_receipts": receipts, "objects": descriptors})
+    descriptors = {output_path: upload_candidate_local_file(
+        storage, prefix, output_path, parquet_path,
+        {"bytes": parquet_bytes, "sha256": parquet_sha})}
+    descriptors.update(write_candidate_outputs(
+        storage, prefix, {
+            'metadata/source_manifest.json': _canonical(manifest) + b'\n',
+            'metadata/source_audit.json': _canonical(audit) + b'\n',
+            'metadata/processing_identity.json': _canonical(identity) + b'\n',
+            'metadata/candidate_ready.json': _canonical(ready) + b'\n',
+        }, snapshot_check='observed'))
+    descriptors.update(write_candidate_captures(
+        storage, prefix, root, sorted(captures), _load_capture))
+    seal_candidate_objects(
+        storage, state_key, content_version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return _candidate_result(audit, content_version, prefix, capture_hash,

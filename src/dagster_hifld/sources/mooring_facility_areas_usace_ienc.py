@@ -1,12 +1,16 @@
 """Bounded, source-faithful capture for the official USACE IENC mooring facility areas."""
 from __future__ import annotations
 
+
+from collections.abc import Mapping
+
 import hashlib
 import json
 import math
 import os
 import shutil
 import stat
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -17,6 +21,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import _validate_spatial_reference, esri_polygon_wkb
 from pyproj import CRS
 from shapely.geometry import Polygon
@@ -33,6 +39,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -239,7 +247,7 @@ def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
     return body, wire, receipt
 
 
-def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+def _read_replay(root: Path) -> Mapping[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     manifest = json.loads(_bounded_capture_read(manifest_path, CAPTURE_MANIFEST_MAX_BYTES, "capture_manifest.json"))
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"), dict):
@@ -261,14 +269,9 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
                        for suffix in ("body", "wire", "receipt.json")}:
         raise ValueError("retained_capture_roster_changed")
     expected_urls = dict(_capture_urls(replay_ids))
-    captures = {}
-    for name in sorted(manifest["receipts"]):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"][name]:
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=expected_urls, load_capture=_load_capture,
+        validate_request_identity=validate_capture_request_identity)
 
 
 def _esri_polygon_wkb(geometry: dict, oid: int) -> bytes:
@@ -300,8 +303,8 @@ def _esri_polygon_wkb(geometry: dict, oid: int) -> bytes:
         raise
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+    docs = CaptureDocuments(captures)
     item = docs["agc_item"]
     if (item.get("id") != AGC_ITEM_ID or item.get("owner") != AGC_ITEM_OWNER
             or item.get("type") != "Feature Service" or item.get("title") != "USACE_IENC_Master_Service"
@@ -491,7 +494,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _capture_identity(captures: dict[str, tuple[bytes, dict]], root: Path) -> dict:
+def _capture_identity(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> dict:
     # Candidate identity binds every decoded and wire artifact. Receipt JSON is
     # retained as provenance but its observation time does not change content identity.
     digests = {}
@@ -543,17 +546,18 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
                 # IDs are acquired first to establish the exact population
                 # contract; count and ID brackets below independently detect
                 # source drift across the paginated feature retrieval.
-                body, receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                                         root, "ids_before")
-                ids = json.loads(body).get("objectIds")
-                if (not isinstance(ids, list) or not ids or any(type(oid) is not int or oid <= 0 for oid in ids)
-                        or len(set(ids)) != len(ids)):
-                    raise ValueError("source_seed_ID_population_drift")
-                urls = _capture_urls(ids)
-                urls = [(name, url) for name, url in urls if name != "ids_before"]
-                captures["ids_before"] = (body, receipt)
-                for name, url in urls:
-                    captures[name] = _capture(client, url, root, name)
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids or any(type(oid) is not int or oid <= 0 for oid in ids)
+                            or len(set(ids)) != len(ids)):
+                        raise ValueError("source_seed_ID_population_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_before', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_urls,
+                    fetch=lambda client, url, root, name: _capture(client, url, root, name),
+                    on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             retained = {}
@@ -577,7 +581,7 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
                                                                  "source_feature_count": audit["source_feature_count"],
                                                                  "source_record_sha256": audit["source_record_sha256"],
                                                                  "source_schema_sha256": audit["source_schema_sha256"],
-                                                                 "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+                                                                 "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
                                                                  "artifact_roster": _bounded_capture_roster(root, artifact_names)}) + b"\n")
         captures = _read_replay(root)
     fields, features, audit = _validate(captures)
@@ -587,7 +591,7 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
     geometry_body = _canonical([[row["attributes"]["OBJECTID"], row["geometry"]] for row in features])
     schema_body = _canonical(fields)
     audit.update({"source_capture_evidence_sha256": capture_sha, "source_capture_evidence": evidence,
-                  "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+                  "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
                   "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
                   "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
                   "mapping_approved": False, "release_accepted": False, "baseline_accepted": False})
@@ -612,7 +616,7 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
                **({"item_evidence": {"agc_item_url": AGC_ITEM_URL, "agc_item_id": AGC_ITEM_ID,
                    "agc_item_owner": AGC_ITEM_OWNER, "service_url": SERVICE_URL,
                    "basis": "The AGC-owned ArcGIS item identifies this FeatureServer as the complete IENC vector data publication; its service and layer 79 metadata re-bind serviceItemId to the same item."}} if name == "agc_item" else {})}
-              for name, (_body, receipt) in sorted(captures.items())]
+              for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version": 1, "approved": False, "title": "Mooring Facility Areas (USACE IENC)",
                 "description": "Complete current MOORING_FACILITY_AREA layer 79 from the official USACE Army "
                                "Geospatial Center USACE_IENC_Master_Service, scoped to that exact inland-waterway "
@@ -664,7 +668,7 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
                                    "source_schema_sha256": audit["source_schema_sha256"],
                                    "capture_evidence_sha256": capture_sha}))
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     if storage.object_snapshot(state_key) is not None:
         original = json.loads(load_first_construction(storage, state_key, version, fingerprint)).get("payload")
         if (not isinstance(original, dict) or original.get("processing_identity") != identity
@@ -697,21 +701,13 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
                 "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
                 "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
                 "capture_directory": str(root)}
-    descriptors = {}
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        snapshot = storage.object_snapshot(f"{prefix}/{name}")
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if (snapshot is None or snapshot.size != descriptor["bytes"]
-                or storage.sha256_key(f"{prefix}/{name}") != descriptor["sha256"]
-                or storage.object_snapshot(f"{prefix}/{name}") != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
-                                                                    "source_record_sha256": audit["source_record_sha256"],
-                                                                    "source_schema_sha256": audit["source_schema_sha256"],
-                                                                    "capture_receipts": receipts,
-                                                                    "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],

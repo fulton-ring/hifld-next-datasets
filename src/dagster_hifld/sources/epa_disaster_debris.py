@@ -1,6 +1,7 @@
 """Native capture and unapproved candidate construction for EPA DDRT."""
 from __future__ import annotations
 
+
 import json
 import shutil
 from datetime import datetime, timezone
@@ -15,14 +16,19 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -109,7 +115,7 @@ def _urls(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
-    docs = {n: json.loads(body) for n, (body, _) in captures.items() if n not in ("epa_landing", "epa_document")}
+    docs = CaptureDocuments(captures, (n for n in captures if n not in ('epa_landing', 'epa_document')))
     portal, service, layer = docs["portal_item"], docs["service_before"], docs["layer_before"]
     landing = captures["epa_landing"][0]
     if (b"updated in August 2026" not in landing and b"updated in August" not in landing) or ITEM_ID.encode() not in landing:
@@ -229,13 +235,16 @@ def capture_epa_disaster_debris(storage: StagingStorageResource, *, version: str
     try:
         with httpx.Client(follow_redirects=False,timeout=90,headers={"User-Agent":"hifld-next-datasets/epa-ddrt-draft"}) as client:
             layer_url=LAYER_URL+"/query?"+urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"})
-            body,receipt=capture_get(client,layer_url,root,"ids_seed",max_bytes=MAX_BODY_BYTES)
-            ids=json.loads(body).get("objectIds")
-            if not isinstance(ids,list) or not ids: raise ValueError("source_seed_ids_unavailable")
-            captures["ids_seed"]=(body,receipt)
-            for name,url in _urls(ids):
-                body,receipt=capture_get(client,url,root,name,max_bytes=MAX_BODY_BYTES)
-                captures[name]=(body,receipt)
+            def validate_seed(body):
+                ids=json.loads(body).get("objectIds")
+                if not isinstance(ids,list) or not ids: raise ValueError("source_seed_ids_unavailable")
+                return ids
+            captures = RetainedCaptureView(root, captures)
+            capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=layer_url,
+                validate_seed=validate_seed, roster=_urls,
+                fetch=lambda client, url, root, name: capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES),
+                on_validation_error=_validate)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         receipts={}
@@ -262,8 +271,8 @@ def replay_epa_disaster_debris(storage: StagingStorageResource, *, version: str,
     manifest=json.loads((root/"capture_manifest.json").read_bytes())
     if manifest.get("complete") is not True or not isinstance(manifest.get("receipts"),dict):
         raise ValueError("replay_capture_not_complete")
-    captures={}
-    for name,receipt in manifest["receipts"].items():
+    def load(root, name):
+        receipt = manifest["receipts"][name]
         body=(root/f"{name}.body").read_bytes(); wire=(root/f"{name}.wire").read_bytes()
         if (receipt.get("complete_body") is not True or receipt.get("status") != 200
                 or receipt.get("final_url") != receipt.get("url")
@@ -272,7 +281,11 @@ def replay_epa_disaster_debris(storage: StagingStorageResource, *, version: str,
             raise ValueError("replay_capture_receipt_mismatch:"+name)
         if (root/f"{name}.receipt.json").read_bytes() != _canonical(receipt)+b"\n":
             raise ValueError("replay_capture_receipt_file_mismatch:"+name)
-        captures[name]=(body,receipt)
+        return body, receipt
+    captures = validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls={name: receipt["url"] for name, receipt in manifest["receipts"].items()},
+        load_capture=load, capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
     try:
         fields,features,audit=_validate(captures)
     except Exception as exc:
@@ -291,14 +304,14 @@ def _build_candidate(storage: StagingStorageResource, version: str, root: Path, 
     objpath=f"geoparquet/{DATASET_SLUG}.parquet"
     source_objects={objpath:{"bytes":len(parquet),"sha256":_sha(parquet)}}
     manifest={"schema_version":1,"approved":False,"title":"EPA Disaster Debris Recovery Data","description":"Exact native EPA_GEO national Disaster Debris Recovery Tool point layer. EPA landing page states August 2026 update; release approval remains pending.","publisher":PUBLISHER,"agency":"Environmental Protection Agency","source_url":LAYER_URL,"license":"https://edg.epa.gov/EPA_Data_License.html","source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(rc["url"]).hostname,"role":"producer_publication","canonical_url":EPA_PAGE if name.startswith("epa_") else LAYER_URL,"retrieval_url":rc["url"],"observed_final_url":rc["final_url"],"retrieved_at":rc["observed_at"],"http_status":rc["status"],"bytes":rc["bytes"],"sha256":rc["sha256"],"license":"https://edg.epa.gov/EPA_Data_License.html","attribution":"U.S. EPA Disaster Debris Recovery Tool; EPA_GEO publishes the linked public layer. Rights review remains pending.","release_date":None,"release_date_unknown_reason":SOURCE_RELEASE_NOTE} for name,(_,rc) in sorted(captures.items())],
+      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(rc["url"]).hostname,"role":"producer_publication","canonical_url":EPA_PAGE if name.startswith("epa_") else LAYER_URL,"retrieval_url":rc["url"],"observed_final_url":rc["final_url"],"retrieved_at":rc["observed_at"],"http_status":rc["status"],"bytes":rc["bytes"],"sha256":rc["sha256"],"license":"https://edg.epa.gov/EPA_Data_License.html","attribution":"U.S. EPA Disaster Debris Recovery Tool; EPA_GEO publishes the linked public layer. Rights review remains pending.","release_date":None,"release_date_unknown_reason":SOURCE_RELEASE_NOTE} for name,(_,rc) in ((name, captures[name]) for name in sorted(captures))],
       "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all source fields and producer-declared physical types, order retained","source_ids":"OBJECTID and GlobalID retained unchanged","geometry":"native point x/y retained in source EPSG:3857; null/invalid geometries are reported and never filtered; no repair/reprojection","candidate_status":"unapproved; release prohibited pending quality, rights, and schema contract acceptance"}}],
       "lineage":f"EPA landing page {EPA_PAGE} links public EPA_GEO item {ITEM_ID}, which links exact FeatureServer layer 0. EPA landing records the August 2026 national update. ArcGIS modified/edit timestamps are preserved as portal edits and are not used as release dates.",
       "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native EPA point properties and IDs retained; approval remains pending.","objects":[{"path":objpath,**source_objects[objpath]}]}}},"unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No approved display transformation."}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     version=content_derived_version(audit["source_record_sha256"],audit["source_geometry_sha256"],audit["source_schema_sha256"],identity)
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version); state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{n:r for n,(_,r) in sorted(captures.items())}})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{n:r for n,(_,r) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     outputs={objpath:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
@@ -314,12 +327,14 @@ def _build_candidate(storage: StagingStorageResource, version: str, root: Path, 
             raise ValueError("cached_native_candidate_changed")
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fp,identity,audit["source_record_sha256"],audit["source_schema_sha256"],payload["objects"],payload["capture_receipts"])
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_id_count":audit["source_id_count"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_invalid_coordinate_count":audit["source_invalid_coordinate_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"capture_directory":str(root),"source_release_accepted":False,"release_accepted":False}
-    for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
-    descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    for name,desc in descriptors.items():
-        snap=storage.object_snapshot(f"{prefix}/{name}")
-        if snap is None or snap.size!=desc["bytes"] or storage.sha256_key(f"{prefix}/{name}")!=desc["sha256"] or storage.object_snapshot(f"{prefix}/{name}")!=snap: raise ValueError("candidate_output_readback_failed:"+name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_readback_failed:')
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{n:r for n,(_,r) in captures.items()},"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fp,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fp)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_id_count":audit["source_id_count"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_invalid_coordinate_count":audit["source_invalid_coordinate_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

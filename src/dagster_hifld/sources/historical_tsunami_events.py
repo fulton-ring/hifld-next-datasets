@@ -4,8 +4,8 @@ Original query JSON, all source IDs/types and native3857 Point coordinates are
 retained. Observations/runups are a distinct layer and are never substituted.
 """
 from __future__ import annotations
+from dagster_hifld.sources import candidate_transaction
 import collections
-import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -19,6 +19,8 @@ import subprocess
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -28,6 +30,7 @@ import pyarrow.parquet as pq
 import pyogrio
 import pyproj
 import shapely
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
@@ -37,6 +40,7 @@ from dagster_hifld.release_approval import validate_release_provenance, verifier
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 SLUG='historical-tsunami-event-locations-'
 LAYER='historical_tsunami_events'
 BASE='https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_events/FeatureServer/0'
@@ -82,10 +86,8 @@ def local_only(storage):
     root.mkdir(parents=True,exist_ok=True)
     if any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise TsunamiQuarantineError('linked_staging_object')
 
-def immutable(storage,key,body):
-    snapshot=storage.object_snapshot(key)
-    if snapshot is None:storage.write_key_if_unchanged(key,body,None)
-    elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:raise TsunamiQuarantineError('immutable_capture_changed:'+key)
+immutable = partial(write_immutable, error_type=TsunamiQuarantineError,
+                    error_prefix='immutable_capture_changed:')
 
 def processing_identity():
     root=Path(__file__).parents[3]
@@ -148,23 +150,22 @@ def source_ids(document):
     return sorted(ids)
 
 def acquire(storage,capture_dir=None):
-    local_only(storage);captures={};total=0
+    local_only(storage);captures=RetainedCaptureView(Path(storage.local_dir));total=0
     def read(name,url):
         nonlocal total
         if capture_dir is None:
             try:body,receipt=fetch_one(url)
             except TsunamiFetchError as exc:
-                captures[name]=(exc.body,exc.receipt);raise
+                captures[name]=(Path(storage.local_dir) / f"_raw-captures/{SLUG}/{digest(exc.body)}/{name}.body",exc.receipt);raise
         else:
             path=Path(capture_dir);body=(path/(name+'.body')).read_bytes();receipt=strict_json((path/(name+'.receipt.json')).read_bytes())
-        captures[name]=(body,receipt);total+=len(body)
+        captures[name]=(Path(storage.local_dir) / f"_raw-captures/{SLUG}/{digest(body)}/{name}.body",receipt);total+=len(body)
         if total>MAX_CAPTURE_BYTES:raise TsunamiQuarantineError('cumulative_complete_capture_budget_exceeded')
         validate_capture(name,body,receipt,url)
     try:
-        for name,url in request_plan().items():read(name,url)
-        ids=source_ids(strict_json(captures['ids_before'][0]))
-        for name,url in request_plan(ids).items():
-            if name not in captures:read(name,url)
+        capture_request_sequence(captures, request_plan().items(),
+            lambda retained: request_plan(source_ids(strict_json(retained['ids_before'][0]))).items(),
+            read)
         if capture_dir is not None:
             actual={f.name for f in Path(capture_dir).iterdir() if f.is_file()}
             if actual!={name+suffix for name in captures for suffix in ('.body','.receipt.json')}:raise TsunamiQuarantineError('capture_directory_extra_or_missing_object')
@@ -289,10 +290,10 @@ def manifest_for(captures,identity,parquet_pin):
 @contextmanager
 def candidate_lock(base,prefix):
     target=base/prefix;target.parent.mkdir(parents=True,exist_ok=True)
-    fd=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(fd,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:raise TsunamiQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX);yield target
+    with candidate_transaction.lock_path(
+            target.parent / ('.' + target.name + '.lock'), error_type=TsunamiQuarantineError,
+            unsafe_code='linked_candidate_lock', require_regular=False, buffered=True):
+        yield target
 
 def construction_record_key(version):
     return f'_construction-state/{SLUG}/{version}.json'
@@ -318,12 +319,12 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
         retained=load_first_construction(storage,key,version,fingerprint)
     bundle=strict_json(retained)['payload']
     if set(bundle)!={'manifest','captures'} or set(bundle['captures'])!=set(captures):raise TsunamiQuarantineError('original_binding_capture_roster_drift')
-    original={}
+    original=RetainedCaptureView(Path(storage.local_dir))
     for name,item in bundle['captures'].items():
         if set(item)!={'body_key','receipt'} or item['body_key']!=f"_raw-captures/{SLUG}/{item['receipt'].get('sha256')}/{name}.body":raise TsunamiQuarantineError('original_capture_body_key_drift')
         body=storage.read_key(item['body_key'])
         if body!=captures[name][0]:raise TsunamiQuarantineError('original_capture_bytes_differ')
-        original[name]=(body,item['receipt'])
+        original[name]=(Path(storage.local_dir) / item['body_key'],item['receipt'])
     pin=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
     expected=manifest_for(original,identity,{k:pin[k] for k in ('sha256','bytes')});actual=bundle['manifest']
     validate_release_provenance(actual);validate_output_policy(actual);validate_construction_code_identity(Path(__file__).parents[3],actual['code_commit'],identity['files'])
@@ -382,15 +383,23 @@ def stage_tsunami_events(storage,*,capture_dir=None):
                 pin={'sha256':sha256_file(parquet),'bytes':parquet.stat().st_size};manifest=manifest_for(captures,identity,pin)
                 # The entire private candidate is complete before first trust state
                 # is installed. A failed metadata/container build cannot bind history.
-                for name,body in source_payloads(captures,identity,audit,manifest,table).items():(private/name).parent.mkdir(parents=True,exist_ok=True);(private/name).write_bytes(body)
-                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'capture_fingerprint':capture_hash,'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
-                (private/READY).write_bytes(encode(ready));verify_outputs(private,table)
-                captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
-                # An existing complete outside witness returns original receipts.
-                # Rebuild only the private candidate from those exact originals.
-                for name,body in source_payloads(captures,identity,audit,manifest,table).items():(private/name).write_bytes(body)
-                ready['objects']={str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY}
-                (private/READY).write_bytes(encode(ready));verify_outputs(private,table);os.rename(private,target)
+                def ready_marker(private, *, final=False):
+                    ready = {'version': version, 'approved': False, 'processing_fingerprint': fingerprint,
+                             'capture_fingerprint': capture_hash,
+                             'objects': candidate_transaction.private_inventory(private, exclude={READY} if final else ())}
+                    return READY, encode(ready)
+                def anchor():
+                    nonlocal captures, manifest
+                    captures, manifest = original_bundle(
+                        storage, version, captures, identity, manifest, create=True)
+                candidate_transaction.install_private_candidate(
+                    private, target, source_payloads(captures, identity, audit, manifest, table).items(),
+                    write_one=candidate_transaction.write_private_bytes,
+                    ready=ready_marker, write_ready=lambda root, name, body: candidate_transaction.write_private_bytes(root, name, body, create_parents=False),
+                    validate_before=lambda private: verify_outputs(private, table), anchor=anchor,
+                    rewrite_objects=lambda: source_payloads(captures, identity, audit, manifest, table).items(),
+                    write_replacement=lambda root, name, body: candidate_transaction.write_private_bytes(root, name, body, create_parents=False), ready_after=lambda private: ready_marker(private, final=True),
+                    validate_after=lambda private: verify_outputs(private, table))
         return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
     except (ValueError,OSError,KeyError,TypeError,RuntimeError,sqlite3.Error,shapely.errors.GEOSException) as exc:
         retained=retain_failure(storage,captures,str(exc));raise TsunamiQuarantineError(str(exc)+'; retained:'+retained) from exc

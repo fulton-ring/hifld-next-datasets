@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pyarrow.parquet as pq
 
 from dagster_hifld.sources import nfhl_lomas as source
+from dagster_hifld.sources import arcgis_layer
 
 
 def _canonical(value):
@@ -249,7 +250,7 @@ class NfhlLomasCaptureTests(unittest.TestCase):
         fake, _ = _fake_capture_get(bodies)
         with tempfile.TemporaryDirectory(prefix="lomas-drift-") as temporary, \
                 patch.multiple(source, **_capture_patches(fields)), \
-                patch.object(source, "capture_get", side_effect=fake), \
+                patch.object(arcgis_layer, "capture_get", side_effect=fake), \
                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
             root = Path(temporary)
             storage = source.StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
@@ -294,7 +295,7 @@ class NfhlLomasCaptureTests(unittest.TestCase):
         fake, _ = _fake_capture_get(bodies)
         with tempfile.TemporaryDirectory(prefix="lomas-upstream-edit-") as temporary, \
                 patch.multiple(source, **_capture_patches(fields)), \
-                patch.object(source, "capture_get", side_effect=fake), \
+                patch.object(arcgis_layer, "capture_get", side_effect=fake), \
                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
             root = Path(temporary)
             storage = source.StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
@@ -326,7 +327,7 @@ class NfhlLomasCaptureTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_capture_patches(fields)), \
-                 patch.object(source, "capture_get", side_effect=fake), \
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_lomas(storage, version="vfixture",
                                                       capture_directory=str(root / "captures"))
@@ -371,7 +372,7 @@ class NfhlLomasCaptureTests(unittest.TestCase):
             root = Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_capture_patches(fields)), \
-                 patch.object(source, "capture_get", side_effect=fake), \
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake), \
                  patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
                 candidate = source.capture_nfhl_lomas(storage, version="vfixture",
                                                       capture_directory=str(root / "captures"))

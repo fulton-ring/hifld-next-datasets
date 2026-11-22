@@ -379,7 +379,7 @@ def capture_fhwa_tunnel_inventory(storage: StagingStorageResource, *, version: s
         "source_feature_count": audit["source_feature_count"],
         "source_record_sha256": audit["source_record_sha256"],
         "source_geometry_sha256": audit["source_geometry_sha256"],
-        "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())},
+        "receipts": {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))},
     }) + b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {

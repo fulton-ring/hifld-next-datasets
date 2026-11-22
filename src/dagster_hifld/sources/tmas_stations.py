@@ -7,11 +7,12 @@ their coordinate attributes. Candidates remain unapproved.
 """
 from __future__ import annotations
 
+
+from functools import partial
 import hashlib
 import json
 import math
 import shutil
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -24,6 +25,8 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.capture_completeness import validate_capture_witness
@@ -33,13 +36,18 @@ from dagster_hifld.http_capture import (
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import (
+    capture_with_retry, producer_error_doc as _producer_error_doc,
+)
+from dagster_hifld.sources.arcgis_layer import capture_layer, load_replay, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    capture_get, candidate_prefix, content_derived_version,
+    candidate_prefix, content_derived_version,
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
-from dagster_hifld.sources.arcgis_layer import load_replay
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "travel-monitoring-analysis-system-tmas-stations"
@@ -151,70 +159,9 @@ def _capture_names(page_roster: list[tuple[int, int]]) -> set[str]:
     return names | {_page_name(offset, count) for offset, count in page_roster}
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_missing")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        wkid = value.get(key)
-        if wkid is not None:
-            if wkid != SOURCE_CRS_WKID:
-                raise ValueError(label + "_crs_drift")
-            found = True
-    if not found:
-        raise ValueError(label + "_crs_drift")
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _retained_capture_bytes(capture_root: Path) -> int:
-    return sum(path.stat().st_size for path in capture_root.iterdir()
-               if path.is_file() and (path.name.endswith(".body") or path.name.endswith(".wire")))
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover incomplete transport captures and the producer's transient
-    error documents; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names and never enter the capture roster.
-    Every retry re-issues the exact same bounded request, and completeness is
-    enforced by the pinned before/after rosters, counts, page tiling and full
-    record/geometry digests, so retries can never mask drift.
-    """
-    for attempt in range(1, attempts + 1):
-        if _retained_capture_bytes(capture_root) + 2 * max_bytes > MAX_CAPTURE_TOTAL_BYTES:
-            raise ValueError("source_capture_budget_exceeded_before_request")
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith(f"incomplete_source_capture:{name}"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise ValueError(f"incomplete_source_capture:{name}")
+_validate_spatial_reference = partial(
+    crs_validation.validate_advertised_wkids,
+    native_wkid=SOURCE_CRS_WKID, required=True)
 
 
 def _collect_page(offset: int, count: int, page: object, ids: list[int],
@@ -238,8 +185,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     required = _capture_names([])
     if not required <= set(captures):
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()
-            if not name.startswith("page_")}
+    docs = CaptureDocuments(captures, (name for name in captures if not name.startswith('page_')))
     ids = validate_capture_witness(docs["count_before"].get("count"),
         docs["ids_before"].get("objectIds"), docs["count_after"].get("count"),
         docs["ids_after"].get("objectIds"))
@@ -581,41 +527,37 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
         if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
             raise ValueError("unsafe_capture_directory")
         capture_root.mkdir(parents=True, exist_ok=True)
-        captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+        captures = RetainedCaptureView(capture_root)
         try:
             with httpx.Client(follow_redirects=False, timeout=180,
                               headers={"User-Agent": "hifld-next-datasets/tmas-stations-draft"}) as client:
-                seed_body, seed_receipt = _capture_with_retry(
-                    client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                    capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
-                    attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                seed = json.loads(seed_body).get("objectIds")
-                if (not isinstance(seed, list) or any(type(value) is not int or value <= 0 for value in seed)
-                        or len(set(seed)) != len(seed)):
-                    raise ValueError("source_seed_id_population_drift")
-                captures["ids_seed"] = (seed_body, seed_receipt)
-                for name, url in _doc_urls():
-                    captures[name] = _capture_with_retry(client, url, capture_root, name,
-                                                         max_bytes=MAX_CAPTURE_BYTES,
-                                                         attempts=DOC_CAPTURE_ATTEMPTS,
-                                                         base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                layer_doc = json.loads(captures["layer_before"][0])
-                if layer_doc.get("maxRecordCount") != EXPECTED_MAX_RECORD_COUNT \
-                        or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
-                    raise ValueError("source_record_limit_drift")
-                for offset in range(0, len(seed), PAGE_START_RECORDS):
-                    count = min(PAGE_START_RECORDS, len(seed) - offset)
-                    name = _page_name(offset, count)
-                    captures[name] = _capture_with_retry(client, _page_query(offset, count),
-                                                         capture_root, name,
-                                                         max_bytes=MAX_CAPTURE_BYTES,
-                                                         attempts=PAGE_CAPTURE_ATTEMPTS,
-                                                         base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS)
-                for name, url in _after_doc_urls():
-                    captures[name] = _capture_with_retry(client, url, capture_root, name,
-                                                         max_bytes=MAX_CAPTURE_BYTES,
-                                                         attempts=DOC_CAPTURE_ATTEMPTS,
-                                                         base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+                def validate_seed(body):
+                    seed = json.loads(body).get("objectIds")
+                    if (not isinstance(seed, list) or any(type(value) is not int or value <= 0 for value in seed)
+                            or len(set(seed)) != len(seed)):
+                        raise ValueError("source_seed_id_population_drift")
+                    return seed
+
+                def roster(seed):
+                    layer_doc = json.loads(captures["layer_before"][0])
+                    if layer_doc.get("maxRecordCount") != EXPECTED_MAX_RECORD_COUNT \
+                            or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
+                        raise ValueError("source_record_limit_drift")
+                    return [(_page_name(offset, min(PAGE_START_RECORDS, len(seed) - offset)),
+                             _page_query(offset, min(PAGE_START_RECORDS, len(seed) - offset)))
+                            for offset in range(0, len(seed), PAGE_START_RECORDS)] + _after_doc_urls()
+
+                def fetch(client, url, root, name):
+                    page = name.startswith("page_")
+                    return capture_with_retry(client, url, root, name, max_bytes=MAX_CAPTURE_BYTES,
+                        max_total_bytes=MAX_CAPTURE_TOTAL_BYTES,
+                        attempts=PAGE_CAPTURE_ATTEMPTS if page else DOC_CAPTURE_ATTEMPTS,
+                        base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS if page else DOC_CAPTURE_BASE_DELAY_SECONDS)
+
+                capture_layer(LAYER_URL, capture_root, MAX_CAPTURE_TOTAL_BYTES, PAGE_START_RECORDS,
+                    client=client, captures=captures, seed_name="ids_seed", validate_seed=validate_seed,
+                    after_seed_documents=_doc_urls(), roster=roster, fetch=fetch,
+                    on_validation_error=_validate_captures)
             layer, source_fields, extracted = _validate_captures(captures)
         except Exception as exc:
             receipts = {}
@@ -627,7 +569,7 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
             (capture_root / "capture_manifest.json").write_bytes(
                 _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                             "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-            retained = dict(captures)
+            retained = RetainedCaptureView(capture_root, captures)
             for receipt_path in capture_root.glob("*.receipt.json"):
                 name = receipt_path.name.removesuffix(".receipt.json")
                 if name in retained:
@@ -693,7 +635,7 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                     "attribution": "BTS NTAD; item metadata states the work is a U.S. "
                                    "government work not protected by copyright, available for "
                                    "unrestricted public use; rights review remains pending."}
-                   for name, (_, receipt) in sorted(captures.items())],
+                   for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "source_fields": "all six source fields retained in "
@@ -761,7 +703,7 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                         "source_record_sha256": audit["source_record_sha256"],
                         "source_geometry_sha256": audit["source_geometry_sha256"],
                         "artifact_roster": capture_roster_digests(capture_root),
-                        "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())},
+                        "receipts": {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))},
                         "evidence": {stem: {"kind": entry["kind"],
                                             "files": {suffix: {"bytes": len(body), "sha256": _sha(body)}
                                                       for suffix, body in sorted(entry["files"].items())}}
@@ -804,21 +746,19 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
                 "source_release_accepted": False, "source_freshness_accepted": False,
                 "schema_contract_accepted": False, "id_contract_accepted": False,
                 "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
-    for relative, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-    descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
-    for name, descriptor in descriptors.items():
-        key = f"{prefix}/{name}"
-        snap = storage.object_snapshot(key)
-        if snap is None or snap.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"] \
-                or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_output_physical_readback_failed:" + name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_physical_readback_failed:')
     payload = {"processing_identity": identity,
                "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
                "capture_receipts": {name: receipt for name, (_, receipt) in captures.items()},
                "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

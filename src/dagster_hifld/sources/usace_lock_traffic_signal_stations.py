@@ -9,9 +9,13 @@ count is captured before and after to evidence the subset relationship.
 """
 from __future__ import annotations
 
+
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -21,6 +25,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
@@ -28,10 +33,13 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import (
     capture_witness,
@@ -128,11 +136,11 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     )
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     ids_before = capture_witness(captures)
     if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
             or item.get("type") != "PDF" or item.get("access") != "public"):
@@ -287,7 +295,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
+def _capture_identity_hash(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> str:
     return _sha(_canonical(capture_identity(captures, root)))
 
 
@@ -324,18 +332,19 @@ def capture_usace_lock_traffic_signal_stations(storage: StagingStorageResource, 
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
-                seed_body, seed_receipt = capture_page(client, _query({"where": _lock_filter(),
-                    "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
-                ids = json.loads(seed_body).get("objectIds")
-                if (not isinstance(ids, list) or not ids
-                        or any(type(oid) is not int or oid <= 0 for oid in ids)
-                        or len(set(ids)) != len(ids)):
-                    raise ValueError("source_seed_id_population_drift")
-                captures["ids_before"] = (seed_body, seed_receipt)
-                for name, url in _capture_roster(ids):
-                    if name == "ids_before":
-                        continue
-                    captures[name] = capture_page(client, url, root, name)
+                def validate_seed(seed_body):
+                    ids = json.loads(seed_body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids
+                            or any(type(oid) is not int or oid <= 0 for oid in ids)
+                            or len(set(ids)) != len(ids)):
+                        raise ValueError("source_seed_id_population_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_before', seed_url=_query({'where': _lock_filter(), 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: capture_page(client, url, root, name),
+                    on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}
@@ -356,7 +365,7 @@ def capture_usace_lock_traffic_signal_stations(storage: StagingStorageResource, 
             "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
 
@@ -365,7 +374,7 @@ def capture_usace_lock_traffic_signal_stations(storage: StagingStorageResource, 
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "bts_item_succession_accepted": False, "source_release_accepted": False,
         "source_freshness_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "coverage_accepted": False,
@@ -378,7 +387,7 @@ def capture_usace_lock_traffic_signal_stations(storage: StagingStorageResource, 
         "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{"input_id": name, "producer": ("USDOT BTS IENC NTAD item" if name == "bts_item" else PUBLISHER),
         "host": urlsplit(receipt["url"]).hostname,
         "role": "official_distributor" if name == "bts_item" else "producer_publication",
@@ -438,7 +447,7 @@ def capture_usace_lock_traffic_signal_stations(storage: StagingStorageResource, 
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n",
         "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, _receipt) in sorted(captures.items()):
+    for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures)):
         _body, wire, _receipt2 = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = wire
@@ -488,20 +497,13 @@ def capture_usace_lock_traffic_signal_stations(storage: StagingStorageResource, 
             "source_freshness_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
             "mapping_approved": False, "release_accepted": False, "capture_directory": str(root)}
-    descriptors = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if (snapshot is None or snapshot.size != descriptor["bytes"]
-                or storage.sha256_key(key) != descriptor["sha256"]):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
-        "source_record_sha256": audit["source_record_sha256"],
-        "source_schema_sha256": audit["source_schema_sha256"],
-        "capture_receipts": receipts, "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content")
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
     )

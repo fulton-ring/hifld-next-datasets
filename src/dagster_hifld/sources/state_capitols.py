@@ -8,6 +8,8 @@ approve the source, schema, baseline, coverage, rights, or release.
 """
 from __future__ import annotations
 
+
+from functools import partial
 import io
 import json
 import math
@@ -23,16 +25,21 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import layer_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -140,30 +147,9 @@ def _urls(ids: list[int]) -> list[tuple[str, str]]:
         page_params={"returnZ": "true", "returnM": "true"})
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_drift")
-    found = set()
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            number = value[key]
-            if type(number) is not int or number not in {3857, 102100}:
-                raise ValueError(label + "_crs_drift")
-            found.add(3857)
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            raw = value[key]
-            if not isinstance(raw, str) or not raw.strip():
-                raise ValueError(label + "_crs_drift")
-            try:
-                crs = CRS.from_wkt(raw)
-            except Exception as exc:
-                raise ValueError(label + "_crs_drift") from exc
-            if not crs.equals(EXPECTED_CRS, ignore_axis_order=True):
-                raise ValueError(label + "_crs_drift")
-            found.add(3857)
-    if not found or len(found) != 1:
-        raise ValueError(label + "_crs_drift")
+_validate_spatial_reference = partial(
+    crs_validation.validate_required_spatial_reference,
+    wkids=(3857, 102100), source_crs=EXPECTED_CRS)
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
@@ -192,13 +178,10 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     receipts = manifest.get("receipts", {})
     if manifest.get("complete") is not True or not isinstance(receipts, dict) or not receipts:
         raise ValueError("capture_manifest_invalid")
-    captures = {}
-    for name in sorted(receipts):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != receipts.get(name):
-            raise ValueError("capture_receipt_manifest_mismatch:" + name)
-        captures[name] = (body, receipt)
-    return captures
+    return validated_capture_view(root, receipts=receipts,
+        expected_urls=dict.fromkeys(receipts, ""), load_capture=_load_capture,
+        validate_request_identity=lambda name, receipt, url: None,
+        receipt_error="capture_receipt_manifest_mismatch")
 
 
 def _validate_metadata(service: dict, layer: dict) -> None:
@@ -379,7 +362,7 @@ def _capture_evidence_hash(docs: dict, captures: dict[str, tuple[bytes, dict]]) 
     cosmetic symbology so content-identical captures reuse one version.
     """
     roster = {}
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         doc = docs.get(name)
         if name.startswith("layer_") and isinstance(doc, dict):
             # Layer responses carry server-randomized cosmetic symbology: the
@@ -429,6 +412,23 @@ def _stable_layer(layer: dict) -> dict:
              "fields", "maxRecordCount", "extent")}
 
 
+def _validate_capture(captures):
+    docs = CaptureDocuments(captures)
+    _validate_metadata(docs["service_before"], docs["layer_before"])
+    _validate_metadata(docs["service_after"], docs["layer_after"])
+    if (docs["service_after"] != docs["service_before"]
+            or _stable_layer(docs["layer_after"]) != _stable_layer(docs["layer_before"])):
+        raise ValueError("source_changed_during_capture")
+    if docs["count_before"].get("count") != COUNT or docs["count_after"].get("count") != COUNT:
+        raise ValueError("source_count_drift")
+    if docs["ids_after"].get("objectIds") != docs["ids_before"].get("objectIds"):
+        raise ValueError("source_id_roster_changed_during_capture")
+    pages = CaptureDocuments(captures, (name for name in docs if name.startswith("page_")))
+    return _validate_population(
+        docs["page_000"].get("fields") if pages else None,
+        docs["ids_before"].get("objectIds"), pages)
+
+
 def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                            capture_directory: str | None = None,
                            repo_root: Path | None = None) -> dict[str, object]:
@@ -453,7 +453,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
         if requested and any(requested.glob("*.body")):
             raise ValueError("unsealed_capture_attempt_exists")
         root = ((requested / version) if requested
-                else Path("/tmp/hifld-state-capitols-capture")) / uuid4().hex
+                else default_capture_dir("hifld-state-capitols-capture")) / uuid4().hex
         if any(path.is_symlink() for path in (root, *root.parents)):
             raise ValueError("unsafe_capture_directory")
         root.mkdir(parents=True, exist_ok=False)
@@ -461,37 +461,25 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usgs-structures-draft"}) as client:
-                metadata = dict(_urls([]))
-                for name in ("service_before", "layer_before", "count_before", "ids_before"):
-                    captures[name] = _capture(client, metadata[name], root, name)
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids, list) or len(ids) != COUNT
-                        or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA):
-                    raise ValueError("source_seed_id_roster_drift")
-                for name, url in _urls(ids):
-                    if name not in captures:
-                        captures[name] = _capture(client, url, root, name)
-            docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
-            _validate_metadata(docs["service_before"], docs["layer_before"])
-            _validate_metadata(docs["service_after"], docs["layer_after"])
-            if (docs["service_after"] != docs["service_before"]
-                    or _stable_layer(docs["layer_after"]) != _stable_layer(docs["layer_before"])):
-                raise ValueError("source_changed_during_capture")
-            if docs["count_before"].get("count") != COUNT or docs["count_after"].get("count") != COUNT:
-                raise ValueError("source_count_drift")
-            if docs["ids_after"].get("objectIds") != docs["ids_before"].get("objectIds"):
-                raise ValueError("source_id_roster_changed_during_capture")
-            pages = {name: payload for name, payload in docs.items() if name.startswith("page_")}
-            _features, audit = _validate_population(docs["page_000"].get("fields")
-                                                    if pages else None,
-                                                    docs["ids_before"].get("objectIds"), pages)
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or len(ids) != COUNT
+                            or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA):
+                        raise ValueError("source_seed_id_roster_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, BATCH_SIZE, client=client,
+                    captures=captures, discovery_documents=_urls([])[:4], roster=_urls,
+                    validate_seed=validate_seed, fetch=_capture, oid_field="objectid",
+                    on_validation_error=_validate_capture)
+            _features, audit = _validate_capture(captures)
             manifest = {
                 "complete": True,
                 "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 "source_feature_count": audit["source_feature_count"],
                 "source_record_sha256": audit["source_record_sha256"],
                 "source_schema_sha256": audit["source_schema_sha256"],
-                "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+                "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             }
             (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
             captures = _read_replay(root)
@@ -513,7 +501,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                 quarantine_incomplete_capture(storage, root, DATASET_SLUG, version,
                                               captures, type(exc).__name__)
             raise
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     _validate_metadata(docs["service_before"], docs["layer_before"])
     _validate_metadata(docs["service_after"], docs["layer_after"])
     if (docs["service_after"] != docs["service_before"]
@@ -523,7 +511,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
         raise ValueError("source_count_drift")
     if docs["ids_after"].get("objectIds") != docs["ids_before"].get("objectIds"):
         raise ValueError("source_id_roster_changed_during_capture")
-    pages = {name: payload for name, payload in docs.items() if name.startswith("page_")}
+    pages = CaptureDocuments(captures, (name for name in docs if name.startswith("page_")))
     features, audit = _validate_population(docs["page_000"].get("fields") if pages else None,
                                            docs["ids_before"].get("objectIds"), pages)
     parquet = _parquet_bytes(features)
@@ -551,7 +539,7 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                   "coverage_accepted": False, "rights_accepted": False,
                   "mapping_approved": False, "release_accepted": False, "baseline_accepted": False})
     if original_payload is None:
-        receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+        receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{
         "input_id": name,
         "producer": PUBLISHER,
@@ -679,20 +667,13 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                 "schema_contract_accepted": False, "id_contract_accepted": False,
                 "baseline_accepted": False, "coverage_accepted": False, "rights_accepted": False,
                 "mapping_approved": False, "release_accepted": False}
-    descriptors = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if snapshot is None or snapshot.size != len(body) or storage.sha256_key(key) != descriptor["sha256"]:
-            raise ValueError("candidate_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint,
-                         {"processing_identity": identity,
-                          "source_record_sha256": audit["source_record_sha256"],
-                          "source_schema_sha256": audit["source_schema_sha256"],
-                          "capture_receipts": receipts, "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content", error_prefix='candidate_readback_failed:')
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(repo, identity["code_commit"], identity["files"],
                                         identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

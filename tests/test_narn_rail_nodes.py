@@ -15,6 +15,7 @@ from urllib.parse import parse_qs
 
 import httpx
 from dagster import AssetCheckSeverity, DagsterInstance, materialize
+from dagster_hifld.sources import arcgis_adaptive
 from dagster_hifld.assets import narn_rail_nodes as assets
 from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.sources import arcgis_layer as shared
@@ -239,7 +240,7 @@ class NarnRailNodesTests(unittest.TestCase):
                                       *source._doc_urls()]:
                         captures[name] = source._capture_with_retry(client, url, retained, name,
                             max_bytes=source.MAX_CAPTURE_BYTES, attempts=4, base_delay=0)
-                    captures.update(source._capture_pages(client, retained, len(features)))
+                    captures.update(arcgis_adaptive.capture_offset_pages(source._slice_capture_spec(), client, retained, len(features), page_size=source.PAGE_START_RECORDS))
                     for name, url in source._after_doc_urls():
                         captures[name] = source._capture_with_retry(client, url, retained, name,
                             max_bytes=source.MAX_CAPTURE_BYTES, attempts=4, base_delay=0)
@@ -890,7 +891,7 @@ class NarnRailNodesTests(unittest.TestCase):
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
                  patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
-                pages = source._capture_pages(None, root, 6)
+                pages = arcgis_adaptive.capture_offset_pages(source._slice_capture_spec(), None, root, 6, page_size=source.PAGE_START_RECORDS)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual((root / "page_000000_00004.body").read_bytes(), error_body)
             self.assertEqual(calls.count("page_000000_00004"), 1)
@@ -926,7 +927,7 @@ class NarnRailNodesTests(unittest.TestCase):
                                 PAGE_PROBE_ATTEMPTS=1, DOC_CAPTURE_ATTEMPTS=1), \
                  patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
-                pages = source._capture_pages(None, root, 6)
+                pages = arcgis_adaptive.capture_offset_pages(source._slice_capture_spec(), None, root, 6, page_size=source.PAGE_START_RECORDS)
             self.assertEqual(sorted(pages), ["page_000000_00002", "page_000002_00002", "page_000004_00002"])
             self.assertEqual(calls.count("page_000000_00004"), 1)
 
@@ -950,7 +951,7 @@ class NarnRailNodesTests(unittest.TestCase):
                  patch.object(shared, "capture_get", side_effect=fake_capture_get), \
                  patch.object(source.time, "sleep"):
                 with self.assertRaisesRegex(ValueError, "source_single_feature_unservable"):
-                    source._capture_pages(None, root, 6)
+                    arcgis_adaptive.capture_offset_pages(source._slice_capture_spec(), None, root, 6, page_size=source.PAGE_START_RECORDS)
 
     def test_capture_requires_explicit_local_staging(self):
         from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource

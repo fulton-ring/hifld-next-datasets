@@ -14,6 +14,7 @@ release acceptance remain pending.
 """
 from __future__ import annotations
 
+
 import json
 import shutil
 from pathlib import Path
@@ -27,15 +28,20 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -82,7 +88,7 @@ def _input_fingerprint(captures: Mapping[str, tuple[bytes, Mapping[str, object]]
     return _sha(_canonical({"bodies": {name: {"bytes": len(body), "sha256": _sha(body),
                                               "wire_bytes": receipt.get("wire_bytes"),
                                               "wire_sha256": receipt.get("wire_sha256")}
-                            for name, (body, receipt) in sorted(captures.items())},
+                            for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures))},
                             "processing_identity": identity}))
 
 
@@ -133,10 +139,9 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
     summary = json.loads((root / "capture-summary.json").read_bytes())
     if summary.get("complete") is not True:
         raise ValueError("offline_native_capture_incomplete")
-    captures = {}
-    for receipt_path in sorted(root.glob("*.receipt.json")):
-        receipt = json.loads(receipt_path.read_bytes())
-        name = receipt_path.name.removesuffix(".receipt.json")
+    names = [path.name.removesuffix(".receipt.json") for path in sorted(root.glob("*.receipt.json"))]
+    def load(root, name):
+        receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
         body = (root / f"{name}.body").read_bytes()
         if (receipt.get("complete") is not True or receipt.get("status") != 200
                 or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
@@ -145,8 +150,12 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
         # reconstruct the shared receipt shape without changing observation time.
         receipt.update({"complete_body": True, "wire_bytes": len(body), "wire_sha256": _sha(body),
                         "content_encoding": "identity", "error_code": None})
-        captures[name] = (body, receipt)
-    return captures
+        return body, receipt
+    receipts = {name: load(root, name)[1] for name in names}
+    return validated_capture_view(root, receipts=receipts,
+        expected_urls=dict.fromkeys(names, ""), load_capture=load,
+        capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
 
 
 def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[bytes, dict[str, object]]]:
@@ -154,16 +163,17 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
     try:
         with httpx.Client(follow_redirects=False, timeout=60,
                           headers={"User-Agent": "hifld-next-datasets/boem-ocs-wells-draft"}) as client:
-            seed, receipt = capture_get(client, _query(where="1=1", returnIdsOnly="true"), root,
-                                        "ids_before", max_bytes=MAX_BODY_BYTES)
-            captures["ids_before"] = (seed, receipt)
-            ids = json.loads(seed).get("objectIds")
-            if not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids) or len(ids) != len(set(ids)):
-                raise ValueError("source_seed_id_roster_invalid")
-            urls = [(n, u) for n, u in _capture_names(ids) if n != "ids_before"]
-            for name, url in urls:
-                body, receipt = capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
+            def validate_seed(seed):
+                ids = json.loads(seed).get("objectIds")
+                if (not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids)
+                        or len(ids) != len(set(ids))):
+                    raise ValueError("source_seed_id_roster_invalid")
+                return ids
+            captures = RetainedCaptureView(root, captures)
+            capture_layer(LAYER_URL, root, MAX_BODY_BYTES, PAGE_SIZE, client=client,
+                captures=captures, seed_url=_query(where="1=1", returnIdsOnly="true"),
+                validate_seed=validate_seed, roster=_capture_names, on_validation_error=_validate,
+                fetch=lambda client, url, root, name: capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES))
         return captures
     except Exception as exc:
         if captures:
@@ -182,7 +192,7 @@ def _profile_fields(layer: Mapping[str, object]) -> list[dict[str, object]]:
 
 
 def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
     if (not isinstance(ids_before, list) or not ids_before or sorted(ids_before) != sorted(ids_after or [])
             or len(ids_before) != len(set(ids_before))):
@@ -398,7 +408,7 @@ def capture_boem_ocs_wells(storage: StagingStorageResource, *, version: str = "d
                "role": "producer_publication",
                "release_date": None,
                "release_date_unknown_reason": "The cadastre service updates wells continuously (layer description: daily); it publishes no dated source release, and service metadata timestamps are observations, not release dates."}
-              for n, (_, receipt) in sorted(captures.items())]
+              for n, (_, receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version": 1, "approved": False,
                 "title": "Outer Continental Shelf (OCS) Oil and Natural Gas Wells",
                 "description": "National-scale point locations of exploration and development wells drilled in federal OCS waters, published by BOEM's Geospatial Services Division Marine Mineral Cadastre service; the well database is maintained by BSEE. Not for official or legal use per the service description.",
@@ -447,17 +457,17 @@ def capture_boem_ocs_wells(storage: StagingStorageResource, *, version: str = "d
              "id_contract_accepted": False, "rights_accepted": False,
              "source_authority_accepted": False, "mapping_approved": False}
     outputs["metadata/candidate_ready.json"] = _canonical(ready) + b"\n"
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-    objects = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
-    for name, descriptor in objects.items():
-        key = f"{prefix}/{name}"; snap = storage.object_snapshot(key)
-        if snap is None or descriptor != {"bytes": snap.size, "sha256": storage.sha256_key(key)} or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_physical_readback_failed:" + name)
+    objects = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_physical_readback_failed:')
     payload = {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": {n: r for n, (_, r) in sorted(captures.items())}, "objects": objects}
-    seal_ready_candidate(storage, state_key, version, _sha(_canonical(identity)), payload)
+               "capture_receipts": {n: r for n, (_, r) in ((name, captures[name]) for name in sorted(captures))}, "objects": objects}
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=_sha(_canonical(identity)))
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": audit["feature_count"], "candidate_ready": prefix + "/metadata/candidate_ready.json",

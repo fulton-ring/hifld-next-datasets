@@ -9,6 +9,12 @@ data are captured by importing this module.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import seal_candidate_objects
+
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs, write_candidate_capture_files, verify_candidate_outputs,
+)
+
 import hashlib
 import json
 import math
@@ -34,6 +40,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps, retry_capture_request, quarantine_retry_response
 from dagster_hifld.sources.capture_common import (
     CaptureProgress, candidate_prefix, capture_get, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate,
@@ -401,7 +408,7 @@ def _quarantine_failure_evidence(storage: StagingStorageResource, dataset_slug: 
                                  error_code: str, omitted: list[str]) -> str:
     token = uuid4().hex
     base = f"_quarantine/{dataset_slug}/{token}"
-    for name, (body, wire, receipt) in sorted(captures.items()):
+    for name, (body, wire, receipt) in ((name, captures[name]) for name in sorted(captures)):
         write_immutable(storage, f"{base}/raw/{name}.body", body)
         write_immutable(storage, f"{base}/raw/{name}.wire", wire)
         write_immutable(storage, f"{base}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
@@ -721,38 +728,48 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
         receipts[name] = receipt
         return body
 
-    def capture_with_retry(client, name: str, url: str) -> bytes:
-        for attempt in range(PAGE_ATTEMPTS):
-            if attempt:
-                time.sleep(PAGE_RETRY_BACKOFF_SECONDS[min(attempt - 1, len(PAGE_RETRY_BACKOFF_SECONDS) - 1)])
-            try:
-                return capture_one(client, name, url)
-            except ValueError as exc:
-                if attempt == PAGE_ATTEMPTS - 1 or not str(exc).startswith("incomplete_source_capture:"):
-                    raise
-        raise AssertionError("unreachable_retry_state")
 
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/national-transit-map-routes-draft"}) as client:
             # Response bodies are validated as they arrive and then dropped: the
             # durable copy on disk is the only retained form, so a full capture
             # never accumulates in memory.
-            seed_body = capture_with_retry(client, "ids_seed",
-                                           _query_url(where="1=1", returnIdsOnly="true", f="json"))
-            seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
-                raise ValueError("source_seed_id_roster_missing_or_invalid")
-            del seed_body
-            for name, url in _source_metadata_urls():
-                capture_with_retry(client, name, url)
-            pinned_ids, layer_before = _validate_before_page_requests(capture_root, receipts)
-            _pagination_mode, page_plan = _page_plan(pinned_ids, layer_before)
-            for name, url, expected_page_ids in page_plan:
-                page_body = capture_with_retry(client, name, url)
-                _validate_page_ids(page_body, expected_page_ids)
-                del page_body
-            for name, url in _source_after_urls():
-                capture_with_retry(client, name, url)
+            def acquisition_steps():
+                seed_body = (yield ('ids_seed', _query_url(where='1=1', returnIdsOnly='true', f='json')))
+                seed = json.loads(seed_body).get("objectIds")
+                if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
+                    raise ValueError("source_seed_id_roster_missing_or_invalid")
+                del seed_body
+                yield from ((name, url) for name, url in _source_metadata_urls())
+                pinned_ids, layer_before = _validate_before_page_requests(capture_root, receipts)
+                _pagination_mode, page_plan = _page_plan(pinned_ids, layer_before)
+                # Native URL-length limits may produce unequal object-ID chunks.
+                # Keep their request metadata; the common owner advances offsets.
+                offset = 0
+                requests_by_offset = {}
+                for name, url, expected in page_plan:
+                    requests_by_offset[offset] = (name, url, len(expected))
+                    offset += len(expected)
+
+                def validate_page(offset, expected, body):
+                    _validate_page_ids(body, expected)
+                    return json.loads(body)['features']
+
+                yield ExactIdCapturePlan(
+                    ids=pinned_ids,
+                    page_size=lambda offset, remaining: requests_by_offset[offset][2],
+                    page_request=lambda offset, expected: requests_by_offset[offset][:2],
+                    validate_page=validate_page,
+                    read_page=lambda offset: _read_capture_body(
+                        capture_root, requests_by_offset[offset][0]),
+                    closing_requests=tuple(_source_after_urls()))
+            capture_request_steps(acquisition_steps(), lambda name, url: retry_capture_request(
+                    lambda attempt: capture_one(client, name, url), attempts=PAGE_ATTEMPTS,
+                    schedule=PAGE_RETRY_BACKOFF_SECONDS,
+                    retryable=lambda exc, attempt: isinstance(exc, ValueError) and str(exc).startswith("incomplete_source_capture:"),
+                    preserve_failed=lambda exc, attempt: quarantine_retry_response(storage, capture_root,
+                        DATASET_SLUG, capture_token, name, type(exc).__name__)),
+                capture_root=capture_root, byte_budget=MAX_CAPTURE_TOTAL_BYTES)
         _plain_fields, audit, parquet = _build_candidate(capture_root, receipts)
     except Exception as exc:
         error_code = str(exc) if isinstance(exc, ValueError) and str(exc).replace("_", "").isalnum() else type(exc).__name__
@@ -818,15 +835,12 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
         return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,output_names)
-    write_immutable(storage,f"{prefix}/{native_path}",parquet)
+    write_candidate_outputs(storage, prefix, {native_path: parquet}, snapshot_check="none")
     del parquet
-    for name,body in metadata_outputs.items():
-        write_immutable(storage,f"{prefix}/{name}",body)
-    for name,receipt in sorted(receipts.items()):
-        write_immutable(storage,f"{prefix}/raw/{name}.body",_read_capture_body(capture_root,name))
-        write_immutable(storage,f"{prefix}/raw/{name}.wire",(capture_root/f"{name}.wire").read_bytes())
-        write_immutable(storage,f"{prefix}/raw/{name}.receipt.json",_canonical(receipt)+b"\n")
-    write_immutable(storage,f"{prefix}/metadata/candidate_ready.json",candidate_ready)
+    write_candidate_outputs(storage, prefix, metadata_outputs, snapshot_check="none")
+    write_candidate_capture_files(storage, prefix, capture_root, receipts, _read_capture_body)
+    write_candidate_outputs(storage, prefix, {"metadata/candidate_ready.json": candidate_ready},
+                            snapshot_check="none")
     descriptors = {native_path:dict(source_objects[native_path])}
     for name,body in metadata_outputs.items():
         descriptors[name] = {"bytes":len(body),"sha256":_sha(body)}
@@ -836,13 +850,15 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
         descriptors[f"raw/{name}.body"] = {"bytes":receipt["bytes"],"sha256":receipt["sha256"]}
         descriptors[f"raw/{name}.wire"] = {"bytes":receipt["wire_bytes"],"sha256":receipt["wire_sha256"]}
         descriptors[f"raw/{name}.receipt.json"] = {"bytes":len(receipt_body),"sha256":_sha(receipt_body)}
-    for name,d in descriptors.items():
-        key=f"{prefix}/{name}"; snap=storage.object_snapshot(key)
-        if snap is None or snap.size != d["bytes"] or storage.sha256_key(key) != d["sha256"] or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    verify_candidate_outputs(storage, prefix, descriptors)
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "capture_receipts":dict(receipts),"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fingerprint,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,
         "source_null_geometry_count":audit["source_null_geometry_count"],

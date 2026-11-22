@@ -5,13 +5,15 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
-import hashlib
+
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
 import time
+
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -21,12 +23,19 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shapely
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import (
+    capture_roster_digests,
+    validate_capture_roster,
+)
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources import arcgis_layer as capture_shared
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import (
@@ -37,6 +46,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 
 DATASET_SLUG = "depth-areas-usace-ienc-2"
@@ -69,98 +80,16 @@ EXPECTED_FIELD_DECLARATIONS = [
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    root.mkdir(parents=True, exist_ok=True)
-    body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
-    for path in (body_path, wire_path):
-        path.unlink(missing_ok=True)
-    hashes = {"body": hashlib.sha256(), "wire": hashlib.sha256()}
-    sizes = {"body": 0, "wire": 0}
-    budget_start=budget[0]
-    observed = datetime.now(timezone.utc).isoformat()
-    def retain(path, kind):
-        def write(chunk):
-            with path.open("ab") as stream:
-                stream.write(chunk)
-            hashes[kind].update(chunk); sizes[kind] += len(chunk)
-            budget[0]=budget_start+sizes["wire"]+sizes["body"]
-        return write
-    def reserve(progress):
-        if budget_start+progress.wire_bytes_retained+progress.decoded_bytes_retained+progress.reserve_bytes>MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-    response = None
-    result = None
-    final_url = url
-    transport_error = None
-    try:
-        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-            final_url = str(response.url)
-            result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
-                max_decoded_bytes=MAX_BODY_BYTES, reserve=reserve,
-                retain_wire=retain(wire_path, "wire"), retain_decoded=retain(body_path, "body"))
-    except Exception as exc:
-        transport_error = type(exc).__name__
-    receipt = {"method":"GET", "url":url, "final_url":final_url, "observed_at":observed,
-        "status":result.status_code if result is not None else (response.status_code if response is not None else None),
-        "retry_after":response.headers.get("retry-after") if response is not None else None,
-        "complete_body":bool(result is not None and result.complete and transport_error is None),
-        "wire_bytes":sizes["wire"], "wire_sha256":hashes["wire"].hexdigest(),
-        "bytes":sizes["body"], "sha256":hashes["body"].hexdigest(),
-        "content_encoding":result.content_encoding if result is not None else None,
-        "content_length":result.content_length if result is not None else None,
-        "error_code":result.error_code if result is not None else ("transport_error" if transport_error else "capture_result_missing"),
-        "error_type":result.error_type if result is not None else transport_error}
-    (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-    if transport_error:
-        raise httpx.TransportError("capture_transport_error:" + transport_error)
-    if result is None:
-        raise ValueError("capture_result_missing")
-    body, wire = body_path.read_bytes(), wire_path.read_bytes()
-    if (not result.complete or result.status_code != 200 or final_url != url
-        or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]
-        or len(wire) != receipt["wire_bytes"] or _sha(wire) != receipt["wire_sha256"]):
-        raise ValueError("incomplete_source_capture:" + name)
-    return body, receipt
+    return capture_shared.fetch_capture(client, url, root, name, budget,
+                         max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES, record_retry_after=True)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    """Retry one transient transport/incomplete read, retaining every attempt."""
-    last = None
-    for attempt in range(2):
-        attempt_name=f"{name}.attempt{attempt+1}"
-        try:
-            body,receipt=_fetch(client,url,root,attempt_name,budget)
-            for suffix in ("body","wire","receipt.json"):
-                (root/f"{attempt_name}.{suffix}").replace(root/f"{name}.{suffix}")
-            return body,receipt
-        except (httpx.TransportError,ValueError) as exc:
-            last=exc
-            if isinstance(exc,ValueError) and not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            receipt_path = root / f"{attempt_name}.receipt.json"
-            try:
-                receipt = json.loads(receipt_path.read_bytes())
-            except (OSError, ValueError):
-                receipt = {}
-            status = receipt.get("status")
-            if status not in (None, 200, 429):
-                raise
-            delay = 0.25
-            if status == 429:
-                raw_delay = receipt.get("retry_after")
-                try:
-                    delay = float(raw_delay)
-                except (TypeError, ValueError):
-                    try:
-                        retry_at = parsedate_to_datetime(str(raw_delay))
-                        if retry_at.tzinfo is None:
-                            retry_at = retry_at.replace(tzinfo=timezone.utc)
-                        delay = max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
-                    except (TypeError, ValueError, OverflowError):
-                        delay = 1.0
-                if not math.isfinite(delay) or delay < 0 or delay > 60:
-                    raise ValueError("retry_after_exceeds_bounded_wait") from None
-            time.sleep(delay)
-    raise last
+    return capture_shared.fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                               attempts=2, schedule=(),
+                               fetch=_fetch,
+                               respect_retry_after=True)
 
 
 def _arrow_type(field: dict):
@@ -240,12 +169,12 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
     return body, receipt
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
     expected_names = {name for name,_url in _capture_roster(before)}
     if not expected_names <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
             or item.get("type") != "PDF" or item.get("access") != "public"):
@@ -373,14 +302,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
 
 
 def _write_outputs(storage, prefix: str, outputs: dict[str,bytes]) -> dict[str,dict[str,object]]:
-    descriptors={}
-    for name,body in outputs.items():
-        write_immutable(storage,f"{prefix}/{name}",body)
-        snapshot=storage.object_snapshot(f"{prefix}/{name}")
-        descriptor={"bytes":len(body),"sha256":_sha(body)}
-        if snapshot is None or snapshot.size!=descriptor["bytes"] or storage.sha256_key(f"{prefix}/{name}")!=descriptor["sha256"] or storage.object_snapshot(f"{prefix}/{name}")!=snapshot:
-            raise ValueError("candidate_object_readback_failed:"+name)
-        descriptors[name]=descriptor
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 
@@ -408,7 +330,7 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)
-    captures={}
+    captures=RetainedCaptureView(root)
     try:
         if replay:
             retained_manifest=json.loads((root/"capture_manifest.json").read_bytes())
@@ -428,9 +350,12 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
             names=[name for name,_url in _capture_roster(ids)]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures={name:_load_replay(root,name) for name in names}
-            if any(receipt!=retained_manifest["receipts"][name] for name,(_body,receipt) in captures.items()):
-                raise ValueError("retained_capture_manifest_receipt_mismatch")
+            captures=validated_capture_view(root,
+                receipts={name: retained_manifest["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_manifest_receipt_mismatch")
             expected_urls = dict(_capture_roster(ids))
             for name,(_body,receipt) in captures.items():
                 if (receipt.get("method") != "GET" or receipt.get("url") != expected_urls[name]
@@ -489,12 +414,12 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
                         artifact_names={path.name.removesuffix("."+suffix) for path in root.glob("*."+suffix)}
                         if artifact_names != found:
                             raise ValueError("partial_capture_artifact_roster_mismatch")
-                for name,url in _capture_roster(ids):
-                    if name in captures:
-                        continue
-                    captures[name]=_fetch_retry(client,url,root,name,capture_budget)
-                    if name.startswith("page_"):
-                        time.sleep(0.25)
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, capture_budget),
+                    after_fetch=lambda name: time.sleep(0.25) if name.startswith("page_") else None,
+                    on_validation_error=_validate)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         retained={}
@@ -508,7 +433,7 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
-    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in sorted(captures.items())}))
+    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"]=capture_sha
     version="v"+_sha(_canonical({"source_record_sha256":audit["source_record_sha256"],
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
@@ -532,7 +457,7 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
                    "bts_item_owner":"USDOT_BTS","official_service_directory":SERVICE_DIRECTORY_URL,
                    "basis":"The captured public BTS item identifies the IENC program, says updates are bi-monthly, and links the USACE IENC Feature Classes service and master file geodatabase. This supports distribution lineage only; source edition, freshness, rights, and release acceptance remain unresolved."}}
                 if name == "bts_item" else {})}
-            for name,(_body,receipt) in sorted(captures.items())]
+            for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     field_mapping=[{"source_name":name,"source_esri_type":kind,
                     "output_name":"geometry" if name == "SHAPE" else name,
                     "output_arrow_type":str(_arrow_type({"type":kind})),
@@ -545,7 +470,7 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/depth-areas-usace-ienc-2.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
@@ -580,6 +505,11 @@ def capture_usace_depth_areas(storage: StagingStorageResource, *, version: str,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
     from dagster_hifld.sources.capture_common import seal_ready_candidate
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_capture_sha256":audit["source_capture_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

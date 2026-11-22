@@ -849,10 +849,17 @@ class NhdAreaLargeScaleTests(unittest.TestCase):
             def __exit__(self, *_args):
                 return False
 
+        original_validate = source._validate_captures
+        def validate_disk_backed(captures):
+            from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+            self.assertIsInstance(captures, RetainedCaptureView)
+            return original_validate(captures)
+
         with tempfile.TemporaryDirectory(prefix="nhd-area-large-scale-e2e-") as temporary:
             root = __import__("pathlib").Path(temporary)
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
             with patch.multiple(source, **_pins(schema)), \
+                    patch.object(source, "_validate_captures", side_effect=validate_disk_backed), \
                     patch.object(source, "MIN_FREE_BYTES", 0), \
                     patch.object(source, "PAGE_IDS", 2), \
                     patch.object(source, "capture_get", side_effect=fake_capture_get), \

@@ -19,7 +19,6 @@ import json
 import shutil
 from array import array
 from collections.abc import Mapping
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -31,12 +30,20 @@ import pyproj
 from shapely.geometry import Point
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
-    validate_capture_request_identity, write_immutable,
+    candidate_prefix,
+    capture_get,
+    content_derived_version,
+    processing_identity,
+    quarantine_incomplete_capture,
+    verify_cached_candidate,
+    validate_capture_request_identity,
+    write_immutable,
+    reuse_sealed_candidate,
+    load_candidate_checkpoint,
+    stage_candidate_objects,
 )
+from dagster_hifld.sources.epa_capture import KeysetCaptureSpec, capture_keyset_layer
 from dagster_hifld.sources.arcgis_layer import (
     RetainedCaptureViews, load_receipt, load_replay, save_state as _save_state,
     witness_aside as _witness_error_response,
@@ -402,7 +409,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                       extracted["schema_sha"], identity)
     prefix = candidate_prefix(dataset_slug, dataset_slug, version)
     state_key = f"_construction-state/{dataset_slug}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
+
+    def verify_existing():
         parquet_body = Path(extracted["parquet_path"]).read_bytes()
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
@@ -412,6 +420,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "source_reported_count": extracted['source_reported_count'],
              "source_id_sha256": extracted['ids_sha']},
             parquet_body, dataset_slug=dataset_slug)
+
+    reused = reuse_sealed_candidate(storage, state_key, verify_existing)
+    if reused is not None:
+        return reused
     if storage.list_prefix(prefix):
         raise EPAFRSInterestsError('unsealed_candidate_prefix:' + prefix)
     audit = {
@@ -499,23 +511,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     # Stream every retained capture to storage one page at a time; the full
     # universe holds millions of features, so the seal never holds more than
     # one page body/wire pair plus the small receipt and descriptor maps.
-    descriptors: dict[str, dict[str, object]] = {}
-    for relative, body in metadata_outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-        descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted(receipts):
-        body, receipt = _read_capture(capture_root, name)
-        wire = (capture_root / f"{name}.wire").read_bytes()
-        for suffix, blob in (("body", body), ("wire", wire),
-                             ("receipt.json", _canonical(receipt) + b"\n")):
-            relative = f"raw/{name}.{suffix}"
-            write_immutable(storage, f"{prefix}/{relative}", blob)
-            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
-    fingerprint = _sha(_canonical(identity))
-    payload = {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
-               "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": receipts, "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    stage_candidate_objects(
+        storage, prefix, state_key, version, identity, metadata_outputs,
+        capture_root, receipts, _read_capture,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'])
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": dataset_slug, "file_slug": dataset_slug, "version": version,
             "feature_count": extracted['source_reported_count'], "source_null_geometry_count": extracted["null_geometry_count"],
@@ -532,15 +532,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
 def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
                              version: str, identity: Mapping[str, object], audit: Mapping[str, object],
                              current_parquet: bytes, *, dataset_slug: str) -> dict[str, object]:
-    fingerprint = _sha(_canonical(identity))
-    bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
-    payload = bundle.get("payload")
-    if (not isinstance(payload, dict) or set(payload) != {"processing_identity", "source_record_sha256",
-            "source_schema_sha256", "capture_receipts", "objects"}
-            or payload["processing_identity"] != identity
-            or payload["source_record_sha256"] != audit["source_record_sha256"]
-            or payload["source_schema_sha256"] != audit["source_schema_sha256"]):
-        raise EPAFRSInterestsError("cached_first_candidate_identity_or_source_changed")
+    fingerprint, payload = load_candidate_checkpoint(
+        storage, state_key, version, identity,
+        audit['source_record_sha256'], audit['source_schema_sha256'], EPAFRSInterestsError)
     expected_objects = {name: descriptor for name, descriptor in payload["objects"].items()}
     verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
                             fingerprint, identity, audit["source_record_sha256"],
@@ -568,125 +562,19 @@ def _default_client() -> httpx.Client:
 
 
 def fetch_frs_interests_pages(capture_root: Path, *, client: httpx.Client | None = None) -> dict[str, object]:
-    """Retain every raw response for the exact native layer, resuming earlier progress.
-
-    Pure-local when the capture directory already holds every required page.
-    """
+    """Capture the native layer through the shared resumable EPA keyset owner."""
     capture_root = Path(capture_root).absolute()
-    capture_root.mkdir(parents=True, exist_ok=True)
-    state = _load_state(capture_root)
-    pages: list[dict[str, object]] = list(state.get("data_pages", []))
-    tail: dict[str, object] | None = state.get("tail")
-    owner_client = client is None
-    active = client or _default_client()
-    first_captured_at = pages[0]["captured_at"] if pages else datetime.now(timezone.utc).isoformat()
-    try:
-        retained: dict[str, tuple[bytes, dict[str, object]]] = {}
-        urls = _document_urls()
-        last_objectid = pages[-1]['last_objectid'] if pages else 0
-        tail_valid = False
-        try:
-            tail_body, tail_receipt = _read_capture(capture_root, 'page_tail')
-            tail_document = json.loads(tail_body)
-        except ValueError:
-            pass
-        else:
-            if tail_receipt['url'] != _page_url(last_objectid):
-                raise EPAFRSInterestsError('retained_capture_receipt_invalid:page_tail')
-            tail_valid = isinstance(tail_document, dict) and tail_document.get('features') == []
-        refresh_closing = state.get('complete') is not True or tail is None or not tail_valid
-        closing_names = ('layer_after', 'service_after', 'count_after')
-        if not refresh_closing:
-            try:
-                for name in (*METADATA_NAMES, *closing_names):
-                    document = json.loads(_read_capture(capture_root, name, expected_url=urls[name])[0])
-                    if not isinstance(document, dict) or 'error' in document:
-                        refresh_closing = True
-                        break
-            except ValueError:
-                refresh_closing = True
-        if refresh_closing:
-            _save_state(capture_root, {'data_pages': pages, 'tail': tail, 'complete': False})
-            for name in closing_names:
-                _witness_error_response(capture_root, name)
-            if not tail_valid:
-                tail = None
-                _witness_error_response(capture_root, 'page_tail')
-                _witness_error_response(capture_root, f'page_{len(pages):06d}')
-        for name in METADATA_NAMES:
-            url = urls[name]
-            retained[name] = _retained_or_fetch(active, capture_root, name, url)
-            _reject_error_response(capture_root, name, retained[name][0])
-        count_before = json.loads(retained["count_before"][0]).get("count")
-        if type(count_before) is not int or count_before <= 0:
-            raise EPAFRSInterestsError("source_count_drift")
-        while not (capture_root / "page_tail.body").exists():
-            name = f"page_{len(pages):06d}"
-            body, receipt = _retained_or_fetch(active, capture_root, name, _page_url(last_objectid))
-            page = json.loads(body)
-            if "error" in page:
-                _witness_error_response(capture_root, name)
-                raise EPAFRSInterestsError("source_page_error")
-            features = page.get("features")
-            if not isinstance(features, list):
-                raise EPAFRSInterestsError("source_page_missing_features")
-            if not features:
-                if last_objectid == 0:
-                    raise EPAFRSInterestsError("source_page_population_incomplete")
-                # An empty page in a data slot is the completeness witness: the same
-                # query URL defines page_tail, so retain its exact bytes under that name.
-                for suffix in ("body", "wire", "receipt.json"):
-                    (capture_root / f"page_tail.{suffix}").write_bytes(
-                        (capture_root / f"{name}.{suffix}").read_bytes())
-                break
-            for feature in features:
-                _validate_feature(feature, tuple(f[0] for f in NATIVE_FIELDS))
-                objectid = feature["attributes"]["OBJECTID"]
-                if objectid <= last_objectid:
-                    raise EPAFRSInterestsError("source_object_ids_not_strictly_increasing")
-                last_objectid = objectid
-            pages.append({"name": name, "last_objectid": last_objectid, "features": len(features),
-                          "captured_at": receipt["observed_at"], "body_sha256": _sha(body)})
-            _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
-            if len(features) < PAGE_SIZE:
-                tail_body, tail_receipt = _retained_or_fetch(active, capture_root, "page_tail",
-                                                             _page_url(last_objectid))
-                _reject_error_response(capture_root, "page_tail", tail_body)
-                if json.loads(tail_body).get("features") != []:
-                    raise EPAFRSInterestsError("source_tail_page_not_empty")
-                tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                        "captured_at": tail_receipt["observed_at"], "body_sha256": _sha(tail_body)}
-                _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
-                break
-            if len(pages) > (count_before + PAGE_SIZE - 1) // PAGE_SIZE:
-                raise EPAFRSInterestsError("source_page_population_incomplete")
-        if tail is None and (capture_root / "page_tail.body").exists():
-            tail_receipt = json.loads((capture_root / "page_tail.receipt.json").read_bytes())
-            tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                    "captured_at": tail_receipt["observed_at"]}
-        if tail is None or not (capture_root / "page_tail.body").exists():
-            raise EPAFRSInterestsError("source_tail_page_not_empty")
-        if sum(page['features'] for page in pages) != count_before:
-            raise EPAFRSInterestsError('source_page_population_incomplete')
-        for name, url in (("layer_after", LAYER_URL + "?f=pjson"),
-                          ("service_after", SERVICE_URL + "?f=pjson"),
-                          ("count_after", _count_url())):
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            _reject_error_response(capture_root, name, body)
-            retained[name] = (body, _read_capture(capture_root, name)[1])
-        if json.loads(retained["count_after"][0]).get("count") != count_before:
-            raise EPAFRSInterestsError("source_metadata_or_count_changed_during_capture")
-    except EPAFRSInterestsError:
-        if owner_client:
-            active.close()
-        raise
-    except Exception as exc:
-        if owner_client:
-            active.close()
-        raise EPAFRSInterestsError("source_capture_failed:" + type(exc).__name__) from exc
-    if owner_client:
-        active.close()
-
+    spec = KeysetCaptureSpec(
+        metadata_names=METADATA_NAMES, document_urls=_document_urls, page_url=_page_url,
+        page_size=PAGE_SIZE, load_state=_load_state, save_state=_save_state,
+        read_capture=_read_capture, witness_aside=_witness_error_response,
+        fetch=_retained_or_fetch, reject_error=_reject_error_response,
+        validate_feature=lambda feature: _validate_feature(feature, tuple(f[0] for f in NATIVE_FIELDS)),
+        default_client=_default_client, error=EPAFRSInterestsError,
+    )
+    captured = capture_keyset_layer(spec, capture_root, client=client)
+    pages, tail = captured["pages"], captured["tail"]
+    first_captured_at = captured["first_captured_at"]
     last_captured_at = str(tail["captured_at"])
     # Construction happens once at seal time (capture_epa_frs_interests);
     # retention and validation stay the only fetch-time side effects.

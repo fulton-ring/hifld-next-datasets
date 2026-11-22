@@ -8,6 +8,8 @@ producer's own index at capture time; retained replay derives the vintage from
 its receipt URL. No mirror or archive host is ever fetched.
 """
 from __future__ import annotations
+
+
 import io, json, math, shutil, struct, tempfile, zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +27,17 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources import census_latest, census_tiger_common
-from dagster_hifld.sources.capture_common import candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable
+from dagster_hifld.sources.capture_common import (
+    candidate_prefix,
+    capture_get,
+    processing_identity,
+    quarantine_incomplete_capture,
+    seal_ready_candidate,
+    verify_cached_candidate,
+    write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
+)
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "us-international-boundaries-1"
@@ -215,12 +227,13 @@ def capture_us_international_boundaries(storage: StagingStorageResource, *, vers
         if not isinstance(original, dict) or not isinstance(original.get("objects"), dict): raise ValueError("cached_candidate_state_invalid")
         verify_cached_candidate(storage, Path(__file__).parents[3], state, prefix, cv, fingerprint, identity, audit["source_record_sha256"], audit["source_schema_sha256"], original["objects"], original.get("capture_receipts", {}))
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": cv, "feature_count": len(frame), "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"], "source_schema_sha256": audit["source_schema_sha256"], "source_vintage": vintage, "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True, "source_capture_evidence_sha256": evidence_sha, "capture_directory": str(root), "release_accepted": False}
-    descriptors = {}
-    for n, b in outputs.items():
-        key = f"{prefix}/{n}"; write_immutable(storage, key, b); snap = storage.object_snapshot(key)
-        if snap is None or snap.size != len(b) or storage.sha256_key(key) != _sha(b): raise ValueError("candidate_object_readback_failed:" + n)
-        descriptors[n] = {"bytes": len(b), "sha256": _sha(b)}
-    seal_ready_candidate(storage, state, cv, fingerprint, {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"], "capture_receipts": {"census_internationalboundary_zip": receipt}, "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, outputs, snapshot_check="content")
+    seal_candidate_objects(
+        storage, state, cv,
+        identity, {'census_internationalboundary_zip': receipt}, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
     )

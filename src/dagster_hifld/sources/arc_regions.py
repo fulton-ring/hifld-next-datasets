@@ -6,8 +6,10 @@ remain release gates. No coordinate repair, projection or replacement IDs.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import write_immutable, write_candidate_blobs
+
+from dagster_hifld.sources import candidate_transaction
 import collections
-import fcntl
 import hashlib
 import io
 import json
@@ -18,7 +20,7 @@ import sqlite3
 import stat
 import tempfile
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -36,12 +38,13 @@ from shapely.geometry import mapping, shape
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
-from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as packaged_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_raw_capture import MemoryRequestPolicy, capture_memory_request
 
 SLUG = 'american-red-cross-regions'
 SERVICE = 'https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer'
@@ -138,12 +141,12 @@ def immutable(storage, key, body):
     target = path_for(storage, key)
     if target.exists() and (not target.is_file() or target.stat().st_nlink != 1):
         raise ArcRegionsError('linked_or_special_object')
-    snapshot = storage.object_snapshot(key)
-    if snapshot is None:
+    def reserve_new_object():
         if shutil.disk_usage(local_root(storage)).free < FLOOR + len(body): raise ArcRegionsError('object_write_storage_reserve')
-        storage.write_key_if_unchanged(key, body, None)
-    elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-        raise ArcRegionsError('immutable_object_changed')
+
+    write_immutable(storage, key, body, error_type=ArcRegionsError,
+                    error_prefix='immutable_object_changed', error_name="",
+                    before_create=reserve_new_object)
 
 
 def diagnostic(storage, pieces, reason):
@@ -194,52 +197,18 @@ def validate_receipt(name, body, receipt):
 
 def acquire(storage, capture_directory=None):
     local_root(storage); captures = {}
-    for name, url in URLS.items():
-        body = receipt_body = b''; pieces = {}; receipt = {}; result = None
-        try:
-            if capture_directory is not None:
-                body, error = read_input(Path(capture_directory) / (name + '.body'), MAX_BODY if name == 'features' else 1024 * 1024)
-                pieces['response.body'] = body
-                immutable(storage, f'_raw/{SLUG}/{digest(body)}/{name}.body', body)
-                if error: raise ArcRegionsError(error)
-                receipt_body, error = read_input(Path(capture_directory) / (name + '.receipt.json'), 65536)
-                pieces['original-receipt.prefix.body' if error else 'original-receipt.body'] = receipt_body
-                immutable(storage, f'_raw/{SLUG}/receipts/{digest(receipt_body)}.body', receipt_body)
-                if error: raise ArcRegionsError(error)
-                receipt = strict_json(receipt_body)
-            else:
-                wire = bytearray(); decoded = bytearray()
-                def reserve(progress):
-                    if shutil.disk_usage(local_root(storage)).free < FLOOR + len(wire) + len(decoded) + progress.reserve_bytes:
-                        raise ArcRegionsError('capture_reserve_before_pull_or_decode')
-                with httpx.Client(timeout=60, follow_redirects=False, headers={'Accept-Encoding': 'identity'}) as client:
-                    with client.stream('GET', url) as response:
-                        try:
-                            result = capture_http_response(response, max_wire_bytes=MAX_BODY, max_decoded_bytes=MAX_BODY if name == 'features' else 1024 * 1024,
-                                reserve=reserve, retain_wire=wire.extend, retain_decoded=decoded.extend)
-                        except (KeyboardInterrupt, SystemExit):
-                            diagnostic(storage, {'wire.body': bytes(wire), 'response.body': bytes(decoded)}, 'capture_interrupted_no_retry')
-                            raise
-                        body = bytes(decoded)
-                        pieces.update({'wire.body': bytes(wire), 'response.body': body,
-                            'pending-wire.body': result.pending_wire, 'pending-decoded.body': result.pending_decoded})
-                        if (len(wire) != result.wire_bytes_retained or digest(bytes(wire)) != result.wire_sha256
-                                or len(body) != result.decoded_bytes_retained or digest(body) != result.decoded_sha256):
-                            raise ArcRegionsError('capture_sink_readback_mismatch')
-                        receipt = {'requested_url': url, 'final_url': str(response.url), 'status': response.status_code,
-                            'observed_at': datetime.now(timezone.utc).isoformat(), 'bytes': len(body), 'sha256': digest(body),
-                            'complete': result.complete, 'wire_bytes': result.wire_bytes_received, 'wire_sha256': result.received_wire_sha256,
-                            'content_encoding': result.content_encoding, 'content_length': result.content_length,
-                            'capture_error': result.error_code}
-                        receipt_body = encode(receipt); pieces['receipt.json'] = receipt_body
-                        immutable(storage, f'_raw/{SLUG}/{digest(body)}/{name}.body', body)
-                        immutable(storage, f'_raw/{SLUG}/receipts/{digest(receipt_body)}.body', receipt_body)
-                        if not result.complete: raise ArcRegionsError(result.error_code or 'incomplete_transfer')
-            validate_receipt(name, body, receipt)
-            captures[name] = (body, receipt, receipt_body)
-        except (OSError, ValueError, TypeError, httpx.HTTPError) as exc:
-            where = diagnostic(storage, pieces, str(exc))
-            raise ArcRegionsError(f'{exc}; preserved:{where}') from exc
+    def fetch_one(name, url):
+        captures[name] = capture_memory_request(
+            url, name, policy=MemoryRequestPolicy(
+                MAX_BODY, MAX_BODY if name == "features" else 1024 * 1024, FLOOR, f"_raw/{SLUG}", ArcRegionsError),
+            space_root=lambda: local_root(storage),
+            write=lambda key, value: immutable(storage, key, value), encode=encode,
+            read=read_input, parse_receipt=strict_json,
+            validate=lambda body, receipt: validate_receipt(name, body, receipt),
+            diagnostic=lambda pieces, reason: diagnostic(storage, pieces, reason),
+            replay_root=Path(capture_directory) if capture_directory is not None else None,
+        )
+    capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
     return captures
 
 
@@ -434,12 +403,8 @@ def refuse_incident(storage, version):
 @contextmanager
 def version_lock(storage, version):
     path = path_for(storage, f'_locks/{SLUG}-{version}.lock'); path.parent.mkdir(exist_ok=True)
-    descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    try:
-        info = os.fstat(descriptor)
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1: raise ArcRegionsError('unsafe_version_lock')
-        fcntl.flock(descriptor, fcntl.LOCK_EX); yield
-    finally: os.close(descriptor)
+    with candidate_transaction.lock_path(path, error_type=ArcRegionsError, unsafe_code='unsafe_version_lock'):
+        yield
 
 
 def observe_loss(storage, version, fingerprint, reason):
@@ -557,23 +522,21 @@ def stage_arc_regions(storage, capture_directory=None):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with tempfile.TemporaryDirectory(prefix='.arc-private-', dir=target.parent) as tmp:
                     private = Path(tmp)
-                    for name, body in {**payloads, READY: encode(ready)}.items():
-                        path = private/name; path.parent.mkdir(parents=True, exist_ok=True)
-                        with path.open('xb') as stream:
-                            written = stream.write(body)
-                            if written != len(body): raise ArcRegionsError('private_short_write')
-                            stream.flush(); os.fsync(stream.fileno())
-                    validate_candidate(private, payloads, ready)
-                    payload = {'manifest': manifest, 'objects': objects, 'captures': {name: {
-                        'body_key': f'_raw/{SLUG}/{digest(value[0])}/{name}.body',
-                        'receipt_key': f'_raw/{SLUG}/receipts/{digest(value[2])}.body'} for name, value in captures.items()}}
-                    envelope = canonical_construction_bundle(version, fingerprint, payload)
-                    if original:
-                        anchored = load_first_construction(storage, state_key(version), version, fingerprint)
-                        if anchored != envelope: raise ArcRegionsError('original_outside_binding_changed')
-                    else: seal_first_construction(storage, state_key(version), version, fingerprint, envelope)
-                    validate_candidate(private, payloads, ready)
-                    os.rename(private, target)
+                    def anchor():
+                        payload = {'manifest': manifest, 'objects': objects, 'captures': {name: {
+                            'body_key': f'_raw/{SLUG}/{digest(value[0])}/{name}.body',
+                            'receipt_key': f'_raw/{SLUG}/receipts/{digest(value[2])}.body'} for name, value in captures.items()}}
+                        envelope = canonical_construction_bundle(version, fingerprint, payload)
+                        candidate_transaction.anchor_first_construction(
+                            storage, state_key(version), version, fingerprint, envelope,
+                            original=bool(original), error_type=ArcRegionsError,
+                            changed_code='original_outside_binding_changed')
+                    candidate_transaction.install_private_candidate(
+                        private, target, {**payloads, READY: encode(ready)}.items(),
+                        write_one=lambda root, name, body: candidate_transaction.write_exclusive_private_file(
+                            root, name, body, error_type=ArcRegionsError, short_write_code='private_short_write'),
+                        validate_before=lambda root: validate_candidate(root, payloads, ready),
+                        anchor=anchor, validate_after=lambda root: validate_candidate(root, payloads, ready))
                 reused = False
         return {'dataset_slug': SLUG, 'file_slug': SLUG, 'version': version, 'staging_prefix': prefix,
             'feature_count': table.num_rows, 'source_invalid_geometry_count': len(audit['invalid_geometry_ids']),

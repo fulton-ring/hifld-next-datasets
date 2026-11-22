@@ -1,4 +1,5 @@
 import hashlib
+import httpx
 import json
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.roads_usace_ienc import (
     roads_usace_ienc_complete, roads_usace_ienc_draft_schedule, roads_usace_ienc,
 )
+from dagster_hifld.sources import arcgis_layer as retry_owner
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.sources import roads_usace_ienc as source
 from dagster_hifld.resources import StagingStorageResource
@@ -210,6 +212,19 @@ class RoadsUsaceIencTests(unittest.TestCase):
                                                     capture_directory=str(root))
                 self.assertEqual(storage.list_prefix(""), [])
 
+    def test_failed_candidate_readback_never_seals_construction(self):
+        from dagster_hifld.sources import capture_common
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            root = self._replay_directory(Path(tmp) / "capture", self._documents())
+            with patch.object(StagingStorageResource, "sha256_key", return_value="wrong"), \
+                    patch.object(capture_common, "seal_first_construction") as seal:
+                with self.assertRaisesRegex(ValueError, "candidate_object_readback_failed:"):
+                    source.capture_roads_usace_ienc(
+                        storage, version="failed-readback", capture_directory=str(root))
+                seal.assert_not_called()
+            self.assertEqual(storage.list_prefix("_construction-state"), [])
+
     def test_valid_replay_seals_ready_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
@@ -267,7 +282,7 @@ class RoadsUsaceTransientRetryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.object(source, "_TRANSIENT_RETRY_DELAYS", (0.0, 0.0)), \
-                patch.object(source, "capture_get", flaky_capture_get):
+                patch.object(retry_owner, "capture_get", flaky_capture_get):
             root = Path(tmp)
             result = source._capture(None, "https://example.invalid/query", root, "page_000")
         self.assertEqual(result, sentinel)
@@ -281,7 +296,7 @@ class RoadsUsaceTransientRetryTests(unittest.TestCase):
             raise ValueError("source_capture_budget_exceeded_before_request")
 
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(source, "capture_get", failing_capture_get):
+                patch.object(retry_owner, "capture_get", failing_capture_get):
             with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
                 source._capture(None, "https://example.invalid/query", Path(tmp), "page_000")
         self.assertEqual(len(calls), 1)
@@ -295,7 +310,7 @@ class RoadsUsaceTransientRetryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.object(source, "_TRANSIENT_RETRY_DELAYS", (0.0, 0.0)), \
-                patch.object(source, "capture_get", failing_capture_get):
+                patch.object(retry_owner, "capture_get", failing_capture_get):
             with self.assertRaisesRegex(ValueError, "incomplete_source_capture:page_000"):
                 source._capture(None, "https://example.invalid/query", Path(tmp), "page_000")
         self.assertEqual(len(calls), 3)
@@ -318,6 +333,51 @@ class RoadsUsaceLiveRosterTests(unittest.TestCase):
         longest = max(len(url) for name, url in urls.items() if name.startswith("page_"))
         self.assertLess(longest, 8000)
 
+
+
+class RoadsRetryEvidenceTests(unittest.TestCase):
+    def test_real_transient_failure_retains_body_wire_and_receipt(self):
+        failed = b'{"error":{"code":500,"message":"temporary"}}'
+        accepted = b'{"count":1}'
+        queue = iter([(500, failed), (200, accepted)])
+        calls = []
+        def serve(request):
+            calls.append(str(request.url))
+            status, body = next(queue)
+            return httpx.Response(status, stream=httpx.ByteStream(body))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with httpx.Client(transport=httpx.MockTransport(serve)) as client, \
+                    patch.object(retry_owner.time, 'sleep') as wait:
+                body, receipt = source._capture(client, 'https://producer.test/query', root, 'page_000')
+            self.assertEqual(body, accepted)
+            self.assertEqual(receipt['status'], 200)
+            self.assertEqual(len(calls), 2)
+            wait.assert_called_once_with(5.0)
+            self.assertEqual((root / 'page_000.attempt-01.body').read_bytes(), failed)
+            self.assertEqual((root / 'page_000.attempt-01.wire').read_bytes(), failed)
+            prior = json.loads((root / 'page_000.attempt-01.receipt.json').read_bytes())
+            self.assertEqual(prior['status'], 500)
+            self.assertTrue(prior['complete_body'])
+            self.assertEqual(prior['bytes'], len(failed))
+            self.assertEqual(prior['sha256'], source._sha(failed))
+
+    def test_complete_200_error_body_is_returned_without_retry(self):
+        failed = b'{"error":{"code":500,"message":"source validator owns this"}}'
+        calls = []
+        def serve(request):
+            calls.append(str(request.url))
+            return httpx.Response(200, stream=httpx.ByteStream(failed))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with httpx.Client(transport=httpx.MockTransport(serve)) as client, \
+                    patch.object(source, '_TRANSIENT_RETRY_DELAYS', (0.0,)):
+                body, receipt = source._capture(client, 'https://producer.test/query', root, 'page_000')
+            self.assertEqual(body, failed)
+            self.assertEqual(receipt['status'], 200)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual((root / 'page_000.body').read_bytes(), failed)
+            self.assertEqual(list(root.glob('*.attempt-*.body')), [])
 
 if __name__ == "__main__":
     unittest.main()

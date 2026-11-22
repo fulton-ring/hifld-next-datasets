@@ -1,4 +1,5 @@
 """Native fidelity, drift, cache, and approval tests for the USGS State Capitols capture."""
+import os
 import hashlib
 import io
 import json
@@ -372,7 +373,8 @@ class StateCapitolsEndToEndTests(unittest.TestCase):
         self.addCleanup(client.close)
         repo = self._fixture_repo(tmp)
         def run(**kwargs):
-            with patch.object(source.httpx, "Client",
+            with patch.dict(os.environ, {"HIFLD_CAPTURE_ROOT": str(Path(tmp) / "captures")}), \
+                 patch.object(source.httpx, "Client",
                               lambda **_kw: self._pinned_client(client)), \
                  self.pinned_for(ids, features):
                 return source.capture_state_capitols(storage, repo_root=repo, **kwargs)
@@ -403,6 +405,7 @@ class StateCapitolsEndToEndTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             run, storage, _ids = self._captured(tmp)
             first = run(version="v1")
+            self.assertTrue(Path(first["capture_directory"]).is_relative_to(Path(tmp) / "captures"))
             self.assertFalse(first["reused"])
             self.assertEqual(first["feature_count"], 2)
             prefix = f"{first['dataset_slug']}/{first['file_slug']}/{first['version']}"

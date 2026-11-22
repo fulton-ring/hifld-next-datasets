@@ -24,6 +24,8 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.esri_common import sha as _sha
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 
 DATASET_SLUG = FILE_SLUG = "american-red-cross-headquarters"
 SERVICE_URL = "https://services.arcgis.com/pGfbNJoYypmNq86F/arcgis/rest/services/Master_ARC_Geography_2022/FeatureServer/0"
@@ -142,24 +144,28 @@ def capture_live(capture_dir: Path) -> None:
         (capture_dir / f"{name}.body").write_bytes(body)
         (capture_dir / f"{name}.receipt.json").write_bytes(_CANONICAL(receipt) + b"\n")
     with httpx.Client(timeout=httpx.Timeout(45, connect=15), follow_redirects=False) as client:
-        for name, params in (("layer_before", {"f": "pjson"}),
-                             ("count_before", {"f": "json", "where": "1=1", "returnCountOnly": "true"}),
-                             ("ids_before", {"f": "json", "where": "1=1", "returnIdsOnly": "true"})):
-            save(name, *_request(client, name, params))
-        ids = _ids(_strict_json((capture_dir / "ids_before.body").read_bytes()))
-        if len(ids) != EXPECTED_COUNT:
-            raise ValueError("red_cross_hq_observed_id_population_changed")
-        for offset in range(0, len(ids), 100):
-            chunk = ids[offset:offset + 100]
-            name = f"page_{offset:04d}"
-            params = {"f": "json", "objectIds": ",".join(map(str, chunk)), "outFields": "*",
+        captures = RetainedCaptureView(capture_dir)
+        def fetch(name, params):
+            body, receipt = _request(client, name, params)
+            save(name, body, receipt)
+            return body, receipt
+        def derive_requests(retained):
+            ids = _ids(_strict_json(retained["ids_before"][0]))
+            if len(ids) != EXPECTED_COUNT:
+                raise ValueError("red_cross_hq_observed_id_population_changed")
+            pages = [(f"page_{offset:04d}", {"f": "json",
+                "objectIds": ",".join(map(str, ids[offset:offset + 100])), "outFields": "*",
                 "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-                "returnTrueCurves": "true", "orderByFields": "OBJECTID ASC"}
-            save(name, *_request(client, name, params))
-        for name, params in (("count_after", {"f": "json", "where": "1=1", "returnCountOnly": "true"}),
-                             ("ids_after", {"f": "json", "where": "1=1", "returnIdsOnly": "true"}),
-                             ("layer_after", {"f": "pjson"})):
-            save(name, *_request(client, name, params))
+                "returnTrueCurves": "true", "orderByFields": "OBJECTID ASC"})
+                for offset in range(0, len(ids), 100)]
+            return pages + [("count_after", {"f": "json", "where": "1=1", "returnCountOnly": "true"}),
+                ("ids_after", {"f": "json", "where": "1=1", "returnIdsOnly": "true"}),
+                ("layer_after", {"f": "pjson"})]
+        capture_request_sequence(captures,
+            [("layer_before", {"f": "pjson"}),
+             ("count_before", {"f": "json", "where": "1=1", "returnCountOnly": "true"}),
+             ("ids_before", {"f": "json", "where": "1=1", "returnIdsOnly": "true"})],
+            derive_requests, fetch)
     _load_capture(capture_dir)
 
 

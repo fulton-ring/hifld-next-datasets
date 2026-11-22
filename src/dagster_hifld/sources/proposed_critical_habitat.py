@@ -1,6 +1,14 @@
 """Draft capture adapter for the official USFWS proposed critical habitat layer."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import verify_cached_objects, verify_cached_transport_receipts
+
+from dagster_hifld.sources.capture_common import seal_candidate_objects
+
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs, write_candidate_transport_evidence, verify_candidate_outputs,
+)
+
 import hashlib
 import json
 import gzip
@@ -25,6 +33,7 @@ import pyogrio
 import shapely
 from shapely.geometry import MultiPolygon
 
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -493,15 +502,17 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
                                                   replay_root / "replica_filegdb.zip.body")
         else:
             with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/proposed-critical-habitat-draft"}) as client:
-                seed, receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed", budget_roots)
-                ids = json.loads(_capture_body(seed)).get("objectIds")
-                if not isinstance(ids, list) or not ids: raise ValueError("source_seed_ids_missing")
-                captures["ids_seed"] = (seed, receipt)
-                for name, url in _urls(ids):
-                    if name.startswith("page_"):
-                        time.sleep(1.1)  # Stay below FWS/ArcGIS large-geometry quota (60 requests/minute).
-                    body, receipt = _fetch(client, url, capture_root, name, budget_roots)
-                    captures[name] = body, receipt
+                def validate_seed(seed):
+                    ids = json.loads(_capture_body(seed)).get("objectIds")
+                    if not isinstance(ids, list) or not ids: raise ValueError("source_seed_ids_missing")
+                    return ids
+                captures = RetainedCaptureView(capture_root, captures)
+                capture_layer(LAYER_URL, capture_root, MAX_ISSUE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_urls,
+                    fetch=lambda client, url, root, name: _fetch(client, url, capture_root, name, budget_roots),
+                    on_validation_error=lambda view: _feature_rows(view, _schema(json.loads(_capture_body(view["layer_before"][0])))),
+                    before_fetch=lambda name: time.sleep(1.1) if name.startswith("page_") else None)
             fields = _schema(json.loads(_capture_body(captures["layer_before"][0])))
             rows, audit = _feature_rows(captures, fields)
             original_receipts = {name:_canonical(receipt)+b"\n" for name,(_body,receipt) in captures.items()}
@@ -532,7 +543,7 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
     relative = f"geoparquet/{DATASET_SLUG}.parquet"
     objects = {relative:{"bytes":len(parquet),"sha256":_sha(parquet)}}
     manifest_inputs = []
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         observed_at, original_observation = _receipt_timestamp(receipt["observed_at"])
         input_record = {"input_id":name,"producer":PUBLISHER,
             "host":urlsplit(receipt["url"]).hostname,"role":"producer_publication",
@@ -558,12 +569,12 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
     audit.update({"portal_item_id":ITEM_ID,"portal_owner":"aditya_sastry@fws.gov_fws","official_layer_name":LAYER_NAME,"source_release_date":None,"license":"unknown","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
     candidate_version = content_derived_version(audit["source_record_sha256"],audit["source_geometry_sha256"],audit["source_schema_sha256"],identity)
     prefix = candidate_prefix(DATASET_SLUG,FILE_SLUG,candidate_version)
-    receipts = {n:r for n,(_,r) in sorted(captures.items())}
+    receipts = {n:r for n,(_,r) in ((name, captures[name]) for name in sorted(captures))}
     out = {relative:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     out["metadata/source_capture_manifest.json"] = _canonical({"complete":True,"source_feature_count":audit["feature_count"],"receipts":receipts})+b"\n"
     out["metadata/candidate_ready.json"] = _canonical({"approved":False,"version":candidate_version,"objects":objects,"source_record_sha256":audit["source_record_sha256"],"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})+b"\n"
     raw_descriptors: dict[str, dict[str, Any]] = {}
-    for n,(_,r) in sorted(captures.items()):
+    for n,(_,r) in ((name, captures[name]) for name in sorted(captures)):
         wire = (capture_root/f"{n}.wire").read_bytes()
         receipt_bytes = _canonical(r)+b"\n"
         raw_descriptors[f"raw/{n}.wire"] = {"bytes":len(wire),"sha256":_sha(wire)}
@@ -603,30 +614,15 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
         if not expected_keys <= actual_keys or actual_keys-expected_keys-{f"{prefix}/{x}" for x in derived}:
             raise ValueError("cached_candidate_storage_roster_changed")
         validate_staged_release_derivatives(storage,prefix,actual_keys)
-        for name,descriptor in first_objects.items():
-            key=f"{prefix}/{name}"; snapshot=storage.object_snapshot(key)
-            if snapshot is None or descriptor != {"bytes":snapshot.size,"sha256":storage.sha256_key(key)} or storage.object_snapshot(key)!=snapshot:
-                raise ValueError("cached_candidate_object_integrity_failed:"+name)
+        verify_cached_objects(storage, prefix, first_objects)
         validate_construction_code_identity(repo,identity["code_commit"],identity["files"],identity=identity)
         source_manifest=first_objects.get("metadata/source_manifest.json")
-        for snapshot_name in ("metadata/source/source_manifest.json",
-                              f"metadata/source/version_{source_manifest['sha256']}_source_manifest.json" if source_manifest else None):
-            if snapshot_name is None:
-                continue
-            key=f"{prefix}/{snapshot_name}"
-            if key in actual_keys:
-                snapshot=storage.object_snapshot(key)
-                if (snapshot is None or {"bytes":snapshot.size,"sha256":storage.sha256_key(key)} != source_manifest
-                        or storage.object_snapshot(key) != snapshot):
-                    raise ValueError("cached_catalog_source_snapshot_changed:"+snapshot_name)
-        for n,r in first_receipts.items():
-            if not isinstance(r,dict):
-                raise ValueError("cached_receipt_invalid:"+n)
-            wire=storage.read_key(f"{prefix}/raw/{n}.wire")
-            _verify_wire_replay(wire,r,n)
-            raw_receipt = storage.read_key(f"{prefix}/raw/{n}.receipt.json")
-            if _sha(raw_receipt) != r.get("raw_receipt_sha256"):
-                raise ValueError("cached_original_capture_changed:"+n)
+        verify_cached_objects(storage, prefix, {snapshot_name: source_manifest
+            for snapshot_name in ('metadata/source/source_manifest.json', f'metadata/source/version_{source_manifest['sha256']}_source_manifest.json' if source_manifest else None)
+            if snapshot_name is not None and f"{prefix}/{snapshot_name}" in actual_keys},
+            error_prefix="cached_catalog_source_snapshot_changed:")
+        verify_cached_transport_receipts(storage, prefix, first_receipts, _verify_wire_replay,
+            receipt_encoding="sha256")
         observation_root=Path(capture_directory).absolute().parent if capture_directory else ISSUE_EVIDENCE_ROOT
         observation = observation_root / "observations" / f"{candidate_version}-{uuid4().hex}.json"
         observation.parent.mkdir(parents=True,exist_ok=True)
@@ -638,35 +634,20 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
                 "reused":True,"source_release_accepted":False,"schema_contract_accepted":False,
                 "id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,
                 "mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}
-    for name,body in out.items():
-        _enforce_issue_budget(budget_roots,len(body))
-        write_immutable(storage,f"{prefix}/{name}",body)
-    for name,descriptor in raw_descriptors.items():
-        if name.endswith(".wire"):
-            body=(capture_root/name.removeprefix("raw/")).read_bytes()
-        else:
-            raw_name=name.removeprefix("raw/").removesuffix(".receipt.json")
-            body=original_receipts[raw_name]
-        _enforce_issue_budget(budget_roots,len(body))
-        write_immutable(storage,f"{prefix}/{name}",body)
-        raw_descriptors[name]=descriptor
-        if name.endswith(".receipt.json"):
-            # The exact wire is now staged with its receipt; discard only the
-            # temporary decoded copy after the body's receipt hash was checked.
-            raw_name=name.removeprefix("raw/").removesuffix(".receipt.json")
-            body_path=capture_root/f"{raw_name}.body"
-            if body_path.exists():
-                decoded=body_path.read_bytes()
-                receipt=captures[raw_name][1]
-                if len(decoded)!=receipt["bytes"] or _sha(decoded)!=receipt["sha256"]:
-                    raise ValueError("capture_decoded_body_changed:"+raw_name)
-                body_path.unlink()
+    reserve = lambda size: _enforce_issue_budget(budget_roots, size)
+    write_candidate_outputs(storage, prefix, out, snapshot_check="none", reserve=reserve)
+    write_candidate_transport_evidence(
+        storage, prefix, capture_root, raw_descriptors, captures,
+        lambda name: original_receipts[name], reserve)
     descriptors = {n:{"bytes":len(b),"sha256":_sha(b)} for n,b in out.items()} | raw_descriptors
-    for n,d in descriptors.items():
-        key=f"{prefix}/{n}"; snap=storage.object_snapshot(key)
-        if snap is None or snap.size != d["bytes"] or storage.sha256_key(key) != d["sha256"] or storage.object_snapshot(key) != snap: raise ValueError("candidate_readback_failed:"+n)
+    verify_candidate_outputs(storage, prefix, descriptors, error_prefix="candidate_readback_failed:")
     fingerprint = _sha(_canonical(identity))
-    seal_first_construction(storage,state,candidate_version,fingerprint,canonical_construction_bundle(candidate_version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors}))
+    seal_candidate_objects(
+        storage, state, candidate_version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(repo,identity["code_commit"],identity["files"],identity=identity)
     shutil.rmtree(capture_root)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":candidate_version,"feature_count":audit["feature_count"],"source_unique_id_count":audit["source_unique_id_count"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}

@@ -1,10 +1,10 @@
 """Complete official NOAA tsunami-capable tide-station draft; no release accepted."""
 from __future__ import annotations
+from dagster_hifld.sources import candidate_transaction
 import collections
 import math
 import urllib.parse
 import shutil
-import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -14,6 +14,8 @@ import sqlite3
 import subprocess
 import tempfile
 from datetime import datetime, timezone
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
 from pathlib import Path
 from uuid import uuid4
 import httpx
@@ -22,6 +24,7 @@ import pyarrow.parquet as pq
 import pyogrio
 import pyproj
 import shapely
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
@@ -29,6 +32,8 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.capture_common import existing_filesystem_path
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
 SLUG='tsunami-capable-tide-stations'
 LAYER='NOAA_Tsunami_Capable_Tide_Stations'
 LANDING='https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/tsunamis/tide-gauge-data'
@@ -71,21 +76,19 @@ def strict_json(body):
 
 
 def local_only(storage):
-    if shutil.disk_usage(Path(storage.local_dir) if storage.local_dir and Path(storage.local_dir).exists() else Path('/workspace')).free<300_000_000: raise TideStationQuarantineError('local_space_guard')
     if isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
         raise TideStationQuarantineError('draft_requires_explicit_isolated_local_staging')
     root=Path(storage.local_dir)
     if any(path.is_symlink() for path in [root,*root.parents]):
         raise TideStationQuarantineError('staging_path_symlink_refused')
+    if shutil.disk_usage(existing_filesystem_path(root)).free < 300_000_000:
+        raise TideStationQuarantineError('local_space_guard')
     if root.exists() and any(p.is_symlink() or (p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):
         raise TideStationQuarantineError('staging_alias_refused')
 
 
-def immutable(storage,key,body):
-    snapshot=storage.object_snapshot(key)
-    if snapshot is None: storage.write_key_if_unchanged(key,body,None)
-    elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:
-        raise TideStationQuarantineError('immutable_capture_changed:'+key)
+immutable = partial(write_immutable, error_type=TideStationQuarantineError,
+                    error_prefix='immutable_capture_changed:')
 
 
 def quarantine(storage,captures,reason):
@@ -109,7 +112,7 @@ def processing_identity():
 def acquire(storage,capture_dir=None):
     local_only(storage);captures={}
     try:
-        for name in URLS:
+        def fetch_one(name, url):
             if capture_dir is not None:
                 with (Path(capture_dir)/(name+'.body')).open('rb') as stream: body=stream.read(3_000_001)
                 # Retain attempted bytes before any receipt decoding. A malformed
@@ -131,7 +134,11 @@ def acquire(storage,capture_dir=None):
             else:
                 url=URLS[name]
                 limit=3_000_000
-                for attempt in range(3):
+                # Retry only a refusal whose evidence was retained successfully.
+                retained_refusal = [None]
+                def capture_attempt(attempt_number):
+                    retained_refusal[0] = None
+                    attempt = attempt_number - 1
                     body=bytearray();receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                     try:
                         with httpx.Client(follow_redirects=False,timeout=90,headers={'Accept-Encoding':'identity'}) as client,client.stream('GET',url) as response:
@@ -150,11 +157,18 @@ def acquire(storage,capture_dir=None):
                             # when the server ignores our identity request.
                             if response.status_code!=200 or (receipt['content_length'] is not None and int(receipt['content_length'])!=receipt['wire_bytes_downloaded']):
                                 raise TideStationQuarantineError('non200_or_incomplete_http_response')
-                        captures[name]=(bytes(body),receipt);break
+                        captures[name]=(bytes(body),receipt);return body, receipt
                     except (httpx.HTTPError,OSError,ValueError) as exc:
                         receipt.update(bytes=len(body),sha256=digest(body),complete_body=False)
                         quarantine(storage,{name:(bytes(body),receipt)},str(exc))
+                        retained_refusal[0] = exc
                         if attempt==2: raise TideStationQuarantineError('bounded_fetch_exhausted:'+str(exc)) from exc
+                        raise
+                body, receipt = retry_capture_request(
+                    capture_attempt, attempts=3, schedule=(),
+                    retryable=lambda exc, attempt: exc is retained_refusal[0],
+                    preserve_failed=lambda exc, attempt: None)
+        capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
         return captures
     except (OSError,ValueError,TypeError) as exc:
         where=quarantine(storage,captures,str(exc))
@@ -202,7 +216,7 @@ def manifest_for(captures,identity):
 
 def inspect_originals(captures):
     if set(captures)!=set(URLS):raise TideStationQuarantineError('missing_extra_source_publication_roster')
-    docs={n:strict_json(body)for n,(body,_)in captures.items()if n not in('ncei_tsunamis','ncei_tide','ncei_map','map_js','map_store')}
+    docs=CaptureDocuments(captures, (n for n in captures if n not in ('ncei_tsunamis', 'ncei_tide', 'ncei_map', 'map_js', 'map_store')), decode=strict_json)
     before=docs['source_layer_before'];after=docs['source_layer_after']
     for layer in [before,after]:
         if (encode(layer.get('fields'))!=encode(FIELD_DECLARATIONS)or layer.get('objectIdField')!='STAT_OBJID'or layer.get('geometryType')!='esriGeometryPoint'
@@ -333,8 +347,7 @@ def stage_tide_stations(storage,*,capture_dir=None):
             key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.body';immutable(storage,key,body);immutable(storage,key+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt))
         record=f'_construction-state/{SLUG}/{fingerprint}.json';record_path=base/record
         locks=base/'_locks';locks.mkdir(exist_ok=True)
-        with(locks/(SLUG+'.lock')).open('a+b')as lock:
-            fcntl.flock(lock,fcntl.LOCK_EX)
+        with candidate_transaction.append_lock_path(locks / (SLUG + '.lock')):
             has_history=record_path.exists()or Path(str(record_path)+'.first-construction.json').exists()or Path(str(record_path)+'.evidence').exists()
             if root.exists():
                 try:
@@ -349,18 +362,28 @@ def stage_tide_stations(storage,*,capture_dir=None):
             root.parent.mkdir(parents=True,exist_ok=True)
             with tempfile.TemporaryDirectory(prefix='.private-tsunami-tide-',dir=root.parent)as tmp:
                 private=Path(tmp);values=source_payloads(captures,identity,table,audit,manifest)
-                for name,body in values.items():path=private/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
-                (private/'geopackage').mkdir();(private/'geoparquet').mkdir();write_native_gpkg(table,private/'geopackage'/f'{SLUG}.gpkg');pq.write_table(expected_parquet_table(table),private/'geoparquet'/f'{SLUG}.parquet',compression='zstd',version='2.6')
-                reconcile_outputs(private,table)
-                roster={str(p.relative_to(private)):sha256_file(p)for p in private.rglob('*')if p.is_file()}
-                (private/READY).write_bytes(encode({'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':roster}))
-                # Complete private file roster and bytes precede the shared
-                # write-once first-state CAS/marker/alias protocol.
-                assert all(sha256_file(private/name)==pin for name,pin in roster.items())
-                original,original_manifest=original_bundle(storage,record,version,identity,create=(captures,manifest))
-                if encode(original_manifest)!=encode(manifest)or any(original[n][0]!=captures[n][0]or encode(original[n][1])!=encode(captures[n][1])for n in URLS):raise TideStationQuarantineError('first_construction_winner_differs')
-                if root.exists():raise TideStationQuarantineError('concurrent_candidate_winner_preserved')
-                os.rename(private,root)
+                roster = {}
+                def ready_marker(private):
+                    (private/'geopackage').mkdir(); (private/'geoparquet').mkdir()
+                    write_native_gpkg(table, private/'geopackage'/f'{SLUG}.gpkg')
+                    pq.write_table(expected_parquet_table(table), private/'geoparquet'/f'{SLUG}.parquet',
+                                   compression='zstd', version='2.6')
+                    reconcile_outputs(private, table)
+                    roster.update(candidate_transaction.private_inventory(private))
+                    return READY, encode({'version': version, 'approved': False,
+                                          'processing_fingerprint': fingerprint, 'objects': roster})
+                def anchor():
+                    # Complete private file roster and bytes precede the shared
+                    # write-once first-state CAS/marker/alias protocol.
+                    assert all(sha256_file(private/name)==pin for name,pin in roster.items())
+                    original,original_manifest=original_bundle(storage,record,version,identity,create=(captures,manifest))
+                    if encode(original_manifest)!=encode(manifest)or any(original[n][0]!=captures[n][0]or encode(original[n][1])!=encode(captures[n][1])for n in URLS):raise TideStationQuarantineError('first_construction_winner_differs')
+                    if root.exists():raise TideStationQuarantineError('concurrent_candidate_winner_preserved')
+                candidate_transaction.install_private_candidate(
+                    private, root, values.items(), write_one=candidate_transaction.write_private_bytes,
+                    ready=ready_marker,
+                    write_ready=lambda root, name, body: candidate_transaction.write_private_bytes(
+                        root, name, body, create_parents=False), anchor=anchor)
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':374,'approved':False,'reused':False}
     except(ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error)as exc:
         where=quarantine(storage,captures,str(exc));raise TideStationQuarantineError(f'{exc}; retained:{where}')from exc

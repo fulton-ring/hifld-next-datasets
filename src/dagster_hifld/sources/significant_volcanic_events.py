@@ -9,7 +9,7 @@ or replaced service instead of an exact snapshot pin. Live capture evidence live
 under the shared HIFLD_CAPTURE_ROOT via default_capture_dir.
 """
 from __future__ import annotations
-import fcntl
+from dagster_hifld.sources import candidate_transaction
 import hashlib
 import importlib.metadata
 import json
@@ -22,7 +22,10 @@ import math
 from collections import Counter
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
+
 from pathlib import Path
 from uuid import uuid4
 import httpx
@@ -34,13 +37,15 @@ import shapely
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle,load_first_construction,seal_first_construction
-from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource,StagingStorageResource,default_capture_dir
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.arcgis_raw_capture import FileRequestPolicy, capture_file_request
 
 SLUG='historical-significant-volcanic-event-locations'
 LANDING='https://www.ncei.noaa.gov/products/natural-hazards/tsunamis-earthquakes-volcanoes/volcanoes'
@@ -126,11 +131,8 @@ def local_only(storage):
         if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise VolcanicQuarantineError('staging_alias_or_special_file_refused')
 
 
-def immutable(storage,key,body):
-    snapshot=storage.object_snapshot(key)
-    if snapshot is None: storage.write_key_if_unchanged(key,body,None)
-    elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:
-        raise VolcanicQuarantineError('immutable_capture_changed:'+key)
+immutable = partial(write_immutable, error_type=VolcanicQuarantineError,
+                    error_prefix='immutable_capture_changed:')
 
 
 def quarantine(storage,captures,reason):
@@ -197,17 +199,9 @@ def record_observed_loss(storage,version,fingerprint,reason):
     seal_first_construction(storage,key,version,fingerprint,body)
 
 
-def write_private(root,name,body):
-    path=root/name;path.parent.mkdir(parents=True,exist_ok=True)
-    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
-    try:
-        info=os.fstat(descriptor)
-        if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise VolcanicQuarantineError('private_write_alias_or_special_file_refused')
-        os.ftruncate(descriptor,0)
-        if os.write(descriptor,body)!=len(body):raise VolcanicQuarantineError('incomplete_private_write:'+name)
-        os.fsync(descriptor)
-    finally:os.close(descriptor)
-    if candidate_bytes(root,name)!=body:raise VolcanicQuarantineError('incomplete_private_write:'+name)
+def write_private(root, name, body):
+    candidate_transaction.write_checked_private_file(
+        root, name, body, readback=candidate_bytes, error_type=VolcanicQuarantineError)
 
 
 def validate_receipt(name,body,receipt,url):
@@ -225,32 +219,6 @@ def validate_receipt(name,body,receipt,url):
         'http_status':200,'sha256':digest(body),'bytes':len(body),'license':LICENSE,
         'attribution':'NOAA NCEI/WDS Significant Volcanic Eruptions Database, DOI10.7289/V5JW8BSH; original source item attribution and rights retained.',
         'release_date_unknown_reason':'No verified dated data release. Event YEAR/MO/DAY, service editingInfo, portal modification and retrieval are separate values, never invented release dates.'}
-
-
-def retain_capture_fragment(path,body):
-    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
-    try:
-        if os.write(descriptor,body)!=len(body):raise OSError('short_pending_capture_write')
-        os.fsync(descriptor)
-    finally:os.close(descriptor)
-    if bounded_input(path,len(body))!=body:raise OSError('pending_capture_readback_mismatch')
-
-
-def preserve_transfer_result(path,result):
-    transfer={key:value for key,value in vars(result).items()if key not in('pending_wire','pending_decoded')}
-    for label in('wire','decoded'):
-        pending=getattr(result,'pending_'+label)
-        if pending:retain_capture_fragment(path/('pending_'+label+'.body'),pending)
-        transfer['pending_'+label+'_artifact']={'bytes':len(pending),'sha256':digest(pending),'path':'pending_'+label+'.body'if pending else None}
-        observed=path/(label+'.body')
-        transfer['physical_'+label]={'bytes':observed.stat().st_size,'sha256':sha256_file(observed)}
-    readback=(transfer['physical_wire']['bytes']==result.wire_bytes_retained
-        and transfer['physical_wire']['sha256']==result.wire_sha256
-        and transfer['physical_decoded']['bytes']==result.decoded_bytes_retained
-        and transfer['physical_decoded']['sha256']==result.decoded_sha256)
-    transfer['independent_physical_readback_matches_acknowledged_sinks']=readback
-    retain_capture_fragment(path/'transfer.json',encode(transfer))
-    return readback
 
 
 def replay_witness_pages(root):
@@ -272,47 +240,18 @@ def replay_roster_guard(root,names):
 
 
 def capture_one(storage,attempt,name,url,root):
-    if root is not None:
-        body=bounded_input(root/(name+'.body'),MAX_BODY_BYTES)
-        raw=bounded_input(root/(name+'.receipt.json'),65536)
-    else:
-        path=attempt/name;path.mkdir(parents=True)
-        with(path/'wire.body').open('xb')as wire,(path/'decoded.body').open('xb')as decoded:
-            def retain(stream,block,target):
-                before=os.fstat(stream.fileno());written=stream.write(block)
-                stream.flush();os.fsync(stream.fileno())
-                if written!=len(block):raise OSError('short_capture_write')
-                reader=os.open(target,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
-                try:
-                    actual=os.fstat(reader)
-                    if(not stat.S_ISREG(actual.st_mode)or actual.st_nlink!=1
-                        or(actual.st_dev,actual.st_ino)!=(before.st_dev,before.st_ino)
-                        or actual.st_size!=before.st_size+len(block)
-                        or os.pread(reader,len(block),before.st_size)!=block):raise OSError('capture_block_readback_mismatch')
-                finally:os.close(reader)
-            def reserve(progress):
-                if shutil.disk_usage(path).free<SPACE_FLOOR+progress.reserve_bytes:raise OSError('disk_floor_before_read')
-            receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat()};result=None
-            try:
-                with httpx.Client(follow_redirects=False,timeout=60,headers={'Accept-Encoding':'identity'})as client,client.stream('GET',url)as response:
-                    result=capture_http_response(response,max_wire_bytes=MAX_BODY_BYTES,max_decoded_bytes=MAX_BODY_BYTES,
-                        reserve=reserve,retain_wire=lambda b:retain(wire,b,path/'wire.body'),retain_decoded=lambda b:retain(decoded,b,path/'decoded.body'))
-                    receipt.update(final_url=str(response.url),status=response.status_code,complete_body=result.complete,
-                        bytes=result.decoded_bytes_retained,sha256=result.decoded_sha256,wire_bytes=result.wire_bytes_received,error_code=result.error_code)
-            finally:
-                if result is not None:readback=preserve_transfer_result(path,result)
-                wire.flush();decoded.flush()
-        receipt['complete_body']=result.complete and readback
-        receipt['independent_sink_readback_matches']=readback
-        body=bounded_input(path/'decoded.body',MAX_BODY_BYTES+1024*1024)
-        raw=encode(receipt)
-    write_private(attempt,name+'.raw-receipt.body',raw)
-    immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body)
-    receipt=strict_json(raw);validate_receipt(name,body,receipt,url);return(body,receipt)
+    return capture_file_request(
+        url, name, Path(storage.local_dir), attempt / name,
+        policy=FileRequestPolicy(MAX_BODY_BYTES, SPACE_FLOOR, f"_raw-captures/{SLUG}", receipt_first=True),
+        read=bounded_input, encode=encode, parse_receipt=strict_json, replay_root=root,
+        validate=lambda body, receipt: validate_receipt(name, body, receipt, url),
+        write=lambda key, value: immutable(storage, key, value),
+        write_receipt=lambda value: write_private(attempt, name + '.raw-receipt.body', value),
+    )
 
 
 def acquire(storage,capture_dir=None):
-    local_only(storage);captures={};attempt=default_capture_dir(SLUG,SLUG,uuid4().hex)
+    local_only(storage);captures=RetainedCaptureView(Path(storage.local_dir));attempt=default_capture_dir(SLUG,SLUG,uuid4().hex)
     if '..'in attempt.parts or any(p.is_symlink()for p in[attempt,*attempt.parents]):raise VolcanicQuarantineError('unsafe_capture_root')
     attempt.mkdir(parents=True,exist_ok=True)
     root=Path(capture_dir).absolute()if capture_dir is not None else None
@@ -322,15 +261,18 @@ def acquire(storage,capture_dir=None):
         if root is not None:
             pages=replay_witness_pages(root)
             replay_roster_guard(root,tuple(capture_urls(pages)))
-        for name,url in PRE_PAGE_URLS.items():
-            captures[name]=capture_one(storage,attempt,name,url,root)
-        if pages is None:
-            count_body,_=captures['count_before'];ids_body,_=captures['ids_before']
-            count=strict_json(count_body).get('count')
-            if type(count)is not int or count<0:raise VolcanicQuarantineError('invalid_count_witness')
-            pages=derive_pages(id_roster(ids_body,count))
-        for name,url in {**pages,**POST_PAGE_URLS}.items():
-            captures[name]=capture_one(storage,attempt,name,url,root)
+        def derive_requests(retained):
+            if pages is not None:
+                planned_pages = pages
+            else:
+                count_body, _ = retained['count_before']; ids_body, _ = retained['ids_before']
+                count = strict_json(count_body).get('count')
+                if type(count) is not int or count < 0:
+                    raise VolcanicQuarantineError('invalid_count_witness')
+                planned_pages = derive_pages(id_roster(ids_body, count))
+            return {**planned_pages, **POST_PAGE_URLS}.items()
+        capture_request_sequence(captures, PRE_PAGE_URLS.items(), derive_requests,
+            lambda name, url: capture_one(storage, attempt, name, url, root))
         return captures
     except Exception as exc:
         write_private(attempt,'failure.json',encode({'approved':False,'reason_type':type(exc).__name__}))
@@ -378,12 +320,13 @@ def original_context(storage,version,fingerprint,captures,identity,manifest,*,cr
         inspect_captures(captures);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
         body=seal_first_construction(storage,key,version,fingerprint,canonical_construction_bundle(version,fingerprint,{'manifest':manifest,'captures':{n:{'body_key':f'_raw-captures/{SLUG}/{digest(b)}/{n}.body','receipt':r}for n,(b,r)in captures.items()}}))
     else:body=load_first_construction(storage,key,version,fingerprint)
-    payload=strict_json(body)['payload'];original={}
+    payload=strict_json(body)['payload'];original=RetainedCaptureView(Path(storage.local_dir))
     if set(payload)!={'manifest','captures'}or set(payload['captures'])!=set(captures):raise VolcanicQuarantineError('invalid_original_context')
     for n,item in payload['captures'].items():
         key=f"_raw-captures/{SLUG}/{item['receipt']['sha256']}/{n}.body"
         if item['body_key']!=key:raise VolcanicQuarantineError('invalid_original_raw_key')
-        original[n]=(bounded_input(Path(storage.local_dir)/key,MAX_BODY_BYTES),item['receipt'])
+        bounded_input(Path(storage.local_dir)/key,MAX_BODY_BYTES)
+        original[n]=(Path(storage.local_dir)/key,item['receipt'])
     a,_=inspect_captures(original);b,_=inspect_captures(captures)
     if not a.equals(b,check_metadata=True):raise VolcanicQuarantineError('original_source_population_drift')
     old=payload['manifest'];obj=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
@@ -416,10 +359,10 @@ def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cac
 def stage_significant_volcanic(storage,*,capture_dir=None):
     local_only(storage);captures=acquire(storage,capture_dir);table,audit=inspect_captures(captures);identity=processing_identity();fingerprint=digest(encode(identity));version='v0.0.0-draft-noaa-volcanic-'+fingerprint[:16]
     base=Path(storage.local_dir).absolute();prefix=f'{SLUG}/{SLUG}/{version}';root=base/prefix;locks=base/'_locks';locks.mkdir(exist_ok=True)
-    descriptor=os.open(locks/(SLUG+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b')as lock:
-        if os.fstat(lock.fileno()).st_nlink!=1:raise VolcanicQuarantineError('linked_lock')
-        fcntl.flock(lock,fcntl.LOCK_EX);refuse_observed_loss(storage,version)
+    with candidate_transaction.lock_path(
+            locks / (SLUG + '.lock'), error_type=VolcanicQuarantineError, unsafe_code='linked_lock',
+            require_regular=False, buffered=True):
+        refuse_observed_loss(storage, version)
         # A private deterministic output provides the pin before any trust seal.
         build=base/'_building'/SLUG;build.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='candidate-',dir=build)as temporary:
@@ -441,10 +384,16 @@ def stage_significant_volcanic(storage,*,capture_dir=None):
                         q=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);q.parent.mkdir(parents=True,exist_ok=True);os.rename(root,q);raise VolcanicQuarantineError('invalid_cache_moved_intact:'+str(q))from exc
                     return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True,
                         'source_reported_count':audit['source_reported_count'],'source_id_sha256':audit['source_id_sha256'],'source_population_complete':True}
-            for n,b in source_payloads(captures,identity,audit,manifest).items():write_private(temp,n,b)
-            ready={'approved':False,'version':version,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};write_private(temp,READY,encode(ready));validate_candidate(temp,table,identity,captures,audit,manifest,version)
-            captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest,create=True)
-            validate_candidate(temp,table,identity,captures,audit,manifest,version);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+            def ready_marker(private):
+                ready = {'approved': False, 'version': version, 'processing_fingerprint': fingerprint, 'objects': candidate_transaction.private_inventory(private)}
+                return READY, encode(ready)
+            def anchor():
+                nonlocal captures, manifest
+                captures, manifest = original_context(storage, version, fingerprint, captures, identity, manifest, create=True)
+            candidate_transaction.install_private_candidate(
+                temp, root, source_payloads(captures, identity, audit, manifest).items(), write_one=write_private,
+                ready=ready_marker, validate_before=lambda private: validate_candidate(private, table, identity, captures, audit, manifest, version),
+                anchor=anchor, validate_after=lambda private: validate_candidate(private, table, identity, captures, audit, manifest, version))
     return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False,
         'source_reported_count':audit['source_reported_count'],'source_id_sha256':audit['source_id_sha256'],'source_population_complete':True}
 
@@ -515,16 +464,16 @@ def inspect_captures(captures):
     if type(count_after)is not int or count_after<0:raise VolcanicQuarantineError('invalid_count_witness')
     ids_after=id_roster(captures['ids_after'][0],count_after)
     validate_capture_witness(count,ids,count_after,ids_after)
-    pages=[]
-    for index,(name,_url)in enumerate(page_urls.items()):
-        expected=ids[index*PAGE_SIZE:(index+1)*PAGE_SIZE];page=strict_json(captures[name][0])
-        oids=[]
-        for x in page.get('features',[]):
-            attrs=x.get('attributes')if type(x)is dict else None
-            oid=attrs.get('OBJECTID')if type(attrs)is dict else None
-            if type(oid)is not int:raise VolcanicQuarantineError('targeted_page_feature_without_integer_OBJECTID')
-            oids.append(oid)
-        if sorted(oids)!=expected:raise VolcanicQuarantineError('targeted_page_missing_extra_ID')
-        pages.append(page)
-    table=decode_pages(pages,ids);years=[x for x in table['YEAR'].to_pylist()if x is not None];countries=Counter(table['COUNTRY'].to_pylist());audit={'count':table.num_rows,'source_reported_count':count,'source_id_sha256':digest(encode(ids)),'original_OBJECTIDs':ids,'original_SIG_IDs':table['SIG_ID'].to_pylist(),'original_event_IDs':table['ID'].to_pylist(),'original_VOL_IDs':table['VOL_ID'].to_pylist(),'countries':sorted(countries.items(),key=lambda x:repr(x[0])),'crs':'EPSG3857','field_count':59,'BCE_count':sum(y<0 for y in years),'unknown_years':table['YEAR'].null_count,'minimum_YEAR':min(years),'maximum_YEAR':max(years),'date_semantics':'YEAR/MO/DAY components and literal TIME_ERUPT codes retained; no BCE or unknown dates inferred.','editingInfo':before.get('editingInfo'),'release_date_established':False}
+    def validated_pages():
+        for index,(name,_url)in enumerate(page_urls.items()):
+            expected=ids[index*PAGE_SIZE:(index+1)*PAGE_SIZE];page=strict_json(captures[name][0])
+            oids=[]
+            for x in page.get('features',[]):
+                attrs=x.get('attributes')if type(x)is dict else None
+                oid=attrs.get('OBJECTID')if type(attrs)is dict else None
+                if type(oid)is not int:raise VolcanicQuarantineError('targeted_page_feature_without_integer_OBJECTID')
+                oids.append(oid)
+            if sorted(oids)!=expected:raise VolcanicQuarantineError('targeted_page_missing_extra_ID')
+            yield page
+    table=decode_pages(validated_pages(),ids);years=[x for x in table['YEAR'].to_pylist()if x is not None];countries=Counter(table['COUNTRY'].to_pylist());audit={'count':table.num_rows,'source_reported_count':count,'source_id_sha256':digest(encode(ids)),'original_OBJECTIDs':ids,'original_SIG_IDs':table['SIG_ID'].to_pylist(),'original_event_IDs':table['ID'].to_pylist(),'original_VOL_IDs':table['VOL_ID'].to_pylist(),'countries':sorted(countries.items(),key=lambda x:repr(x[0])),'crs':'EPSG3857','field_count':59,'BCE_count':sum(y<0 for y in years),'unknown_years':table['YEAR'].null_count,'minimum_YEAR':min(years),'maximum_YEAR':max(years),'date_semantics':'YEAR/MO/DAY components and literal TIME_ERUPT codes retained; no BCE or unknown dates inferred.','editingInfo':before.get('editingInfo'),'release_date_established':False}
     return table,audit

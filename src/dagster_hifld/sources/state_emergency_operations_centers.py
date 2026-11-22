@@ -1,6 +1,12 @@
 """FEMA State EOC native-source draft; preserves the exact public FeatureServer response."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import verify_cached_objects
+
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs, write_immutable, write_candidate_ready_state,
+)
+
 import hashlib
 import json
 import math
@@ -19,11 +25,13 @@ import pyarrow.parquet as pq
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, ExactIdCapturePlan
 
 SLUG = "state-emergency-operations-centers-eoc"
 SERVICE = "https://gis.fema.gov/arcgis/rest/services/FEMA/STATE_EOC"
@@ -390,12 +398,8 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
         objects = ready.get("objects")
         if ready.get("version") != version or ready.get("approved") is not False or not isinstance(objects, dict):
             raise EOCSourceError("cached_candidate_ready_identity_invalid")
-        for relative, expected in objects.items():
-            key = f"{version_prefix}/{relative}"
-            snapshot = storage.object_snapshot(key)
-            if (not isinstance(expected, dict) or snapshot is None or snapshot.size != expected.get("bytes")
-                    or storage.sha256_key(key) != expected.get("sha256") or storage.object_snapshot(key) != snapshot):
-                raise EOCSourceError("cached_candidate_bytes_changed:" + str(relative))
+        verify_cached_objects(storage, version_prefix, objects, descriptor_check="fields",
+            error_prefix="cached_candidate_bytes_changed:", error_type=EOCSourceError)
         # A mutable READY marker is not sufficient authority for reuse. Recheck
         # the immutable first-construction record and its full raw/native roster.
         identity = _strict_json(storage.read_key(f"{version_prefix}/metadata/processing_identity.json"))
@@ -434,38 +438,48 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
         raise EOCSourceError("incomplete_existing_candidate_requires_review")
     run_capture = capture / version
     run_capture.mkdir(mode=0o700, exist_ok=False)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: dict[str, tuple[bytes, dict]] = RetainedCaptureView(run_capture)
     def get(client, name, url):
         body, receipt = _capture(client, url, run_capture, name)
-        captures[name] = (body, receipt)
+        captures[name] = (run_capture / f"{name}.decoded", receipt)
         return body
 
     with httpx.Client(timeout=45, follow_redirects=True) as client:
-        layer_before = _strict_json(get(client, "layer_before", BASE + "?f=pjson"))
-        count_before = _strict_json(get(client, "count_before", _query_url(where="1=1", returnCountOnly="true"))).get("count")
-        ids_field_before, ids_before = _object_ids(get(client, "ids_before", _query_url(where="1=1", returnIdsOnly="true")))
-        if type(count_before) is not int or count_before > MAX_COUNT or ids_field_before != layer_before.get("objectIdField"):
-            raise EOCSourceError("initial_count_or_id_probe_invalid")
-        features = []
-        batch_size = min(500, max(1, int(layer_before.get("maxRecordCount", 500))))
-        for index in range(0, len(ids_before), batch_size):
-            page_ids = ids_before[index:index + batch_size]
-            url = _query_url(objectIds=",".join(map(str, page_ids)), outFields="*", returnGeometry="true", returnZ="true", returnM="true", orderByFields=layer_before["objectIdField"])
-            page = _strict_json(get(client, f"features_{index:05d}", url))
-            if page.get("exceededTransferLimit") is True:
-                raise EOCSourceError("source_page_exceeded_transfer_limit")
-            if not _is_wgs84(page.get("spatialReference")):
-                raise EOCSourceError("source_page_coordinate_reference_changed")
-            _validate_query_page_fields(page.get("fields"), layer_before.get("fields"))
-            features.extend(page.get("features", []))
-        layer_after = _strict_json(get(client, "layer_after", BASE + "?f=pjson"))
-        count_after = _strict_json(get(client, "count_after", _query_url(where="1=1", returnCountOnly="true"))).get("count")
-        ids_field_after, ids_after = _object_ids(get(client, "ids_after", _query_url(where="1=1", returnIdsOnly="true")))
+        def request_steps():
+            layer_before = _strict_json((yield ('layer_before', BASE + '?f=pjson',)))
+            count_before = _strict_json((yield ('count_before', _query_url(where='1=1', returnCountOnly='true'),))).get("count")
+            ids_field_before, ids_before = _object_ids((yield ('ids_before', _query_url(where='1=1', returnIdsOnly='true'),)))
+            if type(count_before) is not int or count_before > MAX_COUNT or ids_field_before != layer_before.get("objectIdField"):
+                raise EOCSourceError("initial_count_or_id_probe_invalid")
+            batch_size = min(500, max(1, int(layer_before.get("maxRecordCount", 500))))
+            def page_request(index, page_ids):
+                return (f'features_{index:05d}', _query_url(objectIds=",".join(map(str, page_ids)), outFields="*", returnGeometry="true", returnZ="true", returnM="true", orderByFields=layer_before["objectIdField"]))
+            def validate_page(index, page_ids, body):
+                page = _strict_json(body)
+                if page.get("exceededTransferLimit") is True:
+                    raise EOCSourceError("source_page_exceeded_transfer_limit")
+                if not _is_wgs84(page.get("spatialReference")):
+                    raise EOCSourceError("source_page_coordinate_reference_changed")
+                _validate_query_page_fields(page.get("fields"), layer_before.get("fields"))
+                return page.get("features", [])
+            features, _pages, closed = (yield ExactIdCapturePlan(ids_before, batch_size,
+                page_request=page_request, validate_page=validate_page,
+                read_page=lambda index: captures[f'features_{index:05d}'][0],
+                closing_requests=(('layer_after', BASE + '?f=pjson'),
+                    ('count_after', _query_url(where='1=1', returnCountOnly='true')),
+                    ('ids_after', _query_url(where='1=1', returnIdsOnly='true')))))
+            layer_after = _strict_json(closed['layer_after'])
+            count_after = _strict_json(closed['count_after']).get("count")
+            ids_field_after, ids_after = _object_ids(closed['ids_after'])
+
+            return layer_before, count_before, ids_field_before, ids_before, features, layer_after, count_after, ids_field_after, ids_after
+        layer_before, count_before, ids_field_before, ids_before, features, layer_after, count_after, ids_field_after, ids_after = capture_request_steps(request_steps(), lambda name, url: get(client, name, url))
 
     schema_drift = _schema_identity(layer_before) != _schema_identity(layer_after)
     if schema_drift or ids_field_after != layer_after.get("objectIdField"):
         raise EOCSourceError("source_metadata_drift_during_capture")
     audit = _source_contract(layer_before, count_before, count_after, ids_before, ids_after, features)
+    features = list(features)
     table, geometry_quality = _table(layer_before, features)
     audit["quality_errors"] = sorted(set(audit["quality_errors"] + geometry_quality))
     audit["source_schema_sha256"] = hashlib.sha256(_json(_schema_identity(layer_before))).hexdigest()
@@ -494,7 +508,7 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
             payloads[f"raw/{name}.receipt.json"] = _json(receipt)
         parquet_descriptor = {"path": f"geoparquet/{SLUG}.parquet", "bytes": len(payloads[f"geoparquet/{SLUG}.parquet"]), "sha256": hashlib.sha256(payloads[f"geoparquet/{SLUG}.parquet"]).hexdigest()}
         provenance_inputs = []
-        for name, (_body, receipt) in sorted(captures.items()):
+        for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
             decoded_info = receipt["decoded"]
             provenance_inputs.append({"input_id": "fema-state-eoc-" + name, "producer": "Federal Emergency Management Agency",
                 "host": "gis.fema.gov", "canonical_url": BASE, "retrieval_url": receipt["url"],
@@ -541,18 +555,13 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
             original = json.loads(load_first_construction(storage, state_key, version, fingerprint))
             if original.get("payload", {}).get("id_roster_sha256") != audit["id_roster_sha256"]:
                 raise EOCSourceError("first_construction_source_roster_changed")
-        for name, body in payloads.items():
-            key = f"{version_prefix}/{name}"
-            snapshot = storage.object_snapshot(key)
-            if snapshot is None:
-                storage.write_key_if_unchanged(key, body, None)
-            elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-                raise EOCSourceError("immutable_staged_object_changed:" + name)
-        ready_key = f"{version_prefix}/metadata/candidate_ready.json"
-        if storage.object_snapshot(ready_key) is None:
-            storage.write_key_if_unchanged(ready_key, _json(ready), None)
-        elif storage.read_key(ready_key) != _json(ready):
-            raise EOCSourceError("candidate_ready_state_changed")
+        write_candidate_outputs(
+            storage, version_prefix, payloads, snapshot_check="none",
+            writer=lambda target, key, body: write_immutable(
+                target, key, body, error_type=EOCSourceError,
+                error_name=key.removeprefix(version_prefix + "/")))
+        write_candidate_ready_state(
+            storage, f"{version_prefix}/metadata/candidate_ready.json", _json(ready), EOCSourceError)
     return {"version": version, "rows": len(features), "quality_passed": not audit["quality_errors"],
         "quality_errors": audit["quality_errors"], "source_release_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,

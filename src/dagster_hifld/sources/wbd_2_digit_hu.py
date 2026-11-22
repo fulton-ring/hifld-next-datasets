@@ -9,10 +9,12 @@ remain unapproved, with no independently approved release baseline wired.
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 
 import httpx
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import wbd_hu_family as family
 
@@ -228,11 +230,10 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
                                       capture=_capture)
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    return family.validate_spatial_reference(value, label, required=required,
-                                             native_wkid=NATIVE_WKID,
-                                             native_latest_wkid=NATIVE_LATEST_WKID,
-                                             source_crs_wkid=SOURCE_CRS_WKID)
+_validate_spatial_reference = partial(
+    crs_validation.validate_native_spatial_reference,
+    native_wkid=NATIVE_WKID, native_latest_wkid=NATIVE_LATEST_WKID,
+    source_crs_wkid=SOURCE_CRS_WKID)
 
 
 def _validate_service(service: dict, label: str) -> None:

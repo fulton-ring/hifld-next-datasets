@@ -248,12 +248,11 @@ def fixture_mode(schema_sha: str, transport: httpx.MockTransport, *, page_size=N
                      side_effect=lambda: httpx.Client(transport=transport)),
         patch.object(src, "_doc_client",
                      side_effect=lambda: httpx.Client(transport=transport)),
-        # CI runners hold far less than the pinned capture floor, so the floor
-        # gate is evaluated against a stub that reports exactly the pinned
-        # requirement; the refusal itself is exercised by the dedicated floor
-        # test below.
+        # Keep the native floor plus room for a maximum body/wire pair. A
+        # volume exactly at the floor has no acquisition headroom; that refusal
+        # is exercised separately from these source-content fixtures.
         patch.object(src.shutil, "disk_usage",
-                     return_value=SimpleNamespace(free=src.MIN_FREE_BYTES)),
+                     return_value=SimpleNamespace(free=src.MIN_FREE_BYTES + 2 * src.MAX_BODY_BYTES)),
     ]
     if not real_identity:
         contexts.extend([

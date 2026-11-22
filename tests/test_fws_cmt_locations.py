@@ -137,6 +137,12 @@ def _edit(docs: dict, name: str) -> dict:
 
 
 class FwsCmtLocationsTests(unittest.TestCase):
+    def test_validation_accepts_read_only_capture_mapping_without_changing_results(self):
+        from types import MappingProxyType
+
+        captures = _capture_docs()
+        self.assertEqual(source._validate(MappingProxyType(captures)), source._validate(captures))
+
     def test_registered_stopped_draft_and_unapproved_release_gate(self):
         self.assertIn(fws_cmt_locations, hifld_ingest_assets)
         self.assertEqual(fws_cmt_locations_draft_refresh_schedule.default_status, DefaultScheduleStatus.STOPPED)

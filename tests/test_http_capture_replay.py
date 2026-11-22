@@ -2,11 +2,14 @@
 import json
 import tempfile
 import unittest
+import weakref
 from pathlib import Path
 
 from dagster_hifld.http_capture import (
+    CaptureDocuments,
     capture_roster_digests,
     validate_retained_capture_replay,
+    validated_capture_view,
 )
 from dagster_hifld.sources.capture_common import validate_capture_request_identity
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -65,6 +68,134 @@ class ValidateRetainedCaptureReplayTests(unittest.TestCase):
                 self.assertEqual(body, f"{name} archive bytes".encode())
                 self.assertEqual(receipt["url"], URLS[name])
                 self.assertEqual(receipt["sha256"], _sha(f"{name} archive bytes".encode()))
+
+    def test_replay_checks_every_capture_without_retaining_page_bodies(self):
+        class Body:
+            def __init__(self, data):
+                self.data = data
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            _write_capture(root)
+            reads, bodies = [], []
+
+            def load(root, name):
+                self.assertTrue(all(ref() is None for ref in bodies))
+                body, wire, receipt = _load_capture(root, name)
+                reads.append(name)
+                body = Body(body)
+                bodies.append(weakref.ref(body))
+                return body, wire, receipt
+
+            captures = validate_retained_capture_replay(
+                root, capture_names=NAMES, expected_urls=URLS,
+                load_capture=load, validate_request_identity=validate_capture_request_identity)
+            self.assertEqual(reads, sorted(NAMES))
+            self.assertIn("beta", captures)
+            self.assertEqual(reads, sorted(NAMES))
+            self.assertTrue(all(ref() is None for ref in bodies))
+            self.assertEqual(captures["beta"][0].data, b"beta archive bytes")
+            self.assertEqual(reads, ["alpha", "beta", "beta"])
+            self.assertTrue(all(ref() is None for ref in bodies))
+
+    def test_replay_refuses_body_changed_after_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            _write_capture(root)
+            captures = self.replay(root)
+            (root / "beta.body").write_bytes(b"changed after replay validation")
+            with self.assertRaises(ValueError):
+                captures["beta"]
+
+    def test_replay_pins_receipt_when_artifacts_are_replaced_after_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            _write_capture(root)
+            captures = self.replay(root)
+            bodies = {name: b"replacement body" for name in NAMES}
+            _write_capture(root, bodies=bodies)
+            with self.assertRaisesRegex(ValueError, "retained_capture_manifest_receipt_mismatch"):
+                captures["alpha"]
+
+    def test_documents_parse_all_json_but_reload_only_requested_page(self):
+        class Captures(dict):
+            def __getitem__(self, name):
+                reads.append(name)
+                return super().__getitem__(name)
+
+        reads = []
+        captures = Captures(alpha=(b'{"value": 1}', {}), beta=(b'{"value": 2}', {}))
+        documents = CaptureDocuments(captures)
+        self.assertEqual(reads, ["alpha", "beta"])
+        first = documents["alpha"]
+        first["value"] = 999
+        self.assertEqual(documents["alpha"], {"value": 1})
+        self.assertEqual(reads, ["alpha", "beta", "alpha", "alpha"])
+        captures["beta"] = (b'invalid JSON', {})
+        with self.assertRaises(ValueError):
+            CaptureDocuments(captures)
+
+    def test_documents_preserve_custom_decoder_projection_and_selected_names(self):
+        calls = []
+
+        def decode(body):
+            calls.append(body)
+            if body == b"invalid":
+                raise ValueError("strict_decoder_refusal")
+            return json.loads(body)
+
+        captures = {"alpha": b'{"value": 1}', "unused_binary": b"not JSON", "beta": b'{"value": 2}'}
+        documents = CaptureDocuments(captures, ("beta", "alpha"),
+            decode=decode, body_from_capture=lambda body: body)
+        self.assertEqual(list(documents), ["beta", "alpha"])
+        self.assertEqual(calls, [captures["beta"], captures["alpha"]])
+        self.assertEqual(documents["alpha"], {"value": 1})
+        self.assertEqual(calls[-1], captures["alpha"])
+        captures["beta"] = b"invalid"
+        with self.assertRaisesRegex(ValueError, "strict_decoder_refusal"):
+            CaptureDocuments(captures, ("beta",), decode=decode,
+                             body_from_capture=lambda body: body)
+
+    def test_named_document_reader_preserves_mixed_document_checks(self):
+        reads = []
+        captures = {"html": (b"<html>source</html>", {}), "json": (b'{"value": 1}', {})}
+
+        def document(name):
+            reads.append(name)
+            body = captures[name][0]
+            if name == "html":
+                if not body.startswith(b"<html>"):
+                    raise ValueError("html_source_changed")
+                return body
+            return json.loads(body)
+
+        documents = CaptureDocuments(captures, load_document=document)
+        self.assertEqual(reads, ["html", "json"])
+        self.assertEqual(documents["json"], {"value": 1})
+        self.assertEqual(reads, ["html", "json", "json"])
+        captures["html"] = (b"invalid", {})
+        with self.assertRaisesRegex(ValueError, "html_source_changed"):
+            CaptureDocuments(captures, load_document=document)
+
+    def test_native_receipt_mismatch_label_is_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            _write_capture(root)
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            manifest["receipts"]["beta"]["observed_at"] = "changed"
+            with self.assertRaisesRegex(ValueError, "capture_receipt_manifest_mismatch:beta"):
+                validated_capture_view(root, receipts=manifest["receipts"], expected_urls=URLS,
+                    load_capture=_load_capture, validate_request_identity=validate_capture_request_identity,
+                    receipt_error="capture_receipt_manifest_mismatch")
+
+    def test_replay_iteration_retains_sorted_capture_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            _write_capture(root)
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            manifest["receipts"] = {name: manifest["receipts"][name] for name in ("beta", "alpha")}
+            (root / "capture_manifest.json").write_text(json.dumps(manifest))
+            self.assertEqual(list(self.replay(root)), ["alpha", "beta"])
 
     def test_symlinked_manifest_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

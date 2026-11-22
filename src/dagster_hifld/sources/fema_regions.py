@@ -5,8 +5,10 @@ All original IDs, field names/types, native mixed polygon geometry and raw bytes
 are preserved. Historical publication compatibility is a separate hard gate.
 """
 from __future__ import annotations
+
+from dagster_hifld.sources.capture_common import write_immutable, write_candidate_blobs
+from dagster_hifld.sources import candidate_transaction
 import collections
-import fcntl
 import hashlib
 import importlib.metadata
 import io
@@ -34,6 +36,7 @@ import pyogrio
 import pyproj
 import shapely
 from shapely.geometry import shape
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle,load_first_construction,seal_first_construction
@@ -112,10 +115,8 @@ def immutable(storage, key, body):
         if ancestor.is_symlink(): raise FemaQuarantineError('linked_capture_path')
     if path.exists() and (not path.is_file() or path.stat().st_nlink != 1):
         raise FemaQuarantineError('linked_capture_object')
-    snapshot = storage.object_snapshot(key)
-    if snapshot is None: storage.write_key_if_unchanged(key, body, None)
-    elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-        raise FemaQuarantineError('immutable_capture_changed')
+    write_immutable(storage, key, body, error_type=FemaQuarantineError,
+                    error_prefix='immutable_capture_changed', error_name="")
 
 def retain_diagnostic(storage, pieces, reason):
     root = checked_path(storage,'_quarantine/'+SLUG+'/input-'+uuid4().hex)
@@ -160,14 +161,13 @@ def parquet_bytes(table):
 
 @contextmanager
 def version_lock(storage, version):
-    folder = checked_path(storage,'_locks'); folder.mkdir(exist_ok=True)
+    folder = checked_path(storage, '_locks'); folder.mkdir(exist_ok=True)
     if folder.is_symlink(): raise FemaQuarantineError('linked_version_lock_directory')
-    descriptor = os.open(folder/(SLUG+'-'+version+'.lock'),os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
-    try:
-        info = os.fstat(descriptor)
-        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1: raise FemaQuarantineError('linked_version_lock')
-        fcntl.flock(descriptor,fcntl.LOCK_EX); local_root(storage); yield
-    finally: os.close(descriptor)
+    with candidate_transaction.lock_path(
+            folder / (SLUG + '-' + version + '.lock'), error_type=FemaQuarantineError,
+            unsafe_code='linked_version_lock'):
+        local_root(storage)
+        yield
 
 def observed_trust_loss(storage, version, fp, *, candidate=None, restored_manifest=None):
     """Remember an OBSERVED missing/invalid witness before detaching its cache.
@@ -518,8 +518,8 @@ def capture_live_observation(storage,captures):
     folder=checked_path(storage,'_observations/'+SLUG+'/'+uuid4().hex);folder.mkdir(parents=True)
     names=['official-layer','source-count','source-ids','source-attributes']+['source-oid-'+str(x)for x in range(11,21)]+['official-layer-after','source-count-after','source-ids-after','source-attributes-after']
     observed=dict(captures)
-    for name in names:
-        pin=PINS[name];start=datetime.now(timezone.utc).isoformat();path=folder/(name+'.body')
+    def fetch(name,pin):
+        start=datetime.now(timezone.utc).isoformat();path=folder/(name+'.body')
         progress={'requested_url':pin['requested_url'],'started_at':start,'complete':False,
             'trust':'untrusted_capture_in_progress','body_path':path.name,'bounded_read_chunk_limit':HTTP_CHUNK_LIMIT}
         # Establish untrusted status before any read, including interruption.
@@ -538,8 +538,9 @@ def capture_live_observation(storage,captures):
                     'bytes':len(body),'wire_bytes':count,'sha256':digest(body),'complete':True,
                     'headers':{k:v for k,v in response.headers.items()if k.lower()in['content-type','content-length','etag','last-modified','date','content-encoding']}}
             validate_capture(name,body,receipt)
-            (folder/(name+'.receipt.json')).write_bytes(encode(receipt));observed[name]=(path,receipt)
+            (folder/(name+'.receipt.json')).write_bytes(encode(receipt))
             (folder/(name+'.failed-receipt.json')).unlink()
+            return path,receipt
         except BaseException as exc:
             # Do not call guarded storage helpers here: that could refuse to
             # preserve a consumed chunk just because the floor was crossed.
@@ -548,6 +549,8 @@ def capture_live_observation(storage,captures):
                 persisted_sha256=sha256_file(path)if path.exists()else None)
             (folder/(name+'.failed-receipt.json')).write_bytes(encode(progress))
             raise
+    observed.update(capture_request_sequence({}, [(name,PINS[name])for name in names],
+                                             lambda captures:(), fetch))
     return observed
 
 
@@ -560,10 +563,13 @@ def stage_fema_regions(storage,capture_directory,refresh_official=False):
     prefix=SLUG+'/'+SLUG+'/'+version;target=checked_path(storage,prefix);key='_construction-state/'+SLUG+'/'+version+'.json'
     # The full original captures are immutable outside versioned candidates;
     # historical raw payloads and complete original receipts are never replaced.
-    for name,pin in PINS.items():
-        raw=f'_raw-captures/{SLUG}/{pin["sha256"]}/{name}.body'
-        immutable(storage,raw,body_for(name,captures))
-        receipt=captures[name][1];immutable(storage,raw+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt))
+    def raw_objects():
+        for name, pin in PINS.items():
+            raw = f'_raw-captures/{SLUG}/{pin["sha256"]}/{name}.body'
+            yield raw, body_for(name, captures)
+            receipt = encode(captures[name][1])
+            yield raw + '.receipt-' + digest(receipt) + '.json', receipt
+    write_candidate_blobs(storage, "", raw_objects(), writer=immutable)
     table,audit,metadata=decode_native(captures);comparison=compare_published(captures,table,audit)
     parquet=parquet_bytes(table);manifest=manifest_for(captures,identity,parquet)
     with version_lock(storage,version):
@@ -597,19 +603,27 @@ def stage_fema_regions(storage,capture_directory,refresh_official=False):
         building=checked_path(storage,'_building/'+SLUG);building.mkdir(parents=True,exist_ok=True)
         temporary=Path(tempfile.mkdtemp(prefix='candidate-',dir=building))
         try:
-            for name,body in expected.items():
-                path=temporary/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(body)
-            (temporary/'geopackage').mkdir();write_geopackage(table,temporary/'geopackage'/f'{SLUG}.gpkg')
-            reconcile_native(temporary,table)
-            objects={str(p.relative_to(temporary)):{'sha256':sha256_file(p),'bytes':p.stat().st_size}for p in temporary.rglob('*')if p.is_file()}
-            (temporary/READY).write_bytes(encode({'version':version,'processing_fingerprint':fp,'approved':False,'objects':objects}))
-            bundle=canonical_construction_bundle(version,fp,{'manifest':manifest,'captures':{n:{
-                'raw_body_key':f'_raw-captures/{SLUG}/{p["sha256"]}/{n}.body',
-                'raw_receipt_key':f'_raw-captures/{SLUG}/{p["sha256"]}/{n}.body.receipt-'+digest(encode(captures[n][1]))+'.json',
-                'receipt':captures[n][1]}for n,p in PINS.items()}})
-            if seal_first_construction(storage,key,version,fp,bundle)!=bundle:
-                raise FemaQuarantineError('concurrent_original_context_differs')
-            target.parent.mkdir(parents=True,exist_ok=True);os.rename(temporary,target)
+            def ready_marker(private):
+                (private/'geopackage').mkdir()
+                write_geopackage(table, private/'geopackage'/f'{SLUG}.gpkg')
+                reconcile_native(private, table)
+                objects = candidate_transaction.private_inventory(private, with_bytes=True)
+                return READY, encode({'version': version, 'processing_fingerprint': fp,
+                                      'approved': False, 'objects': objects})
+            def anchor():
+                bundle=canonical_construction_bundle(version,fp,{'manifest':manifest,'captures':{n:{
+                    'raw_body_key':f'_raw-captures/{SLUG}/{p["sha256"]}/{n}.body',
+                    'raw_receipt_key':f'_raw-captures/{SLUG}/{p["sha256"]}/{n}.body.receipt-'+digest(encode(captures[n][1]))+'.json',
+                    'receipt':captures[n][1]}for n,p in PINS.items()}})
+                candidate_transaction.anchor_first_construction(
+                    storage, key, version, fp, bundle, original=False,
+                    error_type=FemaQuarantineError, changed_code='concurrent_original_context_differs',
+                    require_same_result=True)
+            candidate_transaction.install_private_candidate(
+                temporary, target, expected.items(), write_one=candidate_transaction.write_private_bytes,
+                ready=ready_marker,
+                write_ready=lambda root, name, body: candidate_transaction.write_private_bytes(
+                    root, name, body, create_parents=False), anchor=anchor)
         except BaseException:
             if temporary.exists():
                 rejected=checked_path(storage,'_quarantine/'+SLUG+'/failed-private-'+uuid4().hex)

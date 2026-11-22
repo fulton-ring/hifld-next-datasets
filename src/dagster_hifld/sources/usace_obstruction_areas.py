@@ -6,8 +6,11 @@ source attribute and every source identifier unchanged.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -17,12 +20,15 @@ import httpx
 import shapely
 from shapely import from_wkb
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -87,10 +93,10 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     )
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]]) -> str:
+def _capture_identity_hash(captures: Mapping[str, tuple[bytes, dict]]) -> str:
     """Bind versions to immutable decoded and wire bytes, never retrieval time."""
     digests = {}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         if (receipt.get("complete_body") is not True or receipt.get("status") != 200
                 or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
                 or type(receipt.get("wire_bytes")) is not int
@@ -101,8 +107,8 @@ def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]]) -> str:
     return _sha(_canonical(digests))
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     description = item.get("description")
     if (item.get("id") != CURRENT_BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
@@ -218,7 +224,7 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
     if ".." in root.parts or any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: Mapping[str, tuple[bytes, dict]] = {}
     try:
         if replay:
             retained = json.loads((root / "capture_manifest.json").read_bytes())
@@ -237,9 +243,12 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
                      "layer_after", "count_after", "ids_after", "service_after"]
             if set(retained.get("receipts", {})) != set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures = {name: _load_replay(root, name) for name in names}
-            if any(receipt != retained["receipts"][name] for name, (_body, receipt) in captures.items()):
-                raise ValueError("retained_capture_receipt_changed")
+            captures = validated_capture_view(root,
+                receipts={name: retained["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_receipt_changed")
         else:
             existing_bytes = sum(p.stat().st_size for p in (requested or root.parent).rglob("*")
                                  if p.is_file() and p.suffix in {".body", ".wire"})
@@ -248,13 +257,17 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
                 raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
-                ids_body, ids_receipt = _fetch_retry(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before", budget)
-                ids = json.loads(ids_body).get("objectIds")
-                if not isinstance(ids, list):
-                    raise ValueError("source_id_population_missing")
-                captures["ids_before"] = (ids_body, ids_receipt)
-                for name, url in _capture_roster(ids):
-                    captures[name] = _fetch_retry(client, url, root, name, budget)
+                def validate_seed(ids_body):
+                    ids = json.loads(ids_body).get("objectIds")
+                    if not isinstance(ids, list):
+                        raise ValueError("source_id_population_missing")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_before', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, budget),
+                    on_validation_error=_validate)
         fields, features, audit = _validate(captures)
     except Exception as exc:
         receipts = {}

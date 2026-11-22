@@ -42,20 +42,18 @@ and 897, valid under Esri semantics) are minimally repaired with
   unaccepted repair gate. Publication stays blocked pending succession,
   freshness, schema/ID contract, coverage, rights and release decisions.
 
-The offset-segment checkpoint acquisition here (resumable
-``capture_state.json`` segment tiling, cross-checked attributes-only
-extraction, refreshed closing brackets) is a deliberately distinct policy from
-the keyset-window layers of the same service; it shares only the byte-equivalent
-primitives in ``dagster_hifld.sources.wbd_hu_family`` (query URL building,
-producer error detection, per-field value validation).
+The offset-segment checkpoint acquisition uses shared ``wbd_capture`` and
+``arcgis_adaptive`` owners for resumable segment tiling, independent attributes
+extraction and refreshed closing brackets. Native source validation remains here.
 """
 from __future__ import annotations
+
+from functools import partial
 
 import hashlib
 import json
 import math
 import shutil
-import time
 from array import array
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime, timezone
@@ -70,24 +68,31 @@ import shapely
 from shapely import from_wkb
 from shapely.validation import explain_validity
 
+from dagster_hifld.sources import wbd_capture
+from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.capture_completeness import validate_capture_witness
-from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import (
+    capture_with_retry, producer_error_doc as _producer_error_doc,
+)
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version,
-    processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
+    candidate_prefix, content_derived_version,
+    processing_identity, quarantine_incomplete_capture,
     verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    reuse_sealed_candidate,
+    load_candidate_checkpoint,
+    stage_candidate_objects,
+    upload_candidate_file,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
     esri_polygon_wkb as _esri_polygon_wkb, load_replay,
 )
 from dagster_hifld.sources.wbd_hu_family import (
-    producer_error_document as _producer_error_envelope,
     query_url as _layer_query_url, validate_esri_value as _validate_field_value,
 )
 from dagster_hifld.validation import sha256_file
@@ -235,58 +240,6 @@ def _capture_urls(population_count: int) -> dict[str, str]:
         count = min(PAGE_SIZE, population_count - offset)
         urls[_segment_name(offset, count)] = _segment_url(offset, count)
     return urls
-
-
-def _budget_ok(capture_root: Path) -> bool:
-    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire")
-                   for path in capture_root.glob(suffix) if path.is_file())
-    return retained + 2 * MAX_BODY_BYTES <= MAX_CAPTURE_BYTES
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    return _producer_error_envelope(body, max_bytes=65536, require_int_code=False)
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    while any((capture_root / f"{name}.attempt-{attempt:02d}{suffix}").exists()
-              for suffix in (".body", ".wire", ".receipt.json")):
-        attempt += 1
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.replace(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str) \
-        -> tuple[bytes, dict[str, object]]:
-    """Capture one request, retrying the producer's transient error envelopes.
-
-    A persistent producer error envelope is returned to the caller (with its
-    receipt) so an offset-paged segment fetch can bisect the refused window;
-    document captures treat a returned envelope as fatal.
-    """
-    if not _budget_ok(capture_root):
-        raise WbdHu8SubbasinError("source_capture_budget_exceeded_before_request")
-    for attempt in range(1, CAPTURE_ATTEMPTS + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name,
-                                        max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            if not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            if attempt >= CAPTURE_ATTEMPTS:
-                raise
-            time.sleep(CAPTURE_RETRY_BASE_DELAY_SECONDS * 3 ** (attempt - 1))
-            continue
-        if _producer_error_doc(body):
-            if attempt < CAPTURE_ATTEMPTS:
-                _preserve_failed_attempt(capture_root, name, attempt)
-                time.sleep(CAPTURE_RETRY_BASE_DELAY_SECONDS * 3 ** (attempt - 1))
-                continue
-            return body, receipt
-        return body, receipt
-    raise WbdHu8SubbasinError("source_capture_persistent_error_envelope:" + name)
 
 
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
@@ -867,23 +820,12 @@ def _segment_gaps(spans: list[tuple[int, int]], population_count: int) -> list[t
 
 def _fetch_doc_group(client: httpx.Client, urls: list[tuple[str, str]], capture_root: Path,
                      *, refresh: bool = False) -> None:
-    """Capture one ordered document group, retaining already-captured members.
-
-    With ``refresh`` the group's retained bodies/wires/receipts are discarded
-    first so every member is re-captured now (used for the closing brackets of
-    a resumed acquisition, which must postdate the most recent segment read).
-    """
-    if refresh:
-        for name, _url in urls:
-            for suffix in (".body", ".wire", ".receipt.json"):
-                (capture_root / f"{name}{suffix}").unlink(missing_ok=True)
-    for name, url in urls:
-        if (capture_root / f"{name}.body").exists():
-            validate_capture_request_identity(name, _read_capture(capture_root, name)[1], url)
-            continue
-        body, _receipt = _capture_with_retry(client, url, capture_root, name)
-        if _producer_error_doc(body):
-            raise WbdHu8SubbasinError("source_document_error_envelope:" + name)
+    wbd_capture.capture_document_group(client, urls, capture_root,
+        capture=partial(capture_with_retry, max_bytes=MAX_BODY_BYTES, attempts=CAPTURE_ATTEMPTS,
+            base_delay=CAPTURE_RETRY_BASE_DELAY_SECONDS, max_total_bytes=MAX_CAPTURE_BYTES,
+            budget_error=WbdHu8SubbasinError, preserve_final_failure=True),
+        read=_read_capture, producer_error=_producer_error_doc,
+        error_type=WbdHu8SubbasinError, refresh=refresh)
 
 
 def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
@@ -910,59 +852,23 @@ def fetch_wbd_hu8_subbasin_pages(capture_root: Path) -> None:
         raise WbdHu8SubbasinError("disk_floor_before_acquisition")
     state = _load_state(capture_root)
     with _default_client() as client:
-        _fetch_doc_group(client, _before_doc_urls(), capture_root)
-        seed = _roster(json.loads(_read_capture(capture_root, "ids_before")[0]), "ids_seed")
-        population_count = len(seed)
-        count_before = json.loads(_read_capture(capture_root, "count_before")[0]).get("count")
-        validate_capture_witness(count_before, seed, count_before, seed)
-        segments = list(state.get("segments") or [])
-        filled_gaps = False
-        work: list[tuple[int, int]] = []
-        while True:
-            spans = _covered_tiling({"segments": segments}, population_count)
-            gaps = _segment_gaps(spans, population_count)
-            if not gaps:
-                state["segments"] = segments
-                break
-            filled_gaps = True
-            state["complete"] = False
-            _save_state(capture_root, state)
-            if not work:
-                offset, length = gaps[0]
-                work.append((offset, min(PAGE_SIZE, length)))
-            offset, count = work.pop(0)
-            if any(start <= offset and offset + count <= end for start, end in spans):
-                continue
-            body, _receipt = _capture_with_retry(client, _segment_url(offset, count),
-                                                 capture_root, name := _segment_name(offset, count))
-            if _producer_error_doc(body):
-                if count > 1:
-                    half = count // 2
-                    work = [(offset, half), (offset + half, count - half), *work]
-                    continue
-                raise WbdHu8SubbasinError("source_segment_error_envelope:" + name)
-            page = json.loads(body)
-            features = page.get("features") if isinstance(page, dict) else None
-            if (not isinstance(features, list) or len(features) != count
-                    or [feature.get("attributes", {}).get("objectid")
-                        for feature in features] != seed[offset:offset + count]):
-                raise WbdHu8SubbasinError("source_segment_roster_incomplete:" + name)
-            if any(start <= offset and offset + count <= end for start, end in spans):
-                raise WbdHu8SubbasinError("source_segment_roster_duplicate:" + name)
-            segments.append({"offset": offset, "count": count, "name": name,
-                             "features": count,
-                             "captured_at": datetime.now(timezone.utc).isoformat()})
-            state["segments"] = segments
-            _save_state(capture_root, state)
-        attrs_urls = _attrs_doc_urls(population_count)
-        if any(not (capture_root / f"{name}.body").exists() for name, _url in attrs_urls):
-            state["complete"] = False
-            _save_state(capture_root, state)
-        _fetch_doc_group(client, attrs_urls, capture_root)
-        _fetch_doc_group(client, _after_doc_urls(), capture_root,
-                         refresh=filled_gaps or state.get("complete") is not True)
-        state["complete"] = True
-        _save_state(capture_root, state)
+        wbd_capture.capture_segmented_layer(
+            SliceCaptureSpec(byte_budget=MAX_CAPTURE_BYTES,
+                page_name=_segment_name, page_url=_segment_url,
+                capture=partial(capture_with_retry, max_bytes=MAX_BODY_BYTES,
+                    max_total_bytes=MAX_CAPTURE_BYTES, budget_error=WbdHu8SubbasinError,
+                    preserve_final_failure=True),
+                producer_error=_producer_error_doc, page_attempts=CAPTURE_ATTEMPTS,
+                page_delay=CAPTURE_RETRY_BASE_DELAY_SECONDS, doc_attempts=CAPTURE_ATTEMPTS,
+                doc_delay=CAPTURE_RETRY_BASE_DELAY_SECONDS, error=WbdHu8SubbasinError,
+                bisect_incomplete=False),
+            client, capture_root, state,
+            documents=wbd_capture.SegmentDocuments(before=_before_doc_urls(),
+                attributes=_attrs_doc_urls, after=_after_doc_urls(), fetch_group=_fetch_doc_group,
+                read=_read_capture, validate_roster=_roster),
+            checkpoints=wbd_capture.SegmentCheckpoints(page_size=PAGE_SIZE, oid_field="objectid",
+                covered=_covered_tiling, gaps=_segment_gaps, save=_save_state,
+                parse_name=lambda name: tuple(map(int, name[4:].split("_")))))
 
 
 def _receipt_map(capture_root: Path, segment_names: list[str], population_count: int) -> dict[str, dict[str, object]]:
@@ -977,8 +883,6 @@ def _parquet_descriptor(storage: StagingStorageResource, key: str) -> dict[str, 
     if not isinstance(size, int) or not isinstance(digest, str) or len(digest) != 64:
         raise WbdHu8SubbasinError("candidate_parquet_readback_failed")
     return {"bytes": size, "sha256": digest}
-
-
 
 
 class _RetainedCaptureViews(Mapping):
@@ -1008,9 +912,13 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     parquet_path = Path(extracted["parquet_path"])
     parquet_name = f"geoparquet/{FILE_SLUG}.parquet"
-    if storage.object_snapshot(state_key) is not None:
+    def verify_existing():
         return _verify_sealed_candidate(storage, prefix, state_key, version, identity,
                                         extracted, parquet_path)
+
+    reused = reuse_sealed_candidate(storage, state_key, verify_existing)
+    if reused is not None:
+        return reused
     audit = {
         "source_feature_count": extracted["feature_count"],
         "source_reported_count": extracted["source_reported_count"],
@@ -1200,12 +1108,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "coverage_accepted": False, "rights_accepted": False,
              "mapping_approved": False, "release_accepted": False}
     parquet_key = f"{prefix}/{parquet_name}"
-    storage.upload_local_file(parquet_path, parquet_key)
-    expected_parquet = {"bytes": parquet_path.stat().st_size,
-                        "sha256": sha256_file(parquet_path)}
-    parquet_descriptor = _parquet_descriptor(storage, parquet_key)
-    if parquet_descriptor != expected_parquet:
-        raise WbdHu8SubbasinError("candidate_parquet_readback_mismatch")
+    parquet_descriptor = upload_candidate_file(
+        storage, parquet_key, parquet_path, _parquet_descriptor,
+        WbdHu8SubbasinError)
     descriptors: dict[str, dict[str, object]] = {parquet_name: parquet_descriptor}
     manifest["prebuilt_output_policy"]["formats"]["geoparquet"]["objects"] = [
         {"path": parquet_name, **parquet_descriptor}]
@@ -1220,23 +1125,12 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     }
     # Stream every retained capture to storage one page at a time; the seal never
     # holds more than one segment body/wire pair plus the small receipt map.
-    for relative, body in metadata_outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-        descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted(receipts):
-        body, receipt = _read_capture(capture_root, name)
-        wire = (capture_root / f"{name}.wire").read_bytes()
-        for suffix, blob in (("body", body), ("wire", wire),
-                             ("receipt.json", _canonical(receipt) + b"\n")):
-            relative = f"raw/{name}.{suffix}"
-            write_immutable(storage, f"{prefix}/{relative}", blob)
-            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
-    fingerprint = _sha(_canonical(identity))
-    payload = {"processing_identity": identity,
-               "source_record_sha256": audit["source_record_sha256"],
-               "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": receipts, "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    stage_candidate_objects(
+        storage, prefix, state_key, version, identity, metadata_outputs,
+        capture_root, receipts, _read_capture,
+        descriptors=descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'])
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
@@ -1266,15 +1160,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
 def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
                              version: str, identity: Mapping, extracted: Mapping,
                              parquet_path: Path) -> dict[str, object]:
-    fingerprint = _sha(_canonical(identity))
-    bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
-    payload = bundle.get("payload")
-    if (not isinstance(payload, dict) or set(payload) != {"processing_identity",
-            "source_record_sha256", "source_schema_sha256", "capture_receipts", "objects"}
-            or payload["processing_identity"] != identity
-            or payload["source_record_sha256"] != extracted["record_sha"]
-            or payload["source_schema_sha256"] != extracted["schema_sha"]):
-        raise WbdHu8SubbasinError("cached_first_candidate_identity_or_source_changed")
+    fingerprint, payload = load_candidate_checkpoint(
+        storage, state_key, version, identity,
+        extracted['record_sha'], extracted['schema_sha'], WbdHu8SubbasinError)
     expected_objects = dict(payload["objects"])
     verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
                             fingerprint, identity, extracted["record_sha"],

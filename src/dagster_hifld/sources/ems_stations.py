@@ -6,12 +6,19 @@ all wire attributes and the producer's field declaration document.
 """
 from __future__ import annotations
 
+from functools import partial
+
+from dagster_hifld.sources.capture_common import (
+    write_immutable_key,
+)
+
 import hashlib
 import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
+from uuid import uuid4
 
 import httpx
 import pyarrow as pa
@@ -20,7 +27,10 @@ from pyproj import CRS
 from shapely.geometry import Point
 
 from dagster_hifld.release_approval import verifier_implementation_sha256
-from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps
 
 SLUG = "fire-and-emergency-medical-service-ems-stations"
 URL = "https://carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/51"
@@ -89,12 +99,17 @@ def _capture(capture_dir: Path | None) -> tuple[dict[str, bytes], list[dict]]:
     if capture_dir is not None:
         receipt_doc = json.loads((capture_dir / "receipts.json").read_text())
         if not isinstance(receipt_doc, list): raise EMSQuarantineError("capture_receipt_array_required")
-        bodies, receipts = {}, []
+        receipts = []
+        by_name = {}
         for receipt in receipt_doc:
             if not isinstance(receipt, dict) or not isinstance(receipt.get("capture"), str):
                 raise EMSQuarantineError("capture_receipt_shape_invalid")
             name = receipt["capture"]
-            if name in bodies: raise EMSQuarantineError("duplicate_capture_receipt")
+            if name in by_name: raise EMSQuarantineError("duplicate_capture_receipt")
+            by_name[name] = receipt
+            receipts.append(receipt)
+        def load(root, name):
+            receipt = by_name[name]
             offset = int(name[5:]) * PAGE_SIZE if name.startswith("page_") and name[5:].isdigit() else None
             expected = urlsplit(_url(name, offset))
             raw = (capture_dir / (name + ".json")).read_bytes()
@@ -107,31 +122,44 @@ def _capture(capture_dir: Path | None) -> tuple[dict[str, bytes], list[dict]]:
                            or u.fragment or sorted(parse_qsl(u.query, keep_blank_values=True)) != expected_query
                            for u in observed_urls)):
                 raise EMSQuarantineError(f"capture_receipt_mismatch:{name}")
-            bodies[name] = raw; receipts.append(receipt)
+            return raw, receipt
+        captures = validated_capture_view(capture_dir, receipts=by_name,
+            expected_urls=dict.fromkeys(by_name, ""), load_capture=load,
+            capture_value=lambda value: value, preserve_order=True,
+            validate_request_identity=lambda name, receipt, url: None)
         expected_names = {"layer", "count_before", "ids_before", "ids_after", "count_after"} | {f"page_{i:03d}" for i in range((COUNT + PAGE_SIZE - 1)//PAGE_SIZE)}
-        if set(bodies) != expected_names or sum(map(len, bodies.values())) > MAX_CAPTURE_BYTES:
+        if set(captures) != expected_names or sum(receipt["bytes"] for receipt in receipts) > MAX_CAPTURE_BYTES:
             raise EMSQuarantineError("capture_receipt_set_or_storage_budget_mismatch")
-        return bodies, receipts
-    bodies, receipts = {}, []
-    names = ["layer", "count_before", "ids_before"]
+        return CaptureDocuments(captures, decode=lambda body: body), receipts
+    root = default_capture_dir("hifld-native-reconstruction", SLUG, "captures") / uuid4().hex
+    root.mkdir(parents=True, exist_ok=False)
+    captures, receipts = RetainedCaptureView(root), []
     with httpx.Client(timeout=90, headers={"Accept-Encoding": "identity", "User-Agent": "HIFLD local draft source adapter"}, follow_redirects=False) as client:
-        for name in names:
-            _get(client, name, _url(name), bodies, receipts)
-        count = strict_json(bodies["count_before"]).get("count")
-        ids = strict_json(bodies["ids_before"]).get("objectIds")
-        if type(count) is not int or not isinstance(ids, list) or len(ids) != count:
-            raise EMSQuarantineError("preflight_count_and_id_mismatch")
-        for i, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-            name = f"page_{i:03d}"
-            _get(client, name, _url(name, start), bodies, receipts)
-            if sum(map(len, bodies.values())) > MAX_CAPTURE_BYTES:
-                raise EMSQuarantineError("capture_exceeds_storage_budget")
-        for name in ("ids_after", "count_after"):
-            _get(client, name, _url(name), bodies, receipts)
-    return bodies, receipts
+        def request_steps():
+            yield ("layer", _url("layer"))
+            yield ("count_before", _url("count_before"))
+            yield ("ids_before", _url("ids_before"))
+            count = strict_json(captures["count_before"][0]).get("count")
+            ids = strict_json(captures["ids_before"][0]).get("objectIds")
+            if type(count) is not int or not isinstance(ids, list) or len(ids) != count:
+                raise EMSQuarantineError("preflight_count_and_id_mismatch")
+
+            def validate_page(offset, requested, value):
+                if sum(receipt["bytes"] for receipt in receipts) > MAX_CAPTURE_BYTES:
+                    raise EMSQuarantineError("capture_exceeds_storage_budget")
+                return []
+
+            # Full native rows remain deferred to validate() after both witnesses.
+            yield ExactIdCapturePlan(ids, PAGE_SIZE,
+                page_request=lambda offset, requested: (f"page_{offset // PAGE_SIZE:03d}", _url(f"page_{offset // PAGE_SIZE:03d}", offset)),
+                validate_page=validate_page, project_rows=lambda document: [],
+                read_page=lambda offset: captures[f"page_{offset // PAGE_SIZE:03d}"][0],
+                closing_requests=(("ids_after", _url("ids_after")), ("count_after", _url("count_after"))))
+        capture_request_steps(request_steps(), lambda name, url: _get(client, name, url, captures, receipts, root))
+    return CaptureDocuments(captures, decode=lambda body: body), receipts
 
 
-def _get(client, name: str, url: str, bodies: dict, receipts: list) -> None:
+def _get(client, name: str, url: str, captures, receipts: list, root: Path) -> None:
     started = datetime.now(timezone.utc).isoformat()
     with client.stream("GET", url) as response:
         if response.status_code != 200:
@@ -145,10 +173,13 @@ def _get(client, name: str, url: str, bodies: dict, receipts: list) -> None:
         request_url, final_url = str(response.request.url), str(response.url)
         content_type = response.headers.get("content-type")
     strict_json(raw)
-    bodies[name] = raw
-    receipts.append({"capture": name, "url": request_url, "final_url": final_url,
+    path = root / f"{name}.json"
+    path.write_bytes(raw)
+    receipt = {"capture": name, "url": request_url, "final_url": final_url,
         "http_status": response.status_code, "fetched_at": started, "bytes": len(raw), "sha256": digest(raw),
-        "content_type": content_type})
+        "content_type": content_type}
+    receipts.append(receipt)
+    captures[name] = (path, receipt)
 
 
 def validate(bodies: dict[str, bytes]) -> tuple[list[dict], dict, dict]:
@@ -246,12 +277,8 @@ def _arrow(features: list[dict], layer: dict) -> pa.Table:
     return pa.Table.from_arrays(arrays, schema=pa.schema(schema, metadata=metadata))
 
 
-def _immutable(storage: StagingStorageResource, key: str, body: bytes) -> str:
-    prior = storage.object_snapshot(key)
-    if prior is None: storage.write_key_if_unchanged(key, body, None)
-    elif storage.read_key(key) != body or storage.object_snapshot(key) != prior:
-        raise EMSQuarantineError(f"immutable_object_conflict:{key}")
-    return storage._ensure_prefixed(key)
+_immutable = partial(write_immutable_key, error_type=EMSQuarantineError,
+                     error_prefix="immutable_object_conflict:")
 
 
 def _validate_existing_catalog(storage: StagingStorageResource, prefix: str,
@@ -319,7 +346,7 @@ def stage_candidate(storage: StagingStorageResource, *, capture_dir: Path | None
     require_local(storage)
     bodies, receipts = _capture(capture_dir)
     features, layer, quality = validate(bodies)
-    raw_hashes = {name: digest(raw) for name, raw in sorted(bodies.items())}
+    raw_hashes = {name: digest(raw) for name, raw in ((name, bodies[name]) for name in sorted(bodies))}
     raw_identity = canonical_hash(raw_hashes)
     processor = verifier_implementation_sha256()
     resolved_code_commit = code_commit or f"installed-package-sha256:{processor}"
@@ -327,7 +354,7 @@ def stage_candidate(storage: StagingStorageResource, *, capture_dir: Path | None
         "code_commit": resolved_code_commit, "retrieval_receipts": receipts})[:20]
     prefix = f"{SLUG}/{SLUG}/{version}"
     raw_keys = {}
-    for name, raw in sorted(bodies.items()):
+    for name, raw in ((name, bodies[name]) for name in sorted(bodies)):
         raw_keys[name] = _immutable(storage, f"_raw-captures/{SLUG}/{digest(raw)}/{name}.json", raw)
     receipt_bytes = encode(receipts)
     _immutable(storage, f"{prefix}/raw/receipts/{digest(receipt_bytes)}.json", receipt_bytes)

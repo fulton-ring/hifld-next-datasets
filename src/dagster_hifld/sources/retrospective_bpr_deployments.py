@@ -12,6 +12,8 @@ drift quarantines; historical published IDs remain separately preserved.
 """
 from __future__ import annotations
 
+
+from functools import partial
 import io
 import json
 import math
@@ -27,6 +29,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -34,9 +38,12 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -149,31 +156,9 @@ def _validate_capture_request_binding(name: str, receipt: dict, url: str) -> Non
         raise ValueError("capture_redirect_not_allowed:" + name)
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_drift")
-    found = []
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid not in (3857, 102100):
-                raise ValueError(label + "_crs_drift")
-            found.append(3857)
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            raw = value[key]
-            if not isinstance(raw, str) or not raw.strip():
-                raise ValueError(label + "_crs_drift")
-            try:
-                parsed = CRS.from_wkt(raw)
-            except Exception as exc:
-                raise ValueError(label + "_crs_drift") from exc
-            if not parsed.equals(EXPECTED_CRS, ignore_axis_order=True):
-                raise ValueError(label + "_crs_drift")
-            found.append(3857)
-    if (required and not found) or len(set(found)) > 1:
-        raise ValueError(label + "_crs_drift")
-    return bool(found)
+_validate_spatial_reference = partial(
+    crs_validation.validate_spatial_reference,
+    wkids=(3857, 102100), source_crs=EXPECTED_CRS)
 
 
 def _query(params: dict[str, object]) -> str:
@@ -212,26 +197,21 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("capture_artifact_roster_changed")
     expected_urls = _expected_capture_urls()
-    result = {}
-    for name in sorted(names):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("capture_receipt_manifest_mismatch:" + name)
-        _validate_capture_request_binding(name, receipt, expected_urls[name])
-        result[name] = (body, receipt)
-    return result
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=expected_urls, load_capture=_load_capture,
+        validate_request_identity=_validate_capture_request_binding,
+        receipt_error="capture_receipt_manifest_mismatch")
 
 
 def _docs(captures: dict[str, tuple[bytes, dict]]) -> dict:
-    parsed = {}
-    for name, (body, _receipt) in captures.items():
+    def document(name):
+        body, _receipt = captures[name]
         if name in _HTML_CAPTURE_NAMES:
             if b"<!DOCTYPE html" not in body[:200] and b"<html" not in body[:200]:
                 raise ValueError("source_html_capture_changed:" + name)
-            parsed[name] = body
-        else:
-            parsed[name] = json.loads(body)
-    return parsed
+            return body
+        return json.loads(body)
+    return CaptureDocuments(captures, load_document=document)
 
 
 def _find_webmap_layer(items: list, layer_id: str) -> dict | None:
@@ -519,20 +499,22 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
             urls = _expected_capture_urls()
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/ncei-retro-bpr-draft"}) as client:
-                for name in _PRE_PAGE_CAPTURE_NAMES:
-                    captures[name] = _capture(client, urls[name], root, name)
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids, list) or any(type(i) is not int for i in ids)
-                        or sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT
-                        or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256):
-                    raise ValueError("source_seed_id_roster_drift")
-                for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-                    page_ids = ids[start:start + PAGE_SIZE]
-                    url = _query({"objectIds": ",".join(map(str, page_ids)), "outFields": "*",
-                                  "returnGeometry": "true", "orderByFields": "OBJECTID ASC", "f": "json"})
-                    captures[f"page_{index:03d}"] = _capture(client, url, root, f"page_{index:03d}")
-                for name in _POST_PAGE_CAPTURE_NAMES:
-                    captures[name] = _capture(client, urls[name], root, name)
+                def roster(ids):
+                    pages = [(f"page_{index:03d}", _query({"objectIds": ",".join(map(str, ids[start:start + PAGE_SIZE])),
+                        "outFields": "*", "returnGeometry": "true", "orderByFields": "OBJECTID ASC", "f": "json"}))
+                        for index, start in enumerate(range(0, len(ids), PAGE_SIZE))]
+                    return pages + [(name, urls[name]) for name in _POST_PAGE_CAPTURE_NAMES]
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or any(type(i) is not int for i in ids)
+                            or sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT
+                            or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256):
+                        raise ValueError("source_seed_id_roster_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, discovery_documents=[(name, urls[name]) for name in _PRE_PAGE_CAPTURE_NAMES], roster=roster,
+                    validate_seed=validate_seed, fetch=_capture, on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}
@@ -564,7 +546,7 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
             "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
 
@@ -606,7 +588,7 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
                     or current != body or _sha(wire) != old.get("wire_sha256")):
                 raise ValueError("cached_source_capture_content_changed:" + name)
     receipts = existing["capture_receipts"] if existing else {
-        name: receipt for name, (_body, receipt) in sorted(captures.items())}
+        name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     audit.update({"source_capture_evidence_sha256": capture_hash,
                   "source_capture_evidence": capture_identity,
                   "source_release_accepted": False, "source_freshness_accepted": False,
@@ -708,19 +690,13 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
                 "baseline_accepted": False, "coverage_accepted": False, "rights_accepted": False,
                 "mapping_approved": False, "release_accepted": False}
     objects = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or snapshot.size != len(body)
-                or storage.sha256_key(key) != _sha(body)):
-            raise ValueError("candidate_readback_failed:" + name)
-        objects[name] = {"bytes": len(body), "sha256": _sha(body)}
-    seal_ready_candidate(storage, state_key, version, fingerprint,
-                         {"processing_identity": identity,
-                          "source_record_sha256": audit["source_record_sha256"],
-                          "source_schema_sha256": audit["source_schema_sha256"],
-                          "capture_receipts": receipts, "objects": objects})
+    objects = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content", error_prefix='candidate_readback_failed:')
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, objects,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(repo, identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT, "source_population_complete": True,

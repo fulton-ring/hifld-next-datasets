@@ -14,6 +14,11 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.sources.arcgis_layer import read_capture
+from dagster_hifld.sources.capture_common import validate_capture_request_identity
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.epa_capture import OffsetCaptureSpec, capture_offset_pages
 from dagster_hifld.sources.capture_common import capture_get
 from dagster_hifld.sources.esri_common import canonical as _canonical
 
@@ -178,7 +183,7 @@ def capture_table(
 ) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, tuple[bytes, dict[str, Any]]]]:
     """Fetch and retain exact GET responses, bracketing all rows with count/ID reads."""
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, Any]]] = {}
+    captures = RetainedCaptureView(capture_root)
 
     def request(name: str, url: str, params: Mapping[str, Any]) -> dict[str, Any]:
         request_url = url + "?" + urlencode(params)
@@ -244,19 +249,14 @@ def capture_table(
         raise ArcGISTableCaptureError("source_object_id_roster_is_invalid")
 
     rows: list[dict[str, Any]] = []
-    for page_number, offset in enumerate(range(0, count_before, profile.page_size)):
-        page = request(
-            f"page_{page_number:03d}", profile.table_url + "/query",
-            {"where": "1=1", "outFields": ",".join(profile.field_names),
-             "returnGeometry": "false", "orderByFields": "OBJECTID ASC",
-             "resultOffset": offset, "resultRecordCount": profile.page_size, "f": "json"},
-        )
-        features = page.get("features")
-        wanted = min(profile.page_size, count_before - offset)
-        if not isinstance(features, list) or len(features) != wanted:
-            raise ArcGISTableCaptureError("source_page_row_count_incomplete")
-        if page.get("exceededTransferLimit") is True and wanted < profile.page_size:
-            raise ArcGISTableCaptureError("source_final_page_exceeded_transfer_limit")
+    spec = OffsetCaptureSpec(
+        table_url=profile.table_url, page_size=profile.page_size,
+        page_name=lambda number: f"page_{number:03d}", error=ArcGISTableCaptureError,
+        query={"where": "1=1", "outFields": ",".join(profile.field_names),
+               "returnGeometry": "false", "orderByFields": "OBJECTID ASC"},
+    )
+    for captured in capture_offset_pages(spec, count_before, request=request):
+        features = captured.features
         for feature in features:
             if not isinstance(feature, dict) or feature.get("geometry") is not None:
                 raise ArcGISTableCaptureError("source_table_returned_unexpected_geometry")
@@ -305,4 +305,9 @@ def capture_table(
         "source_ids_equal_before_after": True, "fields": list(fields),
         "response_receipts": {name: receipt for name, (_body, receipt) in captures.items()},
     }
-    return rows, manifest, captures
+    return rows, manifest, validated_capture_view(capture_root,
+        receipts=captures.receipts,
+        expected_urls={name: receipt["url"] for name, receipt in captures.receipts.items()},
+        load_capture=lambda root, name: read_capture(root, name, ArcGISTableCaptureError),
+        capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=validate_capture_request_identity)

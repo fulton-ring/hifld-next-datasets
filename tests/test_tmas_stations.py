@@ -1,3 +1,4 @@
+from dagster_hifld.sources import arcgis_layer as retry_owner
 import hashlib
 import gzip
 import io
@@ -532,10 +533,10 @@ class TmasStationsRetryTests(unittest.TestCase):
             return sentinel
 
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(source, "capture_get", flaky_capture_get):
+                patch.object(retry_owner, "capture_get", flaky_capture_get):
             root = Path(tmp)
-            result = source._capture_with_retry(None, "https://example.invalid", root, "layer_before",
-                                                max_bytes=1024, attempts=3, base_delay=0.0)
+            result = source.capture_with_retry(None, "https://example.invalid", root, "layer_before",
+                                                max_bytes=1024, attempts=3, base_delay=0.0, max_total_bytes=source.MAX_CAPTURE_TOTAL_BYTES)
             self.assertEqual(result, sentinel)
             self.assertEqual(calls, ["layer_before", "layer_before"])
             self.assertTrue((root / "layer_before.attempt-01.body").exists())
@@ -552,10 +553,10 @@ class TmasStationsRetryTests(unittest.TestCase):
             return body, {"bytes": len(body)}
 
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(source, "capture_get", error_doc):
-            body, _receipt = source._capture_with_retry(None, "https://example.invalid", Path(tmp),
+                patch.object(retry_owner, "capture_get", error_doc):
+            body, _receipt = source.capture_with_retry(None, "https://example.invalid", Path(tmp),
                                                         "count_before", max_bytes=1024,
-                                                        attempts=3, base_delay=0.0)
+                                                        attempts=3, base_delay=0.0, max_total_bytes=source.MAX_CAPTURE_TOTAL_BYTES)
             self.assertEqual(len(calls), 3)
             self.assertTrue(body.startswith(b'{"error"'))
 
@@ -567,18 +568,18 @@ class TmasStationsRetryTests(unittest.TestCase):
             raise ValueError(f"incomplete_source_capture:{name}")
 
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(source, "capture_get", failing_capture_get):
+                patch.object(retry_owner, "capture_get", failing_capture_get):
             with self.assertRaisesRegex(ValueError, "incomplete_source_capture:layer_before"):
-                source._capture_with_retry(None, "https://example.invalid", Path(tmp), "layer_before",
-                                           max_bytes=1024, attempts=3, base_delay=0.0)
+                source.capture_with_retry(None, "https://example.invalid", Path(tmp), "layer_before",
+                                           max_bytes=1024, attempts=3, base_delay=0.0, max_total_bytes=source.MAX_CAPTURE_TOTAL_BYTES)
             self.assertEqual(len(calls), 3)
 
     def test_capture_budget_is_enforced(self):
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.object(source, "MAX_CAPTURE_TOTAL_BYTES", 16):
             with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded_before_request"):
-                source._capture_with_retry(None, "https://example.invalid", Path(tmp), "layer_before",
-                                           max_bytes=1024, attempts=3, base_delay=0.0)
+                source.capture_with_retry(None, "https://example.invalid", Path(tmp), "layer_before",
+                                           max_bytes=1024, attempts=3, base_delay=0.0, max_total_bytes=source.MAX_CAPTURE_TOTAL_BYTES)
 
 
 class TmasStationsPageRosterTests(unittest.TestCase):

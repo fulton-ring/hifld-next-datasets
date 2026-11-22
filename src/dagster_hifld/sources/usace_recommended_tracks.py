@@ -5,6 +5,9 @@ rights, release freshness, and HIFLD continuity remain maintainer decisions.
 """
 from __future__ import annotations
 
+
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
@@ -20,6 +23,7 @@ import pyproj
 from shapely.geometry import LineString, MultiLineString
 from shapely import to_wkb
 
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
@@ -33,8 +37,11 @@ from dagster_hifld.sources.capture_common import (
     verify_cached_candidate,
     write_immutable,
     processing_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, ExactIdCapturePlan
 
 DATASET_SLUG = "recommended-tracks-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -259,7 +266,7 @@ def _object_descriptor(body: bytes) -> dict[str, object]:
     return {"bytes": len(body), "sha256": _sha(body)}
 
 
-def _capture_manifest(root: Path, *, complete: bool, captures: dict[str, tuple[bytes, dict]],
+def _capture_manifest(root: Path, *, complete: bool, captures: Mapping[str, tuple[bytes, dict]],
                       error_code: str | None = None, count: int | None = None) -> None:
     roster = {}
     for path in sorted(root.iterdir()):
@@ -271,7 +278,7 @@ def _capture_manifest(root: Path, *, complete: bool, captures: dict[str, tuple[b
     value = {"schema_version": 1, "complete": complete,
              "captured_at": datetime.now(timezone.utc).isoformat(),
              "source_layer": LAYER_URL,
-             "captured_request_count": len(captures), "receipts": {n: r for n, (_b, r) in sorted(captures.items())},
+             "captured_request_count": len(captures), "receipts": {n: r for n, (_b, r) in ((name, captures[name]) for name in sorted(captures))},
              "artifact_roster_sha256": _sha(_json(roster))}
     if count is not None:
         value["source_feature_count"] = count
@@ -282,15 +289,7 @@ def _capture_manifest(root: Path, *, complete: bool, captures: dict[str, tuple[b
 
 def _persist_outputs(storage: StagingStorageResource, prefix: str,
                      outputs: dict[str, bytes]) -> dict[str, dict[str, object]]:
-    descriptors = {}
-    for name, body in outputs.items():
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or snapshot.size != len(body) or storage.sha256_key(key) != _sha(body)
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = _object_descriptor(body)
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 
@@ -324,73 +323,72 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     if root.exists() and any(root.iterdir()):
         raise ValueError("capture_directory_not_empty")
     root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures = RetainedCaptureView(root)
     budget = [0]
     owned_client = client is None
     client = client or httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                                     headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"})
     try:
-        bts_item = _read_capture(root, "bts_item", BTS_ITEM_URL, captures, budget, client)
-        _assert_bts_item(bts_item)
-        # The previously referenced item is retained for continuity review;
-        # either a denial/error body or a changed item remains evidence, not authority.
-        _read_capture(root, "prior_bts_item", PRIOR_BTS_ITEM_URL, captures, budget, client,
-                      allow_error=True)
-        directory = _read_capture(root, "service_directory", SERVICE_DIRECTORY_URL,
-                                  captures, budget, client)
-        services = directory.get("services")
-        if not isinstance(services, list) or not any(
-                row.get("name") == "IENC_Feature_Classes/RECOMMENDED_TRACK_LINE"
-                and row.get("type") == "MapServer" for row in services if isinstance(row, dict)):
-            raise ValueError("source_service_directory_identity_drift")
-        metadata_before = _read_capture(root, "layer_before", _url(LAYER_URL, {"f": "json"}),
-                                        captures, budget, client)
-        _validate_metadata(metadata_before)
-        count_before = _read_capture(root, "count_before", _url(LAYER_QUERY_URL, {
-            "where": "1=1", "returnCountOnly": "true", "f": "json"}), captures, budget, client)
-        ids_before_value = _read_capture(root, "ids_before", _url(LAYER_QUERY_URL, {
-            "where": "1=1", "returnIdsOnly": "true", "f": "json"}), captures, budget, client)
-        ids_before = _ids(ids_before_value, "before")
-        if (type(count_before.get("count")) is not int or count_before["count"] < 1
-                or len(ids_before) != count_before["count"]):
-            raise ValueError("source_count_drift_before")
-        features = []
-        for offset in range(0, len(ids_before), PAGE_SIZE):
-            requested = ids_before[offset:offset + PAGE_SIZE]
-            name = f"page_{offset:06d}"
-            page = _read_capture(root, name, _url(LAYER_QUERY_URL, {
-                "objectIds": ",".join(map(str, requested)), "outFields": "*",
-                "returnGeometry": "true", "outSR": "4326", "f": "json",
-            }), captures, budget, client)
-            if (page.get("geometryType") != "esriGeometryPolyline"
-                    or page.get("exceededTransferLimit") is True
-                    or not isinstance(page.get("features"), list)
-                    or len(page["features"]) != len(requested)):
-                raise ValueError("source_page_incomplete")
-            for dim in ("hasZ", "hasM"):
-                if dim in page and (type(page[dim]) is not bool or page[dim] is not False):
-                    raise ValueError("source_page_dimension_drift")
-            _validate_crs(page.get("spatialReference"), "source_page_crs_drift")
-            page_fields = page.get("fields")
-            expected_attributes = [{"name": name, "type": kind} for name, kind in ATTRIBUTE_FIELDS]
-            if (not isinstance(page_fields, list)
-                    or [{"name": f.get("name"), "type": f.get("type")} for f in page_fields]
-                    != expected_attributes):
-                raise ValueError("source_page_schema_drift")
-            for feature, identity in zip(page["features"], requested, strict=True):
-                features.append(_validate_feature(feature, identity, EXPECTED_EXTENT))
-        ids_after_value = _read_capture(root, "ids_after", _url(LAYER_QUERY_URL, {
-            "where": "1=1", "returnIdsOnly": "true", "f": "json"}), captures, budget, client)
-        count_after = _read_capture(root, "count_after", _url(LAYER_QUERY_URL, {
-            "where": "1=1", "returnCountOnly": "true", "f": "json"}), captures, budget, client)
-        metadata_after = _read_capture(root, "layer_after", _url(LAYER_URL, {"f": "json"}),
-                                       captures, budget, client)
-        _validate_metadata(metadata_after)
-        ids_after = _ids(ids_after_value, "after")
-        if (ids_before != ids_after or count_after.get("count") != count_before.get("count")
-                or count_before != count_after or metadata_before != metadata_after
-                or [f["attributes"]["OBJECTID"] for f in features] != ids_before):
-            raise ValueError("source_population_or_metadata_changed_during_capture")
+        def request_steps():
+            bts_item = (yield ('bts_item', BTS_ITEM_URL,))
+            _assert_bts_item(bts_item)
+            # The previously referenced item is retained for continuity review;
+            # either a denial/error body or a changed item remains evidence, not authority.
+            (yield ('prior_bts_item', PRIOR_BTS_ITEM_URL, True,))
+            directory = (yield ('service_directory', SERVICE_DIRECTORY_URL,))
+            services = directory.get("services")
+            if not isinstance(services, list) or not any(
+                    row.get("name") == "IENC_Feature_Classes/RECOMMENDED_TRACK_LINE"
+                    and row.get("type") == "MapServer" for row in services if isinstance(row, dict)):
+                raise ValueError("source_service_directory_identity_drift")
+            metadata_before = (yield ('layer_before', _url(LAYER_URL, {'f': 'json'}),))
+            _validate_metadata(metadata_before)
+            count_before = (yield ('count_before', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'}),))
+            ids_before_value = (yield ('ids_before', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),))
+            ids_before = _ids(ids_before_value, "before")
+            if (type(count_before.get("count")) is not int or count_before["count"] < 1
+                    or len(ids_before) != count_before["count"]):
+                raise ValueError("source_count_drift_before")
+            def page_request(offset, requested):
+                return (f"page_{offset:06d}", _url(LAYER_QUERY_URL, {'objectIds': ','.join(map(str, requested)), 'outFields': '*', 'returnGeometry': 'true', 'outSR': '4326', 'f': 'json'}))
+            def validate_page(offset, requested, page):
+                if (page.get("geometryType") != "esriGeometryPolyline"
+                        or page.get("exceededTransferLimit") is True
+                        or not isinstance(page.get("features"), list)
+                        or len(page["features"]) != len(requested)):
+                    raise ValueError("source_page_incomplete")
+                for dim in ("hasZ", "hasM"):
+                    if dim in page and (type(page[dim]) is not bool or page[dim] is not False):
+                        raise ValueError("source_page_dimension_drift")
+                _validate_crs(page.get("spatialReference"), "source_page_crs_drift")
+                page_fields = page.get("fields")
+                expected_attributes = [{"name": name, "type": kind} for name, kind in ATTRIBUTE_FIELDS]
+                if (not isinstance(page_fields, list)
+                        or [{"name": f.get("name"), "type": f.get("type")} for f in page_fields]
+                        != expected_attributes):
+                    raise ValueError("source_page_schema_drift")
+                return [_validate_feature(feature, identity, EXPECTED_EXTENT)
+                        for feature, identity in zip(page["features"], requested, strict=True)]
+            features, _pages, closed = (yield ExactIdCapturePlan(ids_before, PAGE_SIZE,
+                page_request=page_request, validate_page=validate_page,
+                read_page=lambda offset: captures[f'page_{offset:06d}'][0],
+                project_rows=lambda page: [_validate_feature(feature, feature['attributes']['OBJECTID'], EXPECTED_EXTENT)
+                                          for feature in page['features']],
+                closing_requests=(('ids_after', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'})),
+                    ('count_after', _url(LAYER_QUERY_URL, {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'})),
+                    ('layer_after', _url(LAYER_URL, {'f': 'json'})))))
+            ids_after_value = closed['ids_after']
+            count_after = closed['count_after']
+            metadata_after = closed['layer_after']
+            _validate_metadata(metadata_after)
+            ids_after = _ids(ids_after_value, "after")
+            if (ids_before != ids_after or count_after.get("count") != count_before.get("count")
+                    or count_before != count_after or metadata_before != metadata_after
+                    or [f["attributes"]["OBJECTID"] for f in features] != ids_before):
+                raise ValueError("source_population_or_metadata_changed_during_capture")
+
+            return metadata_before, count_before, ids_before, features, ids_after_value, count_after, metadata_after, ids_after
+        metadata_before, count_before, ids_before, features, ids_after_value, count_after, metadata_after, ids_after = capture_request_steps(request_steps(), lambda name, url, allow_error=False: _read_capture(root, name, url, captures, budget, client, allow_error=allow_error))
     except Exception as exc:
         try:
             _capture_manifest(root, complete=False, captures=captures, error_code=type(exc).__name__)
@@ -404,6 +402,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
         if owned_client:
             client.close()
 
+    features = list(features)
     row_objects = [{"attributes": feature["attributes"], "geometry": feature["geometry"]}
                    for feature in features]
     source_record_sha = _sha(_json(row_objects).rstrip(b"\n"))
@@ -412,7 +411,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     ids_sha = _sha(_json(ids_before).rstrip(b"\n"))
     receipt_body_hashes = {name: {"body_sha256": receipt["sha256"],
                                   "wire_sha256": receipt["wire_sha256"]}
-                           for name, (_body, receipt) in sorted(captures.items())}
+                           for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     source_capture_sha = _sha(_json(receipt_body_hashes).rstrip(b"\n"))
     version_record_sha = _sha(_json({"source_record_sha256": source_record_sha,
                                      "source_capture_sha256": source_capture_sha}).rstrip(b"\n"))
@@ -424,7 +423,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     geojson = _make_geojson(features)
     observed_at = max(str(receipt["observed_at"]) for _body, receipt in captures.values())
     inputs = []
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         if name == "prior_bts_item":
             continue
         inputs.append({
@@ -469,7 +468,7 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
         "source_fields": EXPECTED_DECLARATIONS, "geometry_type": "esriGeometryPolyline",
         "native_crs": "EPSG:4326", "pinned_extent": EXPECTED_EXTENT,
         "source_scope": "IENC chart feature class only; nationwide coverage and HIFLD historical equivalence are not established.",
-        "capture_request_count": len(captures), "capture_receipts": {n: r for n, (_b, r) in sorted(captures.items())},
+        "capture_request_count": len(captures), "capture_receipts": {n: r for n, (_b, r) in ((name, captures[name]) for name in sorted(captures))},
         "capture_directory": str(root), "capture_completed_at": observed_at,
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
@@ -535,12 +534,12 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     descriptors = _persist_outputs(storage, prefix, outputs)
-    seal_ready_candidate(storage, state_key, version, state_fingerprint, {
-        "processing_identity": identity, "source_record_sha256": source_record_sha,
-        "source_schema_sha256": source_schema_sha,
-        "capture_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
-        "objects": descriptors,
-    })
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}, descriptors,
+        source_record_sha256=source_record_sha,
+        source_schema_sha256=source_schema_sha,
+        fingerprint=state_fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

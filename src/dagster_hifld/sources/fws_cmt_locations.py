@@ -11,6 +11,7 @@ not development-snapshot release baselines.
 """
 from __future__ import annotations
 
+
 import io
 import json
 import math
@@ -26,6 +27,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
@@ -34,10 +36,13 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import (
     _canonical,
@@ -243,7 +248,7 @@ def _field_projection(fields: object) -> list[dict]:
 
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     org = docs["org"]
     if (org.get("id") != ORG_ID or org.get("name") != "U.S. Fish & Wildlife Service"
             or org.get("portalName") != "ArcGIS Online" or org.get("urlKey") != "fws"):
@@ -467,16 +472,19 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/fws-cmt-draft"}) as client:
-                # Capture the source witness before deciding how many pages exist.
-                for name, url in _capture_roster()[:7]:
-                    captures[name] = capture_page(client, url, root, name)
-                count = json.loads(captures["count_before"][0]).get("count")
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                validate_capture_witness(count, ids, count, ids)
-                if not ids:
-                    raise ValueError("source_empty_population_requires_review")
-                for name, url in _capture_roster(count)[7:]:
-                    captures[name] = capture_page(client, url, root, name)
+                def validate_seed(body):
+                    count = json.loads(captures["count_before"][0]).get("count")
+                    ids = json.loads(body).get("objectIds")
+                    validate_capture_witness(count, ids, count, ids)
+                    if not ids:
+                        raise ValueError("source_empty_population_requires_review")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                    oid_field="ObjectId",
+                    captures=captures, discovery_documents=_capture_roster()[:7],
+                    validate_seed=validate_seed, roster=lambda ids: _capture_roster(len(ids)),
+                    fetch=capture_page, on_validation_error=_validate)
             features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}
@@ -494,7 +502,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
         (root / "capture_manifest.json").write_bytes(_canonical({"complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(), "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
 
@@ -503,7 +511,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         **UNACCEPTED_FLAGS})
     parquet = _parquet_bytes(features)
     version = "v" + _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
@@ -512,7 +520,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
         "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{"input_id": name,
         "producer": ("US Fish and Wildlife Service ArcGIS Online organization" if name in {"org", "item", "owner"}
                      else PUBLISHER),
@@ -575,7 +583,7 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
                   "source_population_complete": True})
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
@@ -607,18 +615,13 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return _result(audit, version, prefix, root, capture_hash, reused=True)
-    descriptors = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
-        "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "capture_receipts": receipts, "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content")
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
     )

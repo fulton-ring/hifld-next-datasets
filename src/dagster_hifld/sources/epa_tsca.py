@@ -7,6 +7,9 @@ publication.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import verify_cached_objects, verify_cached_capture_receipts
+
+
 import html
 import json
 import platform
@@ -25,12 +28,17 @@ import pyproj
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
@@ -101,7 +109,7 @@ def _profile_schema(layer: dict[str, object]) -> tuple[list[dict[str, object]], 
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items() if name != "epa_data_sources_page"}
+    docs = CaptureDocuments(captures, (name for name in captures if name != 'epa_data_sources_page'))
     witness_ids = docs.get("ids_before", {}).get("objectIds")
     page_count = ((len(witness_ids) + PAGE_SIZE - 1) // PAGE_SIZE
                   if isinstance(witness_ids, list) else 0)
@@ -231,27 +239,13 @@ def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_
                             audit["source_schema_sha256"], objects, payload["capture_receipts"])
     if not isinstance(objects, dict) or set(objects) != expected_keys:
         raise ValueError("cached_candidate_roster_changed")
-    for name, descriptor in objects.items():
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if (not isinstance(descriptor, dict) or snapshot is None
-                or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_candidate_object_integrity_failed:" + name)
+    verify_cached_objects(storage, prefix, objects, descriptor_check="dict")
     parquet_key = f"{prefix}/geoparquet/{DATASET_SLUG}.parquet"
     if objects.get(f"geoparquet/{DATASET_SLUG}.parquet") != {"bytes": len(current_parquet), "sha256": _sha(current_parquet)}:
         raise ValueError("cached_native_candidate_changed")
     receipt_map = payload["capture_receipts"]
     if not isinstance(receipt_map, dict): raise ValueError("cached_capture_receipts_missing")
-    for name, receipt in receipt_map.items():
-        raw_key = f"{prefix}/raw/{name}.body"; wire_key = f"{prefix}/raw/{name}.wire"
-        body = storage.read_key(raw_key); wire = storage.read_key(wire_key)
-        receipt_body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
-        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt_body != _canonical(receipt)+b"\n"):
-            raise ValueError("cached_original_capture_changed:" + name)
+    verify_cached_capture_receipts(storage, prefix, receipt_map)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],
             "source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json",
@@ -283,29 +277,36 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures: dict[str, tuple[bytes, dict[str, object]]] = RetainedCaptureView(capture_root)
     replay_root: Path | None = None
     try:
         if replay_capture_directory:
             replay_root = Path(replay_capture_directory).absolute()
             if ".." in replay_root.parts or any(parent.is_symlink() for parent in (replay_root, *replay_root.parents)):
                 raise ValueError("unsafe_replay_capture_directory")
-            for receipt_path in sorted(replay_root.glob("*.receipt.json")):
-                name = receipt_path.name.removesuffix(".receipt.json")
-                receipt_body = receipt_path.read_bytes()
+            def load(root, name):
+                receipt_body = (root / f"{name}.receipt.json").read_bytes()
                 receipt = json.loads(receipt_body)
-                body = (replay_root / f"{name}.body").read_bytes()
-                wire = (replay_root / f"{name}.wire").read_bytes()
+                body = (root / f"{name}.body").read_bytes()
+                wire = (root / f"{name}.wire").read_bytes()
                 if (receipt_body != _canonical(receipt) + b"\n" or receipt.get("method") != "GET"
                         or receipt.get("complete_body") is not True or receipt.get("status") != 200
                         or receipt.get("url") != receipt.get("final_url")
                         or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
                         or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
                     raise ValueError("replay_capture_receipt_or_body_invalid:" + name)
-                captures[name] = (body, receipt)
+                return body, wire, receipt_body, receipt
+            for receipt_path in sorted(replay_root.glob("*.receipt.json")):
+                name = receipt_path.name.removesuffix(".receipt.json")
+                body, wire, receipt_body, receipt = load(replay_root, name)
+                captures[name] = (replay_root / f"{name}.body", receipt)
                 (capture_root / f"{name}.body").write_bytes(body)
                 (capture_root / f"{name}.wire").write_bytes(wire)
                 (capture_root / f"{name}.receipt.json").write_bytes(receipt_body)
+            captures = validated_capture_view(capture_root, receipts=captures.receipts,
+                expected_urls={name: receipt["url"] for name, receipt in captures.receipts.items()},
+                load_capture=load, capture_value=lambda value: (value[0], value[3]),
+                preserve_order=True, validate_request_identity=lambda name, receipt, url: None)
             seed = json.loads(captures.get("ids_seed", (b"{}", {}))[0]).get("objectIds")
             if (not isinstance(seed, list) or not seed
                     or any(type(oid) is not int or oid <= 0 for oid in seed)
@@ -319,16 +320,19 @@ def capture_epa_tsca(storage: StagingStorageResource, *, version: str, capture_d
                     raise ValueError("replay_capture_request_url_mismatch:" + name)
         else:
             with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/epa-power-generation-draft"}) as client:
-                seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")
-                seed = json.loads(seed_body).get("objectIds")
-                captures["ids_seed"] = (seed_body, seed_receipt)
-                if (not isinstance(seed, list) or not seed
-                        or any(type(oid) is not int or oid <= 0 for oid in seed)
-                        or len(set(seed)) != len(seed)):
-                    raise ValueError("source_seed_id_count_drift")
-                for name, url in _feature_urls(seed):
-                    body, receipt = _fetch(client, url, capture_root, name)
-                    captures[name] = (body, receipt)
+                def validate_seed(seed_body):
+                    seed = json.loads(seed_body).get("objectIds")
+                    if (not isinstance(seed, list) or not seed
+                            or any(type(oid) is not int or oid <= 0 for oid in seed)
+                            or len(set(seed)) != len(seed)):
+                        raise ValueError("source_seed_id_count_drift")
+                    return seed
+                captures = RetainedCaptureView(capture_root, captures)
+                capture_layer(LAYER_URL, capture_root, 192_000_000, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_feature_urls,
+                    fetch=lambda client, url, root, name: _fetch(client, url, capture_root, name),
+                    on_validation_error=_validate_captures)
         layer, fields, extracted = _validate_captures(captures)
         item_provenance = _item_provenance(json.loads(captures["portal_item"][0]))
     except Exception as exc:
@@ -358,7 +362,7 @@ def _finalize_epa_tsca(storage: StagingStorageResource, version: str, capture_ro
       "schema_version":1,"approved":False,"title":LAYER_NAME,"description":"Exact EPA_GEO hosted EPA FRS TSCA-associated point layer. Source release date, currentness, and any successor decision remain pending.",
       "publisher":PUBLISHER,"agency":"Environmental Protection Agency","source_url":LAYER_URL,"license":item_provenance["license"],"license_evidence":{"source_item_id":ITEM_ID,"metadata_field":"licenseInfo","url":item_provenance["license"]},
       "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":EPA_FRS_DATA_SOURCES_URL if name == "epa_data_sources_page" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":("unknown" if name == "epa_data_sources_page" else item_provenance["license"]),"license_unknown_reason":("The EPA FRS data sources page response has no separate license declaration in the captured item metadata." if name == "epa_data_sources_page" else None),"license_evidence":(None if name == "epa_data_sources_page" else {"source_item_id":ITEM_ID,"metadata_field":"licenseInfo","url":item_provenance["license"]}),"attribution":item_provenance["attribution"],"release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in sorted(captures.items())],
+      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":EPA_FRS_DATA_SOURCES_URL if name == "epa_data_sources_page" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":("unknown" if name == "epa_data_sources_page" else item_provenance["license"]),"license_unknown_reason":("The EPA FRS data sources page response has no separate license declaration in the captured item metadata." if name == "epa_data_sources_page" else None),"license_evidence":(None if name == "epa_data_sources_page" else {"source_item_id":ITEM_ID,"metadata_field":"licenseInfo","url":item_provenance["license"]}),"attribution":item_provenance["attribution"],"release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))],
       "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"feature_layer_id":LAYER_ID,"source_fields":"all 32 fields preserved in producer order and declared physical types","source_ids":"Preserve each OBJECTID and REGISTRY_ID unchanged; all other source fields retained verbatim","proposed_physical_type_mapping":PROPOSED_PHYSICAL_TYPE_MAPPING,"raw_source_values_preserved":True,"mapping_approved":False,"geometry":"Esri point x/y retained as WKB at EPSG:4269; no reprojection or repair","candidate_status":"unapproved; production publication prohibited pending source freshness, schema/ID contract, rights and mapping acceptance"}}],
       "lineage":"EPA_GEO ArcGIS item 3c8a335f4b5243a188fd75472459e567 serves exact FeatureServer layer 0 (TSCA). Item describes its records as the subset of EPA FRS facilities linked to the Toxic Substances Control Act Chemical Substance Inventory System. Item modification time is not asserted as source release date.",
       "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri query values, all attributes, IDs and source point geometry retained; source vintage and release approvals remain unresolved.","objects":[{"path":next(iter(source_objects)),**next(iter(source_objects.values()))}]}}},
@@ -372,7 +376,7 @@ def _finalize_epa_tsca(storage: StagingStorageResource, version: str, capture_ro
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     provenance_name = "replay_provenance.json" if replayed_from else "capture_manifest.json"
-    (capture_root / provenance_name).write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"replayed_from":replayed_from,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+    (capture_root / provenance_name).write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"replayed_from":replayed_from,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {
         "geoparquet/epa-frs-toxic-substances-control-act-tsca.parquet":parquet_body,
@@ -389,13 +393,14 @@ def _finalize_epa_tsca(storage: StagingStorageResource, version: str, capture_ro
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
         return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs),parquet_body)
-    for relative, body in outputs.items(): _write_immutable(storage,f"{prefix}/{relative}",body)
-    descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    for name, descriptor in descriptors.items():
-        key=f"{prefix}/{name}"; snapshot=storage.object_snapshot(key)
-        if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"] or storage.object_snapshot(key) != snapshot:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_physical_readback_failed:', writer=_write_immutable)
     payload = {"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fingerprint,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_null_geometry_count":0,"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root),"capture_replayed":bool(replayed_from)}

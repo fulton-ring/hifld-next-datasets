@@ -1,4 +1,5 @@
 import hashlib
+import httpx
 import json
 import tempfile
 import unittest
@@ -11,6 +12,7 @@ from dagster_hifld.assets.secondary_roads_census import (
     secondary_roads_census, secondary_roads_census_complete,
     secondary_roads_census_draft_schedule, secondary_roads_census_drift,
 )
+from dagster_hifld.sources import arcgis_layer as retry_owner
 from dagster_hifld.http_capture import capture_roster_digests
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.sources import secondary_roads_census as source
@@ -375,7 +377,7 @@ class SecondaryRoadsTransientRetryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.object(source, "_TRANSIENT_RETRY_DELAYS", (0.0, 0.0)), \
-                patch.object(source, "capture_get", flaky_capture_get):
+                patch.object(retry_owner, "capture_get", flaky_capture_get):
             root = Path(tmp)
             result = source._capture(None, "https://example.invalid/query", root, "page_000")
         self.assertEqual(result, sentinel)
@@ -389,7 +391,7 @@ class SecondaryRoadsTransientRetryTests(unittest.TestCase):
             raise ValueError("source_capture_budget_exceeded_before_request")
 
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.object(source, "capture_get", failing_capture_get):
+                patch.object(retry_owner, "capture_get", failing_capture_get):
             with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
                 source._capture(None, "https://example.invalid/query", Path(tmp), "page_000")
         self.assertEqual(len(calls), 1)
@@ -403,7 +405,7 @@ class SecondaryRoadsTransientRetryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.object(source, "_TRANSIENT_RETRY_DELAYS", (0.0, 0.0)), \
-                patch.object(source, "capture_get", failing_capture_get):
+                patch.object(retry_owner, "capture_get", failing_capture_get):
             with self.assertRaisesRegex(ValueError, "incomplete_source_capture:page_000"):
                 source._capture(None, "https://example.invalid/query", Path(tmp), "page_000")
         self.assertEqual(len(calls), 3)
@@ -434,6 +436,51 @@ class SecondaryRoadsWitnessTests(unittest.TestCase):
         longest = max(len(url) for name, url in urls.items() if name.startswith("page_"))
         self.assertLess(longest, 8000)
 
+
+
+class RoadsRetryEvidenceTests(unittest.TestCase):
+    def test_real_transient_failure_retains_body_wire_and_receipt(self):
+        failed = b'{"error":{"code":500,"message":"temporary"}}'
+        accepted = b'{"count":1}'
+        queue = iter([(500, failed), (200, accepted)])
+        calls = []
+        def serve(request):
+            calls.append(str(request.url))
+            status, body = next(queue)
+            return httpx.Response(status, stream=httpx.ByteStream(body))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with httpx.Client(transport=httpx.MockTransport(serve)) as client, \
+                    patch.object(retry_owner.time, 'sleep') as wait:
+                body, receipt = source._capture(client, 'https://producer.test/query', root, 'page_000')
+            self.assertEqual(body, accepted)
+            self.assertEqual(receipt['status'], 200)
+            self.assertEqual(len(calls), 2)
+            wait.assert_called_once_with(5.0)
+            self.assertEqual((root / 'page_000.attempt-01.body').read_bytes(), failed)
+            self.assertEqual((root / 'page_000.attempt-01.wire').read_bytes(), failed)
+            prior = json.loads((root / 'page_000.attempt-01.receipt.json').read_bytes())
+            self.assertEqual(prior['status'], 500)
+            self.assertTrue(prior['complete_body'])
+            self.assertEqual(prior['bytes'], len(failed))
+            self.assertEqual(prior['sha256'], source._sha(failed))
+
+    def test_complete_200_error_body_is_returned_without_retry(self):
+        failed = b'{"error":{"code":500,"message":"source validator owns this"}}'
+        calls = []
+        def serve(request):
+            calls.append(str(request.url))
+            return httpx.Response(200, stream=httpx.ByteStream(failed))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with httpx.Client(transport=httpx.MockTransport(serve)) as client, \
+                    patch.object(source, '_TRANSIENT_RETRY_DELAYS', (0.0,)):
+                body, receipt = source._capture(client, 'https://producer.test/query', root, 'page_000')
+            self.assertEqual(body, failed)
+            self.assertEqual(receipt['status'], 200)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual((root / 'page_000.body').read_bytes(), failed)
+            self.assertEqual(list(root.glob('*.attempt-*.body')), [])
 
 if __name__ == "__main__":
     unittest.main()

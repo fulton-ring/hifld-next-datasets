@@ -1,12 +1,14 @@
 """Bounded, source-faithful capture for the NOAA OCS ENCDirect shipping fairways layer."""
 from __future__ import annotations
 
+
 from functools import partial
+
+from collections.abc import Mapping
 
 import json
 import math
 import shutil
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -17,6 +19,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
@@ -24,10 +27,14 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_with_retry
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import (
     _canonical,
@@ -102,69 +109,6 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     )
 
 
-def _retry_budget(attempt: int) -> float:
-    return (1.5, 3.0, 5.0, 8.0, 12.0)[min(attempt, 4)]
-
-
-def _retained_bytes(root: Path) -> int:
-    return sum(path.stat().st_size for suffix in ("*.body", "*.wire")
-               for path in root.glob(suffix) if path.is_file())
-
-
-def _discard_partial(root: Path, name: str) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        (root / f"{name}{suffix}").unlink(missing_ok=True)
-
-
-def _capture_with_retry(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    """Capture one GET with bounded retries for the ENCDirect flaky backend.
-
-    The ENCDirect service intermittently answers HTTP 500 with a "Could not
-    find service" body (observed roughly one request in three on 2026-11-12).
-    Failed attempts leave partial evidence via capture_get; that evidence is
-    discarded before each retry so the sealed roster contains only the exact
-    retained response. Permanent client errors and redirects fail closed.
-    """
-    for attempt in range(6):
-        if _retained_bytes(root) + 2 * PAGE_MAX_BYTES > MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded_before_request")
-        try:
-            body, receipt = capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
-        except ValueError as exc:
-            if not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            receipt_path = root / f"{name}.receipt.json"
-            status = None
-            if receipt_path.is_file():
-                try:
-                    status = json.loads(receipt_path.read_bytes()).get("status")
-                except (OSError, ValueError):
-                    status = None
-            if status is not None and status not in RETRYABLE_HTTP_STATUS:
-                # Permanent client-side failure: retain the error evidence and
-                # fail closed; the quarantine path keeps it out of the roster.
-                raise
-            _discard_partial(root, name)
-            time.sleep(_retry_budget(attempt))
-            continue
-        try:
-            doc = json.loads(body)
-        except ValueError:
-            if name == "inport_item":
-                return body, receipt
-            raise
-        if isinstance(doc, dict) and "error" in doc:
-            code = (doc.get("error") or {}).get("code")
-            if code in RETRYABLE_HTTP_STATUS or code is None:
-                _discard_partial(root, name)
-                time.sleep(_retry_budget(attempt))
-                continue
-            # Transport-200 ArcGIS error: retain the error evidence and fail closed.
-            raise ValueError(f"source_endpoint_error:{name}:{code}")
-        return body, receipt
-    raise ValueError("source_endpoint_retries_exhausted:" + name)
-
-
 def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     ids_body, _ids_wire, _ids_receipt = load_capture(root, "ids_before")
     replay_ids = json.loads(ids_body).get("objectIds")
@@ -191,12 +135,11 @@ def _validate_inport_item(body: bytes) -> None:
             raise ValueError("inport_lineage_record_drift:" + marker)
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     ids_before = capture_witness(captures)
     if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()
-            if not name.startswith("inport")}
+    docs = CaptureDocuments(captures, (name for name in captures if not name.startswith('inport')))
     _validate_inport_item(captures["inport_item"][0])
     directory = docs["service_directory"]
     if not any(service.get("name") == "NavigationChartData/MarineTransportation"
@@ -342,7 +285,7 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
+def _capture_identity_hash(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> str:
     return _sha(_canonical(capture_identity(captures, root)))
 
 
@@ -379,19 +322,24 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(60, connect=15),
                               headers={"User-Agent": "hifld-next-datasets/noaa-ocs-draft"}) as client:
-                ids_body, ids_receipt = _capture_with_retry(
-                    client, LAYER_URL + "/query?" + urlencode({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                    root, "ids_before")
-                seed = json.loads(ids_body).get("objectIds")
-                if (not isinstance(seed, list) or not seed
-                        or any(type(oid) is not int or oid <= 0 for oid in seed)
-                        or len(set(seed)) != len(seed)):
-                    raise ValueError("source_seed_id_roster_drift")
-                captures["ids_before"] = (ids_body, ids_receipt)
-                for name, url in _capture_roster(seed):
-                    if name == "ids_before":
-                        continue
-                    captures[name] = _capture_with_retry(client, url, root, name)
+                def validate_seed(ids_body):
+                    seed = json.loads(ids_body).get("objectIds")
+                    if (not isinstance(seed, list) or not seed
+                            or any(type(oid) is not int or oid <= 0 for oid in seed)
+                            or len(set(seed)) != len(seed)):
+                        raise ValueError("source_seed_id_roster_drift")
+                    return seed
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_before', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: capture_with_retry(
+                        client, url, root, name, max_bytes=PAGE_MAX_BYTES,
+                        max_total_bytes=MAX_CAPTURE_BYTES, attempts=6, base_delay=0,
+                        schedule=(1.5, 3.0, 5.0, 8.0, 12.0),
+                        retryable_statuses=RETRYABLE_HTTP_STATUS,
+                        require_json=name != "inport_item", return_final_error=False),
+                    on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}
@@ -409,7 +357,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         (root / "capture_manifest.json").write_bytes(_canonical({"complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(), "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
 
@@ -418,7 +366,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False, "baseline_accepted": False})
@@ -428,7 +376,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
         "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{"input_id": name, "producer": PUBLISHER,
         "host": urlsplit(receipt["url"]).hostname,
         "role": "producer_publication",
@@ -470,7 +418,7 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
                   "source_population_complete": True})
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         _body, wire, _receipt = load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
@@ -511,18 +459,13 @@ def capture_shipping_fairways(storage: StagingStorageResource, *, version: str,
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
             "mapping_approved": False, "release_accepted": False, "capture_directory": str(root)}
-    descriptors = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
-        "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "capture_receipts": receipts, "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content")
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"],

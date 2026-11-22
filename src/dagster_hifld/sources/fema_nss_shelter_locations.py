@@ -1,6 +1,7 @@
 """Native, unapproved capture of FEMA layer 5 Shelter Locations; not a historic HIFLD reconstruction."""
 from __future__ import annotations
 
+
 import json
 import math
 import os
@@ -18,9 +19,14 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -245,7 +251,7 @@ def _capture_descriptors(root: Path, captures: dict[str, tuple[bytes, dict]]) ->
         raise ValueError("capture_request_count_invalid")
     result = {}
     total_payload = total_receipts = 0
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
             raise ValueError("capture_name_invalid")
         if _read_bounded_capture_file(root / f"{name}.body", MAX_RESPONSE_BYTES) != body:
@@ -353,9 +359,8 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
             max_size = (MAX_CAPTURE_RECEIPT_BYTES if kind == "receipt" else
                         min(MAX_RESPONSE_BYTES, manifest["response_budget_bytes"]))
             _read_bounded_capture_file(root / artifact["file"], max_size, expected_bytes=artifact["bytes"])
-    captures: dict[str, tuple[bytes, dict]] = {}
-    total = 0
-    for name, descriptor in descriptors.items():
+    def load(root, name):
+        descriptor = descriptors[name]
         artifacts = {kind: _read_bounded_capture_file(
                          root / descriptor[kind]["file"],
                          MAX_CAPTURE_RECEIPT_BYTES if kind == "receipt" else min(MAX_RESPONSE_BYTES, manifest["response_budget_bytes"]),
@@ -377,8 +382,13 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
                 or receipt.get("wire_sha256") != _sha(wire)
                 or receipt.get("error_code") is not None or receipt.get("error_type") is not None):
             raise ValueError("retained_capture_receipt_invalid:" + name)
-        captures[name] = (body, receipt)
-        total += len(body) + len(wire)
+        return body, receipt
+    receipts = {name: load(root, name)[1] for name in descriptors}
+    total = sum(receipt["bytes"] + receipt["wire_bytes"] for receipt in receipts.values())
+    captures = validated_capture_view(root, receipts=receipts,
+        expected_urls={name: descriptor["request_url"] for name, descriptor in descriptors.items()},
+        load_capture=load, capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
     if total != manifest["capture_retained_wire_plus_decoded_bytes"]:
         raise ValueError("retained_capture_budget_total_mismatch")
     return manifest, captures, _sha(encoded)
@@ -515,7 +525,7 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
             raise ValueError("capture_directory_invalid")
     _require_disk_space(base)
     _require_disk_space(capture_root)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures = RetainedCaptureView(capture_root)
     offline_manifest = offline_receipts = None
     offline_manifest_sha = None
     retained_bytes = 0
@@ -586,65 +596,72 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
         client_context = (nullcontext(None) if retained_capture_directory else
                           httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/fema-nss-shelter-locations"}))
         with client_context as client:
-            portal_item = get(client, "portal_item", PORTAL_ITEM_URL)
-            if (portal_item.get("id") != ITEM_ID or portal_item.get("owner") != "FEMA_MAC"
-                    or portal_item.get("title") != "National Shelter System Facilities"
-                    or portal_item.get("type") != "Feature Service"
-                    or portal_item.get("url") != PORTAL_LAYER_URL or portal_item.get("access") != "public"):
-                raise ValueError("source_portal_authority_or_publication_drift")
-            service = get(client, "service_before", SERVICE_URL, {"f":"pjson"})
-            layer = get(client, "layer_before", LAYER_URL, {"f":"pjson"})
-            if (layer.get("name") != LAYER_NAME or layer.get("description") != LAYER_DESCRIPTION
-                    or layer.get("geometryType") != "esriGeometryPoint"
-                    or layer.get("definitionExpression") is not None
-                    or service.get("description") != SERVICE_DESCRIPTION):
-                raise ValueError("source_layer_identity_drift")
-            fields = _field_contract(layer)
-            dimensions = get(client, "data_elements_before", QUERY_DATA_ELEMENTS_URL,
-                              {"f": "pjson", "layers": f"[{LAYER_ID}]"})
-            has_z, has_m = _declared_dimensions(layer, dimensions)
-            if has_z or has_m:
-                raise ValueError("source_geometry_dimensions_unsupported")
-            sr = layer.get("extent", {}).get("spatialReference", {})
-            if sr.get("latestWkid") != 4326: raise ValueError("source_crs_drift")
-            count = get(client, "count_before", LAYER_URL+"/query", {"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
-            ids_response = get(client, "ids_before", LAYER_URL+"/query", {"where":"1=1","returnIdsOnly":"true","f":"json"})
-            oid_name = next(f["name"] for f in layer["fields"] if f.get("type") == "esriFieldTypeOID")
-            ids = ids_response.get("objectIds")
-            if ids_response.get("objectIdFieldName") != oid_name or type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count: raise ValueError("source_initial_id_roster_invalid")
-            if 12 + math.ceil(count / PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
-                raise ValueError("source_capture_request_count_exceeded")
-            seed = sorted(ids); features=[]
-            for page_no, offset in enumerate(range(0,count,PAGE_SIZE)):
-                expected_ids = seed[offset:offset + PAGE_SIZE]
-                page = get(client, f"page_{page_no:03d}", LAYER_URL+"/query", {
-                    "objectIds": ",".join(str(value) for value in expected_ids),
-                    "outFields":"*", "returnGeometry":"true", "returnZ":"true",
-                    "returnM":"true", "outSR":"4326", "resultRecordCount":PAGE_SIZE,
-                    "f":"json"})
-                rows=page.get("features")
-                if not isinstance(rows,list) or len(rows)!=len(expected_ids):
-                    raise ValueError("source_page_incomplete")
-                if page.get("exceededTransferLimit") is True:
-                    raise ValueError("source_page_exceeded_transfer_limit")
-                page_sr=page.get("spatialReference",{})
-                if not isinstance(page_sr,dict) or page_sr.get("latestWkid",page_sr.get("wkid"))!=4326:
-                    raise ValueError("source_page_crs_drift")
-                page_ids=[row.get("attributes",{}).get(oid_name) if isinstance(row,dict) else None for row in rows]
-                if sorted(page_ids)!=expected_ids or len(set(page_ids))!=len(expected_ids):
-                    raise ValueError("source_page_id_slice_mismatch")
-                features.extend(rows)
-            layer_after=get(client,"layer_after",LAYER_URL,{"f":"pjson"})
-            service_after=get(client,"service_after",SERVICE_URL,{"f":"pjson"})
-            count_after=get(client,"count_after",LAYER_URL+"/query",{"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
-            ids_after_response=get(client,"ids_after",LAYER_URL+"/query",{"where":"1=1","returnIdsOnly":"true","f":"json"})
-            dimensions_after=get(client,"data_elements_after",QUERY_DATA_ELEMENTS_URL,
-                                 {"f":"pjson","layers":f"[{LAYER_ID}]"})
-            ids_after=ids_after_response.get("objectIds")
-            if (ids_after_response.get("objectIdFieldName") != oid_name or not isinstance(ids_after, list)
-                    or len(ids_after) != count or any(type(i) is not int for i in ids_after)
-                    or len(set(ids_after)) != count):
-                raise ValueError("source_oid_property_drift")
+            def acquisition_steps():
+                portal_item = (yield ('portal_item', PORTAL_ITEM_URL))
+                if (portal_item.get("id") != ITEM_ID or portal_item.get("owner") != "FEMA_MAC"
+                        or portal_item.get("title") != "National Shelter System Facilities"
+                        or portal_item.get("type") != "Feature Service"
+                        or portal_item.get("url") != PORTAL_LAYER_URL or portal_item.get("access") != "public"):
+                    raise ValueError("source_portal_authority_or_publication_drift")
+                service = (yield ('service_before', SERVICE_URL, {'f': 'pjson'}))
+                layer = (yield ('layer_before', LAYER_URL, {'f': 'pjson'}))
+                if (layer.get("name") != LAYER_NAME or layer.get("description") != LAYER_DESCRIPTION
+                        or layer.get("geometryType") != "esriGeometryPoint"
+                        or layer.get("definitionExpression") is not None
+                        or service.get("description") != SERVICE_DESCRIPTION):
+                    raise ValueError("source_layer_identity_drift")
+                fields = _field_contract(layer)
+                dimensions = (yield ('data_elements_before', QUERY_DATA_ELEMENTS_URL, {'f': 'pjson', 'layers': f'[{LAYER_ID}]'}))
+                has_z, has_m = _declared_dimensions(layer, dimensions)
+                if has_z or has_m:
+                    raise ValueError("source_geometry_dimensions_unsupported")
+                sr = layer.get("extent", {}).get("spatialReference", {})
+                if sr.get("latestWkid") != 4326: raise ValueError("source_crs_drift")
+                count = (yield ('count_before', LAYER_URL + '/query', {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'})).get("count")
+                ids_response = (yield ('ids_before', LAYER_URL + '/query', {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}))
+                oid_name = next(f["name"] for f in layer["fields"] if f.get("type") == "esriFieldTypeOID")
+                ids = ids_response.get("objectIds")
+                if ids_response.get("objectIdFieldName") != oid_name or type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count: raise ValueError("source_initial_id_roster_invalid")
+                if 12 + math.ceil(count / PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
+                    raise ValueError("source_capture_request_count_exceeded")
+                seed = sorted(ids)
+
+                def validate_page(offset, expected_ids, page):
+                    rows = page.get("features")
+                    if not isinstance(rows, list) or len(rows) != len(expected_ids):
+                        raise ValueError("source_page_incomplete")
+                    if page.get("exceededTransferLimit") is True:
+                        raise ValueError("source_page_exceeded_transfer_limit")
+                    page_sr = page.get("spatialReference", {})
+                    if not isinstance(page_sr, dict) or page_sr.get("latestWkid", page_sr.get("wkid")) != 4326:
+                        raise ValueError("source_page_crs_drift")
+                    page_ids = [row.get("attributes", {}).get(oid_name) if isinstance(row, dict) else None for row in rows]
+                    if sorted(page_ids) != expected_ids or len(set(page_ids)) != len(expected_ids):
+                        raise ValueError("source_page_id_slice_mismatch")
+                    return rows
+
+                features, _pages, closed = yield ExactIdCapturePlan(seed, PAGE_SIZE,
+                    page_request=lambda offset, requested: (f"page_{offset // PAGE_SIZE:03d}", LAYER_URL + "/query", {
+                        "objectIds": ",".join(map(str, requested)), "outFields": "*", "returnGeometry": "true",
+                        "returnZ": "true", "returnM": "true", "outSR": "4326", "resultRecordCount": PAGE_SIZE, "f": "json"}),
+                    validate_page=validate_page,
+                    read_page=lambda offset: captures[f"page_{offset // PAGE_SIZE:03d}"][0],
+                    closing_requests=(("layer_after", LAYER_URL, {"f": "pjson"}),
+                        ("service_after", SERVICE_URL, {"f": "pjson"}),
+                        ("count_after", LAYER_URL + "/query", {"where": "1=1", "returnCountOnly": "true", "f": "json"}),
+                        ("ids_after", LAYER_URL + "/query", {"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
+                        ("data_elements_after", QUERY_DATA_ELEMENTS_URL, {"f": "pjson", "layers": f"[{LAYER_ID}]"})))
+                layer_after, service_after = closed["layer_after"], closed["service_after"]
+                count_after = closed["count_after"].get("count")
+                ids_after_response, dimensions_after = closed["ids_after"], closed["data_elements_after"]
+                ids_after=ids_after_response.get("objectIds")
+                if (ids_after_response.get("objectIdFieldName") != oid_name or not isinstance(ids_after, list)
+                        or len(ids_after) != count or any(type(i) is not int for i in ids_after)
+                        or len(set(ids_after)) != count):
+                    raise ValueError("source_oid_property_drift")
+                return (fields, list(features), count, count_after, dimensions, dimensions_after, ids_after, layer, layer_after, service, service_after, has_z, has_m, oid_name, seed, portal_item)
+            (fields, features, count, count_after, dimensions, dimensions_after, ids_after, layer, layer_after, service, service_after, has_z, has_m, oid_name, seed, portal_item) = capture_request_steps(acquisition_steps(), lambda name, url, *params: get(client, name, url, *params),
+                capture_root=capture_root, byte_budget=max_capture_bytes)
         if (layer_after != layer or service_after != service or dimensions_after != dimensions
                 or count_after != count or sorted(ids_after or []) != seed):
             raise ValueError("source_changed_during_capture")
@@ -679,7 +696,7 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
     null_geometry_count=sum(x["geometry"] is None for x in features)
     native_name=f"geoparquet/{DATASET_SLUG}.parquet"
     audit={"feature_count":count,"source_id_sha256":_sha(_canonical(seed)),"source_record_sha256":record_sha,"source_geometry_sha256":geom_sha,"source_schema_sha256":schema_sha,"source_crs_epsg":4326,"geometry_type":"Point","null_geometry_count":null_geometry_count,"all_ids_captured_once":True,"ids_equal_before_after":True,"portal_item_id":ITEM_ID,"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_geometry_dimensions":{"hasZ":has_z,"hasM":has_m,"declared_by":"same-service MapServer queryDataElements dataset declaration for the requested layer","layer_catalog_declared_hasZ":("hasZ" in layer),"layer_catalog_declared_hasM":("hasM" in layer)},"source_vintage":None,"source_vintage_note":"FEMA exposes no source data release timestamp; portal item modified time is not a row vintage."}
-    manifest={"schema_version":1,"approved":False,"title":LAYER_NAME,"publisher":PUBLISHER,"agency":"Federal Emergency Management Agency","source_url":LAYER_URL,"source_release_date":None,"source_modified":None,"portal_item_modified_epoch_ms":portal_item["modified"],"portal_item_modified_is_source_release_date":False,"data_vintage_unknown":True,"contact_data_review_pending":True,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"source_item_id":ITEM_ID,"source_vintage":None,"source_scope":"Current official FEMA MapServer layer 5 Shelter Locations (all shelter status types); not an asserted reconstruction of historical NSS/HIFLD coverage.","source_geographic_coverage_note":"The FEMA item description says continental United States and some territories; the service extent and observed count do not establish territory completeness.","operational_use_warning":"FEMA states not to use this layer to determine facility operational status during an active emergency.","archive_baseline_accepted":False,"historical_equivalence_accepted":False,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"related_layer_observation":{"layer_id":1,"name":"Closed Shelters","definition_expression":None,"observed_feature_count":71897,"observed_at_utc":"2026-10-22T04:31:32.641139+00:00","comparison_note":"Layer 1 is a distinct closed-shelters view and is not a partition or substitute. Its observed count differs from layer 5 count 71875; the relationship remains unresolved. Counts must not be summed."},"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":PORTAL_ITEM_URL.split("?",1)[0] if n=="portal_item" else SERVICE_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"wire_bytes":r["wire_bytes"],"wire_sha256":r["wire_sha256"],"license":"Unreviewed; no license claim made.","attribution":"FEMA MAC ArcGIS item attribution has not been reviewed.","release_date":None,"release_date_unknown_reason":"The service and item metadata do not establish a FEMA producer release date."} for n,(_,r) in sorted(captures.items())],"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"layer_id":LAYER_ID,"fields":"all 72 non-geometry source fields retained in source order and declared physical types","geometry":"native point coordinates retained as WKB in EPSG:4326","capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"historical_equivalence_accepted":False,"archive_baseline_accepted":False,"mapping_approved":False,"release_accepted":False}}],"prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri attributes, source IDs, and point coordinates are preserved without public mapping; approval gates remain open.","objects":[{"path":native_name,"bytes":len(native),"sha256":_sha(native)}]}}},"unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No approved display transformation."}}
+    manifest={"schema_version":1,"approved":False,"title":LAYER_NAME,"publisher":PUBLISHER,"agency":"Federal Emergency Management Agency","source_url":LAYER_URL,"source_release_date":None,"source_modified":None,"portal_item_modified_epoch_ms":portal_item["modified"],"portal_item_modified_is_source_release_date":False,"data_vintage_unknown":True,"contact_data_review_pending":True,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"source_item_id":ITEM_ID,"source_vintage":None,"source_scope":"Current official FEMA MapServer layer 5 Shelter Locations (all shelter status types); not an asserted reconstruction of historical NSS/HIFLD coverage.","source_geographic_coverage_note":"The FEMA item description says continental United States and some territories; the service extent and observed count do not establish territory completeness.","operational_use_warning":"FEMA states not to use this layer to determine facility operational status during an active emergency.","archive_baseline_accepted":False,"historical_equivalence_accepted":False,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"related_layer_observation":{"layer_id":1,"name":"Closed Shelters","definition_expression":None,"observed_feature_count":71897,"observed_at_utc":"2026-10-22T04:31:32.641139+00:00","comparison_note":"Layer 1 is a distinct closed-shelters view and is not a partition or substitute. Its observed count differs from layer 5 count 71875; the relationship remains unresolved. Counts must not be summed."},"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":PORTAL_ITEM_URL.split("?",1)[0] if n=="portal_item" else SERVICE_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"wire_bytes":r["wire_bytes"],"wire_sha256":r["wire_sha256"],"license":"Unreviewed; no license claim made.","attribution":"FEMA MAC ArcGIS item attribution has not been reviewed.","release_date":None,"release_date_unknown_reason":"The service and item metadata do not establish a FEMA producer release date."} for n,(_,r) in ((name, captures[name]) for name in sorted(captures))],"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"layer_id":LAYER_ID,"fields":"all 72 non-geometry source fields retained in source order and declared physical types","geometry":"native point coordinates retained as WKB in EPSG:4326","capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"historical_equivalence_accepted":False,"archive_baseline_accepted":False,"mapping_approved":False,"release_accepted":False}}],"prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri attributes, source IDs, and point coordinates are preserved without public mapping; approval gates remain open.","objects":[{"path":native_name,"bytes":len(native),"sha256":_sha(native)}]}}},"unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No approved display transformation."}}
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
     outputs={native_name:native,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n","metadata/capture_manifest.json":_canonical(capture_manifest)+b"\n"}
@@ -703,16 +720,13 @@ def capture_fema_nss_shelter_locations(storage: StagingStorageResource, *, versi
                 "capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":retained_bytes,
                 "capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes}
     _require_disk_space(base, sum(map(len, outputs.values())) + STAGING_OVERHEAD_BYTES)
-    for name,body in outputs.items():
-        key=f"{prefix}/{name}"
-        write_immutable(storage,key,body)
-        snapshot=storage.object_snapshot(key)
-        if snapshot is None or snapshot.size!=len(body) or storage.sha256_key(key)!=_sha(body) or storage.object_snapshot(key)!=snapshot:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_output_physical_readback_failed:')
     descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-                         "source_record_sha256":record_sha,"source_schema_sha256":schema_sha,
-                         "capture_receipts":{name:receipt for name,(_body,receipt) in captures.items()},
-                         "objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, {name: receipt for name, (_body, receipt) in captures.items()}, descriptors,
+        source_record_sha256=record_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":count,"source_null_geometry_count":null_geometry_count,"candidate_ready":f"{prefix}/metadata/candidate_ready.json","source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root),"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":retained_bytes,"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes}

@@ -6,6 +6,10 @@ release, field-ID, and date interpretation decisions remain pending.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import seal_candidate_objects
+
+from dagster_hifld.sources.capture_common import write_candidate_outputs
+
 import json
 import shutil
 from dataclasses import replace
@@ -21,6 +25,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
@@ -30,6 +35,7 @@ from dagster_hifld.source_release import (
     decide_release, decide_unchanged_poll, load_release_state, record_release_state,
     release_state_record, unchanged_result,
 )
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -106,7 +112,7 @@ def _stable_item(item: dict) -> dict:
 def validate_capture_documents(captures: Mapping[str, bytes], *,
                                expected_schema_sha256: str | None = EXPECTED_SCHEMA_SHA256) -> tuple[dict, list[dict], dict]:
     """Validate exact item, source identity, schema and complete ordered feature roster."""
-    docs = {name: json.loads(body) for name, body in captures.items()}
+    docs = CaptureDocuments(captures, body_from_capture=lambda body: body)
     required = {"epa_item", "service_before", "layer_before", "count_before", "ids_before",
                 "ids_seed", "layer_after", "service_after", "count_after", "ids_after"}
     if not required.issubset(docs):
@@ -291,17 +297,18 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
                     id_contract_accepted=False, freshness_accepted=False,
                     rights_accepted=False, mapping_approved=False,
                 )
-            seed_body, seed_receipt = capture_get(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed", max_bytes=MAX_BODY_BYTES)
-            seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or not seed:
-                raise ValueError("source_seed_id_list_missing")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _urls(sorted(seed)):
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
-            item_after_body, item_after_receipt = capture_get(client, EPA_ITEM_URL, capture_root, "epa_item_after", max_bytes=MAX_BODY_BYTES)
-            captures["epa_item_after"] = (item_after_body, item_after_receipt)
-        layer, fields, extracted = validate_capture_documents({name: body for name, (body, _) in captures.items()})
+            def validate_seed(seed_body):
+                seed = json.loads(seed_body).get("objectIds")
+                if not isinstance(seed, list) or not seed:
+                    raise ValueError("source_seed_id_list_missing")
+                return sorted(seed)
+            captures = RetainedCaptureView(capture_root, captures)
+            capture_layer(LAYER_URL, capture_root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                validate_seed=validate_seed, roster=lambda ids: [*_urls(ids), ("epa_item_after", EPA_ITEM_URL)],
+                fetch=lambda client, url, root, name: capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES),
+                on_validation_error=lambda c: validate_capture_documents(CaptureDocuments(c, decode=lambda body: body)))
+        layer, fields, extracted = validate_capture_documents(CaptureDocuments(captures, decode=lambda body: body))
     except Exception as exc:
         (capture_root / "capture_manifest.json").write_bytes(_canonical({"complete":False,"error_code":type(exc).__name__,"receipts":{n:r for n,(_,r) in captures.items()}})+b"\n")
         if captures:
@@ -326,7 +333,7 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
           "http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],
           "license":EPA_PUBLIC_DOMAIN,"attribution":"EPA item accessInformation identifies EPA FRS Support Team and RCRA; license and disclaimer are captured verbatim in the EPA item response.","release_date":None,
           "release_date_unknown_reason":"EPA item modification is an ArcGIS item timestamp, not a source release date; service exposes no verified release date."}
-          for name,(_,r) in sorted(captures.items())],
+          for name,(_,r) in ((name, captures[name]) for name in sorted(captures))],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
           "source_fields":"all published non-geometry attributes in producer order and declared types",
           "source_ids":"OBJECTID retained as int64 and REGISTRY_ID retained verbatim; OBJECTID documented nonpermanent",
@@ -363,7 +370,7 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
     })
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    (capture_root / "capture_manifest.json").write_bytes(_canonical({"complete":True,"source_count":len(records),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"source_id_sha256":audit["source_id_sha256"],"receipts":{n:r for n,(_,r) in sorted(captures.items())}})+b"\n")
+    (capture_root / "capture_manifest.json").write_bytes(_canonical({"complete":True,"source_count":len(records),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"source_id_sha256":audit["source_id_sha256"],"receipts":{n:r for n,(_,r) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     outputs = {relative_file:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
                "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
@@ -378,15 +385,15 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
     if storage.object_snapshot(state_key) is not None:
         result = _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs),parquet)
     else:
-        for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
-        descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-        for name,desc in descriptors.items():
-            key=f"{prefix}/{name}"; snap=storage.object_snapshot(key)
-            if snap is None or snap.size != desc["bytes"] or storage.sha256_key(key) != desc["sha256"] or storage.object_snapshot(key) != snap:
-                raise ValueError("candidate_output_physical_readback_failed:"+name)
-        seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-            "source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
-            "capture_receipts":{n:r for n,(_,r) in captures.items()},"objects":descriptors})
+        descriptors = write_candidate_outputs(
+            storage, prefix, outputs, readback_order="after-all",
+            error_prefix="candidate_output_physical_readback_failed:")
+        seal_candidate_objects(
+            storage, state_key, version,
+            identity, {n: r for n, (_, r) in captures.items()}, descriptors,
+            source_record_sha256=audit['source_record_sha256'],
+            source_schema_sha256=audit['source_schema_sha256'],
+            fingerprint=fingerprint)
         validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
         result = {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(records),
                 "source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json",

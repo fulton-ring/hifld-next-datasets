@@ -1,3 +1,4 @@
+from dagster_hifld.sources import arcgis_layer as retry_owner
 """Focused tests for the USGS WBD 8-digit HU (Subbasin) native capture draft."""
 
 import json
@@ -580,7 +581,7 @@ class WbdHu8SubbasinTests(unittest.TestCase):
         return fake_capture_get
 
     def _mocked_acquisition(self, documents, calls):
-        return (patch.object(source, "capture_get",
+        return (patch.object(retry_owner, "capture_get",
                              side_effect=self._scripted_capture_get(documents, calls)),
                 patch.object(source.httpx, "Client",
                              side_effect=lambda *_args, **_kwargs: _ContextClient()))

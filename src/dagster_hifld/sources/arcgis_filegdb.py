@@ -1,6 +1,8 @@
 """Bounded ArcGIS Extract/FileGDB acquisition and immutable replay helpers."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import write_candidate_outputs, verify_candidate_outputs
+
 import hashlib, json, os, shutil, stat, subprocess, zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -129,12 +131,18 @@ def stage_filegdb_archive(storage: StagingStorageResource,prefix:str,archive_pat
     if not isinstance(storage,StagingStorageResource): raise ValueError("staging_storage_required")
     rel=PurePosixPath(archive_rel)
     if rel.is_absolute() or ".." in rel.parts: raise ValueError("unsafe_filegdb_archive_key")
-    archive=Path(archive_path).read_bytes(); write_immutable(storage,f"{prefix}/{rel.as_posix()}",archive)
-    result=[{"path":rel.as_posix(),"bytes":len(archive),"sha256":sha256(archive)}]
+    archive_name = rel.as_posix()
+    descriptor = write_candidate_outputs(
+        storage, prefix, {archive_name: Path(archive_path)}, snapshot_check="none",
+        file_snapshot_check="stable")[archive_name]
+    result = [{"path": archive_name, **descriptor}]
     for path in sorted(Path(gdb_path).rglob("*")):
         if path.is_file():
-            sub=path.relative_to(gdb_path).as_posix(); body=path.read_bytes(); target=f"file_geodatabase/{gdb_root}/{sub}"
-            write_immutable(storage,f"{prefix}/{target}",body); result.append({"path":target,"bytes":len(body),"sha256":sha256(body)})
+            target = f"file_geodatabase/{gdb_root}/{path.relative_to(gdb_path).as_posix()}"
+            descriptor = write_candidate_outputs(
+                storage, prefix, {target: path}, snapshot_check="none",
+                file_snapshot_check="stable")[target]
+            result.append({"path": target, **descriptor})
     return result
 
 def verify_staged_filegdb(storage:StagingStorageResource,prefix:str,objects:list[dict[str,Any]]) -> dict[str,Any]:
@@ -152,10 +160,8 @@ def verify_staged_filegdb(storage:StagingStorageResource,prefix:str,objects:list
     actual={key for key in candidates if key==archive_key or key.startswith(gdb_prefix+"/")}
     wanted={key for key in expected if key==archive_key or key.startswith(gdb_prefix+"/")}
     if actual!=wanted: raise ValueError("cached_filegdb_candidate_roster_drift")
-    for key,item in expected.items():
-        snap=storage.object_snapshot(key)
-        if snap is None or snap.size!=item["bytes"] or storage.sha256_key(key)!=item["sha256"] or storage.object_snapshot(key)!=snap:
-            raise ValueError("cached_filegdb_candidate_object_drift")
+    verify_candidate_outputs(storage, "", expected,
+        error_prefix="cached_filegdb_candidate_object_drift", error_suffix="none")
     return {"object_count":len(expected),"bytes":sum(x["bytes"] for x in objects),"sha256":sha256(canonical_json(objects))}
 
 def verify_extracted_filegdb_cache(storage:StagingStorageResource,prefix:str,objects:list[dict[str,Any]]) -> dict[str,dict[str,Any]]:

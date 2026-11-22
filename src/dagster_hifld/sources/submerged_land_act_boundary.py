@@ -7,6 +7,12 @@ unapproved, and between-capture population changes do not block completeness.
 """
 from __future__ import annotations
 
+from dagster_hifld.http_capture import validated_capture_view
+
+from dagster_hifld.sources.arcgis_layer import (
+    capture_document_retry, bracket_document_complete as _document_complete,
+)
+
 import json
 import shutil
 from datetime import datetime, timezone
@@ -20,18 +26,24 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from time import sleep, time_ns
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    candidate_prefix,
+    processing_identity,
+    quarantine_incomplete_capture,
+    seal_ready_candidate,
+    verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -92,7 +104,7 @@ def _input_fingerprint(captures: Mapping[str, tuple[bytes, Mapping[str, object]]
     return _sha(_canonical({"bodies": {name: {"bytes": len(body), "sha256": _sha(body),
                                               "wire_bytes": receipt.get("wire_bytes"),
                                               "wire_sha256": receipt.get("wire_sha256")}
-                            for name, (body, receipt) in sorted(captures.items())},
+                            for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures))},
                             "processing_identity": identity}))
 
 
@@ -145,60 +157,20 @@ _BRACKET_RETRY_ATTEMPTS = 4
 _BRACKET_RETRY_BASE_DELAY_SECONDS = 5.0
 
 
-def _witness_refused(root: Path, name: str) -> None:
-    """Move a retained refused answer aside so the slot can be refetched."""
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(root / f"{name}.error-{stamp}.{suffix}")
-
-
-def _document_complete(name: str, body: bytes) -> bool:
-    """Distinguish a well-formed capture document from a transient answer.
-
-    ArcGIS Server intermittently answers cheap bracket queries with HTTP 200
-    bodies like ``{"objectIdFieldName": "OBJECTID", "objectIds": null}`` or an
-    error document. Such an answer is a service failure, not a capture result:
-    real drift publishes a valid roster with different identifiers, which the
-    bracket comparison in _validate refuses.
-    """
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    if not isinstance(document, dict) or "error" in document:
-        return False
-    if name.startswith("ids_"):
-        return isinstance(document.get("objectIds"), list) and bool(document.get("objectIds"))
-    if name.startswith("count_"):
-        return isinstance(document.get("count"), int)
-    return bool(document)
-
-
-def _acquire_document(client: httpx.Client, root: Path, name: str, url: str) -> \
-        tuple[bytes, dict[str, object]]:
-    """Fetch one bracket or page document, refetching transient null/error answers."""
-    body: bytes = b""
-    receipt: dict[str, object] = {}
-    for attempt in range(_BRACKET_RETRY_ATTEMPTS):
-        body, receipt = capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES)
-        if _document_complete(name, body):
-            return body, receipt
-        _witness_refused(root, name)
-        if attempt + 1 < _BRACKET_RETRY_ATTEMPTS:
-            sleep(_BRACKET_RETRY_BASE_DELAY_SECONDS * attempt)
-    return body, receipt
+def _acquire_document(client: httpx.Client, root: Path, name: str, url: str, *,
+                      retained_path: bool = False):
+    return capture_document_retry(client, url, root, name, max_bytes=MAX_BODY_BYTES,
+        attempts=_BRACKET_RETRY_ATTEMPTS, base_delay=_BRACKET_RETRY_BASE_DELAY_SECONDS,
+        complete=_document_complete, retained_path=retained_path)
 
 
 def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
     summary = json.loads((root / "capture-summary.json").read_bytes())
     if summary.get("complete") is not True:
         raise ValueError("offline_native_capture_incomplete")
-    captures = {}
-    for receipt_path in sorted(root.glob("*.receipt.json")):
-        receipt = json.loads(receipt_path.read_bytes())
-        name = receipt_path.name.removesuffix(".receipt.json")
+    names = [path.name.removesuffix(".receipt.json") for path in sorted(root.glob("*.receipt.json"))]
+    def load(root, name):
+        receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
         body = (root / f"{name}.body").read_bytes()
         if (receipt.get("complete_body") is not True or receipt.get("status") != 200
                 or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
@@ -207,8 +179,12 @@ def _load_offline(root: Path) -> dict[str, tuple[bytes, dict[str, object]]]:
                         "wire_sha256": receipt.get("wire_sha256", _sha(body)),
                         "content_encoding": receipt.get("content_encoding", "identity"),
                         "error_code": receipt.get("error_code")})
-        captures[name] = (body, receipt)
-    return captures
+        return body, receipt
+    receipts = {name: load(root, name)[1] for name in names}
+    return validated_capture_view(root, receipts=receipts,
+        expected_urls=dict.fromkeys(names, ""), load_capture=load,
+        capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
 
 
 def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[bytes, dict[str, object]]]:
@@ -217,17 +193,17 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
         with httpx.Client(follow_redirects=False, timeout=120,
                           headers={"User-Agent":
                                    "hifld-next-datasets/submerged-land-act-boundary-draft"}) as client:
-            seed, receipt = _acquire_document(client, root, "ids_before",
-                                              _query(where="1=1", returnIdsOnly="true"))
-            captures["ids_before"] = (seed, receipt)
-            ids = json.loads(seed).get("objectIds")
-            if not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids) \
-                    or len(ids) != len(set(ids)):
-                raise ValueError("source_seed_id_roster_invalid")
-            urls = [(n, u) for n, u in _capture_names(sorted(ids)) if n != "ids_before"]
-            for name, url in urls:
-                body, receipt = _acquire_document(client, root, name, url)
-                captures[name] = (body, receipt)
+            def validate_seed(seed):
+                ids = json.loads(seed).get("objectIds")
+                if (not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids)
+                        or len(ids) != len(set(ids))):
+                    raise ValueError("source_seed_id_roster_invalid")
+                return ids
+            captures = RetainedCaptureView(root, captures)
+            capture_layer(LAYER_URL, root, MAX_BODY_BYTES, PAGE_SIZE, client=client,
+                captures=captures, seed_url=_query(where="1=1", returnIdsOnly="true"),
+                validate_seed=validate_seed, roster=lambda ids: _capture_names(sorted(ids)), on_validation_error=_validate,
+                fetch=lambda client, url, root, name: _acquire_document(client, root, name, url, retained_path=True))
         return captures
     except Exception as exc:
         if captures:
@@ -298,7 +274,7 @@ def _geometry_paths(geom: object) -> list[list[list[float]]] | None:
 
 def _validate(captures: Mapping[str, tuple[bytes, Mapping[str, object]]]) \
         -> tuple[dict[str, object], list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     ids_before, ids_after = docs["ids_before"].get("objectIds"), docs["ids_after"].get("objectIds")
     if (not isinstance(ids_before, list) or not ids_before or sorted(ids_before) != sorted(ids_after or [])
             or len(ids_before) != len(set(ids_before))):
@@ -564,7 +540,7 @@ def capture_submerged_land_act_boundary(storage: StagingStorageResource, *, vers
                                               "release for the SLA boundary layer; per-feature "
                                               "BDRY_APRV_DATE values are per-boundary approval "
                                               "dates, not a dataset release date."}
-              for n, (_, receipt) in sorted(captures.items())]
+              for n, (_, receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version": 1, "approved": False,
                 "title": "Submerged Land Act (SLA) Boundary",
                 "description": "Submerged Lands Act boundary lines (also published as State "
@@ -655,20 +631,18 @@ def capture_submerged_land_act_boundary(storage: StagingStorageResource, *, vers
              "id_contract_accepted": False, "rights_accepted": False,
              "source_authority_accepted": False, "mapping_approved": False}
     outputs["metadata/candidate_ready.json"] = _canonical(ready) + b"\n"
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-    objects = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
-    for name, descriptor in objects.items():
-        key = f"{prefix}/{name}"
-        snap = storage.object_snapshot(key)
-        if snap is None or descriptor != {"bytes": snap.size, "sha256": storage.sha256_key(key)} \
-                or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_physical_readback_failed:" + name)
+    objects = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_physical_readback_failed:')
     payload = {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": {n: r for n, (_, r) in sorted(captures.items())},
+               "capture_receipts": {n: r for n, (_, r) in ((name, captures[name]) for name in sorted(captures))},
                "objects": objects}
-    seal_ready_candidate(storage, state_key, version, _sha(_canonical(identity)), payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=_sha(_canonical(identity)))
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

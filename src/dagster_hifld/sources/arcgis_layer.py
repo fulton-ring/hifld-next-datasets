@@ -23,10 +23,14 @@ public names.
 """
 from __future__ import annotations
 
+
 import hashlib
 import json
+import math
+import re
 import time
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Mapping, Sequence
 from urllib.parse import urlencode, urlsplit
@@ -39,7 +43,11 @@ import pyproj
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.http_capture import capture_http_response, validate_capture_roster, validate_retained_capture_replay
 from dagster_hifld.source_release import ReleaseSignal
-from dagster_hifld.sources.capture_common import capture_get, write_immutable
+from dagster_hifld.sources.capture_common import (
+    capture_get,
+    write_immutable,
+    write_candidate_outputs as write_outputs,
+)
 from dagster_hifld.sources.esri_common import arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import (
     _validate_spatial_reference, esri_polygon_wkb as _shared_esri_polygon_wkb,
@@ -227,7 +235,9 @@ def capture_layer_roster(client: httpx.Client, root: Path,
     names = [name for name, _url in roster]
     if len(set(names)) != len(names):
         raise ValueError("capture_roster_name_duplicate")
-    captures = {name: fetch(client, url, root, name) for name, url in roster}
+    captures = RetainedCaptureView(root)
+    for name, url in roster:
+        captures[name] = fetch(client, url, root, name)
     capture_witness(captures, captured_ids=captured_ids)
     return captures
 
@@ -312,7 +322,7 @@ def load_replay(root: Path, name: str) -> tuple[bytes, dict]:
         headers["Content-Length"] = str(receipt["content_length"])
     response = httpx.Response(200, headers=headers, stream=httpx.ByteStream(wire))
     result = capture_http_response(response, max_wire_bytes=len(wire), max_decoded_bytes=len(body),
-        reserve=lambda _progress: None, retain_wire=lambda _chunk: None,
+        apply_retention_budget=False, reserve=lambda _progress: None, retain_wire=lambda _chunk: None,
         retain_decoded=lambda _chunk: None)
     response.close()
     if (not result.complete or result.decoded_bytes_retained != len(body)
@@ -448,7 +458,7 @@ def _validate_offset_replay_refusal(root: Path, name: str, url: str, *, max_capt
         headers['Content-Length'] = str(receipt['content_length'])
     response = httpx.Response(receipt['status'], headers=headers, stream=httpx.ByteStream(wire))
     result = capture_http_response(response, max_wire_bytes=max_capture_bytes, max_decoded_bytes=max_capture_bytes,
-        reserve=lambda _progress: None, retain_wire=lambda _chunk: None, retain_decoded=lambda _chunk: None)
+        apply_retention_budget=False, reserve=lambda _progress: None, retain_wire=lambda _chunk: None, retain_decoded=lambda _chunk: None)
     response.close()
     if (result.wire_bytes_retained != len(wire) or result.wire_sha256 != _sha(wire)
             or result.decoded_bytes_retained != len(body) or result.decoded_sha256 != _sha(body)
@@ -460,20 +470,6 @@ def _validate_offset_replay_refusal(root: Path, name: str, url: str, *, max_capt
                 and (not isinstance(receipt.get('error_type'), str)
                      or result.error_code not in {None, 'compressed_stream_incomplete', 'content_length_mismatch'}))):
         raise ValueError('retained_capture_refusal_invalid:' + name)
-
-
-def write_outputs(storage, prefix: str, outputs: dict[str, bytes]) -> dict[str, dict[str, object]]:
-    descriptors = {}
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        snapshot = storage.object_snapshot(f"{prefix}/{name}")
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if (snapshot is None or snapshot.size != descriptor["bytes"]
-                or storage.sha256_key(f"{prefix}/{name}") != descriptor["sha256"]
-                or storage.object_snapshot(f"{prefix}/{name}") != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    return descriptors
 
 
 def validate_crs(ref: object) -> None:
@@ -498,10 +494,18 @@ def validate_dimensions(declaration: dict) -> None:
             raise ValueError("source_dimension_drift")
 
 
+class _CaptureBudgetExceeded(Exception):
+    """Stable receipt error identity for a pre-sink family budget refusal."""
+
+
 def fetch_capture(client: httpx.Client, url: str, root: Path, name: str, budget: list[int], *,
                   max_capture_bytes: int, max_body_bytes: int,
                   prefill_empty_artifacts: bool = False,
-                  allow_arcgis_item_redirect: bool = False) -> tuple[bytes, dict]:
+                  allow_arcgis_item_redirect: bool = False,
+                  response_limit_errors: bool = False,
+                  hard_sink_limits: bool = False,
+                  reserve_error_is_budget: bool = False,
+                  record_retry_after: bool = False) -> tuple[bytes, dict]:
     """Capture one IENC GET to disk under a running ``budget`` list.
 
     The body is byte-identical to the per-dataset ``_fetch`` copies it replaces.
@@ -523,6 +527,10 @@ def fetch_capture(client: httpx.Client, url: str, root: Path, name: str, budget:
 
     def retain(path, kind):
         def write(chunk):
+            if hard_sink_limits and (not isinstance(chunk, bytes) or len(chunk) > max_body_bytes
+                    or sizes[kind] + len(chunk) > max_body_bytes
+                    or budget_start + sizes["wire"] + sizes["body"] + len(chunk) > max_capture_bytes):
+                raise _CaptureBudgetExceeded()
             with path.open("ab") as stream:
                 stream.write(chunk)
             hashes[kind].update(chunk); sizes[kind] += len(chunk)
@@ -531,6 +539,8 @@ def fetch_capture(client: httpx.Client, url: str, root: Path, name: str, budget:
 
     def reserve(progress):
         if budget_start + progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > max_capture_bytes:
+            if hard_sink_limits:
+                raise _CaptureBudgetExceeded()
             raise ValueError("source_capture_budget_exceeded")
 
     response = None
@@ -560,7 +570,15 @@ def fetch_capture(client: httpx.Client, url: str, root: Path, name: str, budget:
         "content_length": result.content_length if result is not None else None,
         "error_code": result.error_code if result is not None else ("transport_error" if transport_error else "capture_result_missing"),
         "error_type": result.error_type if result is not None else transport_error}
+    if record_retry_after:
+        receipt["retry_after"] = response.headers.get("retry-after") if response is not None else None
     (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+    if result is not None:
+        if response_limit_errors and result.error_code in {"wire_limit_exceeded", "decoded_limit_exceeded"}:
+            raise ValueError("source_response_limit_exceeded:" + result.error_code)
+        if ((hard_sink_limits and result.error_type == "_CaptureBudgetExceeded")
+                or (reserve_error_is_budget and result.error_code == "reserve_error")):
+            raise ValueError("source_capture_budget_exceeded")
     if transport_error:
         raise httpx.TransportError("capture_transport_error:" + transport_error)
     if result is None:
@@ -574,11 +592,71 @@ def fetch_capture(client: httpx.Client, url: str, root: Path, name: str, budget:
     return body, receipt
 
 
+def fetch_capture_get(client: httpx.Client, url: str, root: Path, name: str, budget: list[int], *,
+                      max_capture_bytes: int, max_body_bytes: int,
+                      response_limit_codes: set[str] = frozenset()) -> tuple[bytes, dict]:
+    """Apply a running family budget while retaining capture_get's receipt schema."""
+    budget_start = budget[0]
+    sizes = {"wire": 0, "body": 0}
+
+    def before_retain(kind: str, data: bytes) -> None:
+        sizes[kind] += len(data)
+        budget[0] = budget_start + sizes["wire"] + sizes["body"]
+
+    def reserve(progress) -> None:
+        if (budget_start + progress.wire_bytes_retained + progress.decoded_bytes_retained
+                + progress.reserve_bytes > max_capture_bytes):
+            raise ValueError("source_capture_budget_exceeded")
+
+    try:
+        return capture_get(client, url, root, name, max_bytes=max_body_bytes,
+                           reserve=reserve, before_retain=before_retain)
+    except ValueError as exc:
+        if not str(exc).startswith("incomplete_source_capture:"):
+            raise
+        receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
+        error_code = receipt.get("error_code")
+        if error_code in response_limit_codes:
+            raise ValueError("source_response_limit_exceeded:" + str(error_code)) from None
+        if error_code == "reserve_error":
+            raise ValueError("source_capture_budget_exceeded") from None
+        raise
+
+
+def _retry_after_wait(root: Path, name: str) -> float | None:
+    try:
+        receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
+    except (OSError, ValueError):
+        receipt = {}
+    status = receipt.get("status")
+    if status not in (None, 200, 429):
+        return None
+    if status != 429:
+        return 0.25
+    raw_delay = receipt.get("retry_after")
+    try:
+        delay = float(raw_delay)
+    except (TypeError, ValueError):
+        try:
+            retry_at = parsedate_to_datetime(str(raw_delay))
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            delay = max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            delay = 1.0
+    if not math.isfinite(delay) or delay < 0 or delay > 60:
+        raise ValueError("retry_after_exceeds_bounded_wait") from None
+    return delay
+
+
 def fetch_capture_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int], *,
                         max_capture_bytes: int, max_body_bytes: int,
                         attempts: int = 2, schedule: tuple[float, ...] = (),
                         prefill_empty_artifacts: bool = False,
-                        allow_arcgis_item_redirect: bool = False) -> tuple[bytes, dict]:
+                        allow_arcgis_item_redirect: bool = False,
+                        fetch: Callable[..., tuple[bytes, dict]] | None = None,
+                        retry_transport_errors: bool = True,
+                        respect_retry_after: bool = False) -> tuple[bytes, dict]:
     """Retry transient transport/incomplete reads, retaining every attempt.
 
     The loop is byte-identical to the per-dataset ``_fetch_retry`` copies it
@@ -587,24 +665,40 @@ def fetch_capture_retry(client: httpx.Client, url: str, root: Path, name: str, b
     attempt's artifacts are promoted to the final names, and non-transient
     ValueError failures re-raise immediately.
     """
+    # A resumed slot may contain only a receipt or wire artifact. Every such
+    # name reserves its ordinal so no previous failure is silently replaced.
+    pattern = re.compile(re.escape(name) + r"\.attempt([0-9]+)\.(?:body|wire|receipt\.json)")
+    retained_ordinals = [int(match.group(1)) for path in (root.iterdir() if root.exists() else ())
+                         if (match := pattern.fullmatch(path.name))]
+    first_ordinal = max(retained_ordinals, default=0) + 1
     last = None
     for attempt in range(attempts):
         wait = schedule[attempt] if attempt < len(schedule) else 0.0
         if wait:
             time.sleep(wait)
-        attempt_name = f"{name}.attempt{attempt + 1}"
+        attempt_name = f"{name}.attempt{first_ordinal + attempt}"
         try:
-            body, receipt = fetch_capture(client, url, root, attempt_name, budget,
-                max_capture_bytes=max_capture_bytes, max_body_bytes=max_body_bytes,
-                prefill_empty_artifacts=prefill_empty_artifacts,
-                allow_arcgis_item_redirect=allow_arcgis_item_redirect)
+            if fetch is not None:
+                body, receipt = fetch(client, url, root, attempt_name, budget)
+            else:
+                body, receipt = fetch_capture(client, url, root, attempt_name, budget,
+                    max_capture_bytes=max_capture_bytes, max_body_bytes=max_body_bytes,
+                    prefill_empty_artifacts=prefill_empty_artifacts,
+                    allow_arcgis_item_redirect=allow_arcgis_item_redirect)
             for suffix in ("body", "wire", "receipt.json"):
                 (root / f"{attempt_name}.{suffix}").replace(root / f"{name}.{suffix}")
             return body, receipt
         except (httpx.TransportError, ValueError) as exc:
             last = exc
+            if isinstance(exc, httpx.TransportError) and not retry_transport_errors:
+                raise
             if isinstance(exc, ValueError) and not str(exc).startswith("incomplete_source_capture:"):
                 raise
+            if respect_retry_after:
+                delay = _retry_after_wait(root, attempt_name)
+                if delay is None:
+                    raise
+                time.sleep(delay)
     raise last
 
 
@@ -666,50 +760,139 @@ def witness_aside(capture_root: Path, name: str) -> None:
             source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
 
 
-def producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
+def producer_error_doc(body: bytes, *, max_bytes: int = 65536,
+                       require_int_code: bool = False) -> bool:
+    if not body.lstrip().startswith(b"{") or len(body) > max_bytes:
         return False
     try:
         document = json.loads(body)
     except ValueError:
         return False
-    return isinstance(document, dict) and "error" in document
+    if not isinstance(document, dict) or "error" not in document:
+        return False
+    if require_int_code:
+        envelope = document["error"]
+        return isinstance(envelope, dict) and type(envelope.get("code")) is int
+    return True
 
 
 def preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
+    suffixes = (".body", ".wire", ".receipt.json")
+    while any((capture_root / f"{name}.attempt-{attempt:02d}{suffix}").exists()
+              for suffix in suffixes):
+        attempt += 1
+    for suffix in suffixes:
         path = capture_root / f"{name}{suffix}"
         if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
+            path.replace(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
 
 
 def capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                       attempts: int, base_delay: float,
-                       max_bytes: int) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
+                       attempts: int, base_delay: float, max_bytes: int,
+                       max_total_bytes: int | None = None,
+                       budget_error: type[ValueError] = ValueError,
+                       reserve_all_attempts: bool = False,
+                       preserve_final_failure: bool = False,
+                       retryable_statuses: tuple[int, ...] | None = None,
+                       require_json: bool = False,
+                       return_final_error: bool = True,
+                       schedule: tuple[float, ...] = (),
+                       error_document: Callable[[bytes], bool] | None = producer_error_doc,
+                       capture: Callable[..., tuple[bytes, dict]] | None = None) -> tuple[bytes, dict[str, object]]:
+    """Own bounded producer retries and retain all failed response evidence.
 
-    Retries cover the producer's transient complete-200 Esri error documents
-    and incomplete transport captures (connection resets, truncation); failed
-    attempts are preserved on disk under ``<name>.attempt-NN`` evidence names
-    and never enter the capture roster. The final attempt's body is always
-    returned as captured, so a persistent producer failure surfaces to the
-    caller unchanged.
+    Family policy controls reservation, status refusal and final error return.
+    Returning the final complete error body lets windowed families bisect it.
+    Attempt names never overwrite evidence retained by a previous session.
+    ``error_document=None`` retries only incomplete captures, leaving complete
+    producer error bodies to the source validator.
     """
+    if reserve_all_attempts and max_total_bytes is not None:
+        retained = sum(p.stat().st_size for p in capture_root.iterdir()
+                       if p.is_file() and p.name.endswith((".body", ".wire", ".receipt.json")))
+        remaining = max_total_bytes - retained - attempts * 65536
+        if remaining < 2 * attempts:
+            raise budget_error("source_capture_exceeds_scratch_budget")
+        max_bytes = min(max_bytes, remaining // (2 * attempts))
     for attempt in range(1, attempts + 1):
+        if max_total_bytes is not None and not reserve_all_attempts:
+            retained = sum(p.stat().st_size for p in capture_root.iterdir()
+                           if p.is_file() and p.name.endswith((".body", ".wire")))
+            if retained + 2 * max_bytes > max_total_bytes:
+                raise budget_error("source_capture_budget_exceeded_before_request")
         try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
+            body, receipt = (capture or capture_get)(client, url, capture_root, name, max_bytes=max_bytes)
         except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
+            if not str(exc).startswith("incomplete_source_capture:"):
                 raise
-            preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if producer_error_doc(body) and attempt < attempts:
-            preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
+            if retryable_statuses is not None:
+                try:
+                    status = json.loads((capture_root / f"{name}.receipt.json").read_bytes()).get("status")
+                except (OSError, ValueError):
+                    status = None
+                if status is not None and status not in retryable_statuses:
+                    raise
+            if attempt >= attempts:
+                if preserve_final_failure:
+                    preserve_failed_attempt(capture_root, name, attempt)
+                if return_final_error:
+                    raise
+                raise ValueError("source_endpoint_retries_exhausted:" + name) from exc
+        else:
+            if error_document is None:
+                return body, receipt
+            if require_json:
+                document = json.loads(body)
+                is_error = isinstance(document, dict) and "error" in document
+            else:
+                is_error = error_document(body)
+                document = json.loads(body) if is_error else None
+            if not is_error:
+                return body, receipt
+            if retryable_statuses is not None:
+                envelope = document.get("error")
+                code = envelope.get("code") if isinstance(envelope, dict) else None
+                if code is not None and code not in retryable_statuses:
+                    raise ValueError(f"source_endpoint_error:{name}:{code}")
+            if attempt >= attempts and return_final_error:
+                return body, receipt
+        preserve_failed_attempt(capture_root, name, attempt)
+        if attempt >= attempts:
+            raise ValueError("source_endpoint_retries_exhausted:" + name)
+        wait = schedule[attempt - 1] if attempt <= len(schedule) else base_delay * 3 ** (attempt - 1)
+        if wait:
+            time.sleep(wait)
     raise AssertionError("unreachable_retry_state")
+
+
+def capture_document_retry(client: httpx.Client, url: str, root: Path, name: str, *,
+                           attempts: int, max_bytes: int, base_delay: float,
+                           complete: Callable[[str, bytes], bool],
+                           retained_path: bool = False) -> tuple[bytes | Path, dict]:
+    """Bind the native bracket predicate and linear schedule to shared custody."""
+    from dagster_hifld.sources.arcgis_capture_sequence import capture_validated_document
+
+    return capture_validated_document(client, url, root, name,
+        max_bytes=max_bytes, attempts=attempts,
+        complete=lambda body: complete(name, body),
+        preserve_refusal=lambda: witness_aside(root, name),
+        schedule=tuple(base_delay * attempt for attempt in range(attempts - 1)),
+        retained_path=retained_path, capture=capture_get)
+
+
+def bracket_document_complete(name: str, body: bytes) -> bool:
+    """Require a nonempty roster, integer count or nonempty metadata document."""
+    try:
+        document = json.loads(body)
+    except ValueError:
+        return False
+    if not isinstance(document, dict) or "error" in document:
+        return False
+    if name.startswith("ids_"):
+        return isinstance(document.get("objectIds"), list) and bool(document.get("objectIds"))
+    if name.startswith("count_"):
+        return isinstance(document.get("count"), int)
+    return bool(document)
 
 
 class RetainedCaptureViews(Mapping):
@@ -814,3 +997,6 @@ _load_capture = load_capture
 _capture_identity = capture_identity
 _esri_polyline_wkb = esri_polyline_wkb
 _parquet_bytes = polyline_parquet_bytes
+
+# Public disk-backed acquisition boundary.
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView

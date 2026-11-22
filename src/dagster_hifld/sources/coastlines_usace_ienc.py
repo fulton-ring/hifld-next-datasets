@@ -5,11 +5,14 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
-import hashlib
+
+from collections.abc import Mapping
+
 import json
 import math
 import shutil
 import struct
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -21,12 +24,19 @@ import pyarrow.parquet as pq
 import shapely
 from shapely.geometry import LineString, MultiLineString
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import (
+    capture_roster_digests,
+    validate_capture_roster,
+)
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources import arcgis_layer as capture_shared
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import _validate_spatial_reference
@@ -35,6 +45,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 
 DATASET_SLUG = "coastlines-usace-ienc"
@@ -63,73 +75,15 @@ EXPECTED_FIELD_DECLARATIONS = [
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    root.mkdir(parents=True, exist_ok=True)
-    body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
-    for path in (body_path, wire_path):
-        path.unlink(missing_ok=True)
-    hashes = {"body": hashlib.sha256(), "wire": hashlib.sha256()}
-    sizes = {"body": 0, "wire": 0}
-    budget_start=budget[0]
-    observed = datetime.now(timezone.utc).isoformat()
-    def retain(path, kind):
-        def write(chunk):
-            with path.open("ab") as stream:
-                stream.write(chunk)
-            hashes[kind].update(chunk); sizes[kind] += len(chunk)
-            budget[0]=budget_start+sizes["wire"]+sizes["body"]
-        return write
-    def reserve(progress):
-        if budget_start+progress.wire_bytes_retained+progress.decoded_bytes_retained+progress.reserve_bytes>MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-    response = None
-    result = None
-    final_url = url
-    transport_error = None
-    try:
-        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-            final_url = str(response.url)
-            result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
-                max_decoded_bytes=MAX_BODY_BYTES, reserve=reserve,
-                retain_wire=retain(wire_path, "wire"), retain_decoded=retain(body_path, "body"))
-    except Exception as exc:
-        transport_error = type(exc).__name__
-    receipt = {"method":"GET", "url":url, "final_url":final_url, "observed_at":observed,
-        "status":result.status_code if result is not None else (response.status_code if response is not None else None),
-        "complete_body":bool(result is not None and result.complete and transport_error is None),
-        "wire_bytes":sizes["wire"], "wire_sha256":hashes["wire"].hexdigest(),
-        "bytes":sizes["body"], "sha256":hashes["body"].hexdigest(),
-        "content_encoding":result.content_encoding if result is not None else None,
-        "content_length":result.content_length if result is not None else None,
-        "error_code":result.error_code if result is not None else ("transport_error" if transport_error else "capture_result_missing"),
-        "error_type":result.error_type if result is not None else transport_error}
-    (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-    if transport_error:
-        raise httpx.TransportError("capture_transport_error:" + transport_error)
-    if result is None:
-        raise ValueError("capture_result_missing")
-    body, wire = body_path.read_bytes(), wire_path.read_bytes()
-    if (not result.complete or result.status_code != 200 or final_url != url
-        or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]
-        or len(wire) != receipt["wire_bytes"] or _sha(wire) != receipt["wire_sha256"]):
-        raise ValueError("incomplete_source_capture:" + name)
-    return body, receipt
+    return capture_shared.fetch_capture(client, url, root, name, budget,
+                         max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    """Retry one transient transport/incomplete read, retaining every attempt."""
-    last = None
-    for attempt in range(2):
-        attempt_name=f"{name}.attempt{attempt+1}"
-        try:
-            body,receipt=_fetch(client,url,root,attempt_name,budget)
-            for suffix in ("body","wire","receipt.json"):
-                (root/f"{attempt_name}.{suffix}").replace(root/f"{name}.{suffix}")
-            return body,receipt
-        except (httpx.TransportError,ValueError) as exc:
-            last=exc
-            if isinstance(exc,ValueError) and not str(exc).startswith("incomplete_source_capture:"):
-                raise
-    raise last
+    return capture_shared.fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                               attempts=2, schedule=(),
+                               fetch=_fetch)
 
 
 def _esri_polyline(geometry: dict) -> bytes:
@@ -225,12 +179,12 @@ def _load_replay(root: Path, name: str) -> tuple[bytes, dict]:
     return body, receipt
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     required = {"ids_seed", "bts_item", "service_directory", "service_before", "layer_before",
                 "count_before", "ids_before", "layer_after", "count_after", "ids_after", "service_after"}
     if not required <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS":
         raise ValueError("bts_ienc_item_identity_drift")
@@ -348,14 +302,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
 
 
 def _write_outputs(storage, prefix: str, outputs: dict[str,bytes]) -> dict[str,dict[str,object]]:
-    descriptors={}
-    for name,body in outputs.items():
-        write_immutable(storage,f"{prefix}/{name}",body)
-        snapshot=storage.object_snapshot(f"{prefix}/{name}")
-        descriptor={"bytes":len(body),"sha256":_sha(body)}
-        if snapshot is None or snapshot.size!=descriptor["bytes"] or storage.sha256_key(f"{prefix}/{name}")!=descriptor["sha256"] or storage.object_snapshot(f"{prefix}/{name}")!=snapshot:
-            raise ValueError("candidate_object_readback_failed:"+name)
-        descriptors[name]=descriptor
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 
@@ -401,9 +348,12 @@ def capture_coastlines_usace_ienc(storage: StagingStorageResource, *, version: s
             names=["ids_seed",*[name for name,_url in _capture_roster(ids)]]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures={name:_load_replay(root,name) for name in names}
-            if any(receipt!=retained_manifest["receipts"][name] for name,(_body,receipt) in captures.items()):
-                raise ValueError("retained_capture_manifest_receipt_mismatch")
+            captures=validated_capture_view(root,
+                receipts={name: retained_manifest["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_manifest_receipt_mismatch")
             expected_urls = dict(_capture_roster(ids))
             expected_urls["ids_seed"] = _query({"where":"1=1","returnIdsOnly":"true","f":"json"})
             for name,(_body,receipt) in captures.items():
@@ -427,13 +377,18 @@ def capture_coastlines_usace_ienc(storage: StagingStorageResource, *, version: s
             capture_budget=[existing_bytes]
             if existing_bytes>MAX_CAPTURE_BYTES: raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
-                seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
-                ids=json.loads(seed_body).get("objectIds")
-                if (not isinstance(ids, list) or not ids or any(type(oid) is not int or oid <= 0 for oid in ids)
-                        or len(set(ids)) != len(ids)):
-                    raise ValueError("source_seed_id_count_or_roster_drift")
-                captures["ids_seed"]=(seed_body,seed_receipt)
-                for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name,capture_budget)
+                def validate_seed(seed_body):
+                    ids=json.loads(seed_body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids or any(type(oid) is not int or oid <= 0 for oid in ids)
+                            or len(set(ids)) != len(ids)):
+                        raise ValueError("source_seed_id_count_or_roster_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_seed', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, capture_budget),
+                    on_validation_error=_validate)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         retained={}
@@ -447,7 +402,7 @@ def capture_coastlines_usace_ienc(storage: StagingStorageResource, *, version: s
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
-    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in sorted(captures.items())}))
+    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"]=capture_sha
     version="v"+_sha(_canonical({"source_record_sha256":audit["source_record_sha256"],
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
@@ -472,7 +427,7 @@ def capture_coastlines_usace_ienc(storage: StagingStorageResource, *, version: s
                  "official_service_directory":SERVICE_DIRECTORY_URL,
                  "linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"}}
                 if name == "bts_item" else {})}
-            for name,(_body,receipt) in sorted(captures.items())]
+            for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest={"schema_version":1,"approved":False,"title":"Coastlines (USACE IENC)","description":"Complete official USACE IENC COASTLINE_LINE feature class; unapproved faithful candidate. Inland chart coverage only; HIFLD historical equivalence and nationwide coastline completeness are not asserted.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers, Army Geospatial Center","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID (integer) and Feature_ID (string) values retained unchanged","geometry":"Polyline paths retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, historical baseline, ID/schema/coverage and rights decisions remain pending"}}],"lineage":"Current public USDOT BTS IENC item 7ec34864c8804468a9cf52d437fe4b6c documents bi-monthly USACE/AGC IENC updates and links the official IENCCloud feature-class service and master file geodatabase. The prior BTS item 3607d485a9854d6fa458bf507058ceae returned anonymous-access denial; current-item succession is not approved. This candidate is the exact published COASTLINE_LINE layer, not the entire IENC archive.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified polyline rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/coastlines-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No approved schema/compatibility contract.","pmtiles":"No display transformation approved."}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"source_fields":fields,"official_layer_name":"COASTLINE_LINE","official_source_item":"USDOT_BTS " + BTS_ITEM_ID,"prior_source_item":"USDOT_BTS 3607d485a9854d6fa458bf507058ceae","source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
@@ -480,7 +435,7 @@ def capture_coastlines_usace_ienc(storage: StagingStorageResource, *, version: s
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/coastlines-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
@@ -515,6 +470,11 @@ def capture_coastlines_usace_ienc(storage: StagingStorageResource, *, version: s
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
     from dagster_hifld.sources.capture_common import seal_ready_candidate
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"source_capture_evidence_sha256":capture_sha,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

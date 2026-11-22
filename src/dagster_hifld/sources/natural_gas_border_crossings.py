@@ -4,12 +4,13 @@ No filtering, source substitution acceptance, casts, ID mapping or publication.
 All native attributes/IDs/points and separate pinned US51 baselines survive.
 """
 from __future__ import annotations
+from dagster_hifld.sources import candidate_transaction
 import collections
 import shutil
 from dataclasses import asdict
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.http_capture import capture_http_response
 import io
-import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -23,6 +24,8 @@ import subprocess
 import tempfile
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -40,6 +43,7 @@ from dagster_hifld.release_approval import validate_release_provenance, verifier
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 SLUG='border-crossings-natural-gas'
 LAYER='natural_gas_border_crossings'
 SERVICE='https://geoappext.nrcan.gc.ca/arcgis/rest/services/NACEI/energy_infrastructure_of_north_america_en/MapServer'
@@ -90,10 +94,8 @@ def local_only(storage):
     if any(p.is_symlink() or(p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise NaturalGasCrossingsQuarantineError('linked_staging_object')
 
 
-def immutable(storage,key,body):
-    snapshot=storage.object_snapshot(key)
-    if snapshot is None:storage.write_key_if_unchanged(key,body,None)
-    elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:raise NaturalGasCrossingsQuarantineError('immutable_capture_changed:'+key)
+immutable = partial(write_immutable, error_type=NaturalGasCrossingsQuarantineError,
+                    error_prefix='immutable_capture_changed:')
 
 def processing_identity():
     root=Path(__file__).parents[3]
@@ -180,7 +182,7 @@ def source_ids(document):
 
 
 def acquire(storage,capture_dir=None):
-    local_only(storage);captures={};attempted={};total=0
+    local_only(storage);captures=RetainedCaptureView(Path(storage.local_dir));attempted={};total=0
     root=Path(capture_dir).absolute() if capture_dir else None
     if root is not None and ('..' in root.parts or not root.is_dir() or any(p.is_symlink() for p in [root,*root.parents])):raise NaturalGasCrossingsQuarantineError('unsafe_capture_root')
     def retain(name,body):
@@ -192,7 +194,7 @@ def acquire(storage,capture_dir=None):
         if root is None:
             try:body,receipt=fetch_one(storage,url)
             except NaturalGasCrossingsFetchError as exc:
-                retain(name,exc.body);captures[name]=(exc.body,exc.receipt);raise
+                retain(name,exc.body);captures[name]=(Path(storage.local_dir) / f"_raw-captures/{SLUG}/{digest(exc.body)}/{name}.body",exc.receipt);raise
             retain(name,body);raw_receipt=encode(receipt)
         else:
             body=bounded_input(root/(name+'.body'),MAX_BODY)
@@ -201,15 +203,14 @@ def acquire(storage,capture_dir=None):
         receipt_key=f'_raw-captures/{SLUG}/{digest(body)}/{name}.raw-receipt-{digest(raw_receipt)}.body'
         immutable(storage,receipt_key,raw_receipt)
         attempted[name].update(raw_receipt_read=True,raw_receipt_key=receipt_key,raw_receipt_sha256=digest(raw_receipt),raw_receipt_bytes=len(raw_receipt))
-        receipt=strict_json(raw_receipt);captures[name]=(body,receipt);total+=len(body)
+        receipt=strict_json(raw_receipt);captures[name]=(Path(storage.local_dir) / f"_raw-captures/{SLUG}/{digest(body)}/{name}.body",receipt);total+=len(body)
         if total>MAX_CAPTURE_BYTES:raise NaturalGasCrossingsQuarantineError('cumulative_capture_budget_exceeded')
         validate_capture(name,body,receipt,url)
         if name in PINS and (len(body)!=PINS[name]['bytes'] or digest(body)!=PINS[name]['sha256']):raise NaturalGasCrossingsQuarantineError('pinned_baseline_candidate_changed:'+name)
     try:
-        for name,url in request_plan().items():read(name,url)
-        ids=source_ids(strict_json(captures['ids_before'][0]))
-        for name,url in request_plan(ids).items():
-            if name not in captures:read(name,url)
+        capture_request_sequence(captures, request_plan().items(),
+            lambda retained: request_plan(source_ids(strict_json(retained['ids_before'][0]))).items(),
+            read)
         if root is not None and {p.name for p in root.iterdir()}!={name+suffix for name in captures for suffix in ('.body','.receipt.json')}:raise NaturalGasCrossingsQuarantineError('capture_directory_extra_or_missing_object')
         immutable(storage,f'_acquisition-attempts/{SLUG}/{uuid4().hex}.json',encode({'approved':False,'receipt_metadata_validated':True,'objects':attempted}))
         return captures
@@ -342,10 +343,10 @@ def manifest_for(captures,identity,parquet_pin):
 @contextmanager
 def candidate_lock(base,prefix):
     target=base/prefix;target.parent.mkdir(parents=True,exist_ok=True)
-    fd=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(fd,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:raise NaturalGasCrossingsQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX);yield target
+    with candidate_transaction.lock_path(
+            target.parent / ('.' + target.name + '.lock'), error_type=NaturalGasCrossingsQuarantineError,
+            unsafe_code='linked_candidate_lock', require_regular=False, buffered=True):
+        yield target
 
 def construction_record_key(version):
     return f'_construction-state/{SLUG}/{version}.json'
@@ -371,13 +372,13 @@ def original_bundle(storage,version,captures,identity,manifest,*,create=False):
         retained=load_first_construction(storage,key,version,fingerprint)
     bundle=strict_json(retained)['payload']
     if set(bundle)!={'manifest','captures'} or set(bundle['captures'])!=set(captures):raise NaturalGasCrossingsQuarantineError('original_binding_capture_roster_drift')
-    original={}
+    original=RetainedCaptureView(Path(storage.local_dir))
     for name,item in bundle['captures'].items():
         if set(item)!={'body_key','receipt'} or item['body_key']!=f"_raw-captures/{SLUG}/{item['receipt'].get('sha256')}/{name}.body":raise NaturalGasCrossingsQuarantineError('original_capture_body_key_drift')
         body=storage.read_key(item['body_key'])
         if name not in ('metadata_before','metadata_after') and body!=captures[name][0]:raise NaturalGasCrossingsQuarantineError('original_capture_bytes_differ')
         if name in ('metadata_before','metadata_after') and encode(semantic_metadata(strict_json(body)))!=encode(semantic_metadata(strict_json(captures[name][0]))):raise NaturalGasCrossingsQuarantineError('original_source_semantics_changed')
-        original[name]=(body,item['receipt'])
+        original[name]=(Path(storage.local_dir) / item['body_key'],item['receipt'])
     original_table,original_audit=inspect_captures(original)
     current_table,current_audit=inspect_captures(captures)
     if not original_table.equals(current_table,check_metadata=True) or encode(original_audit)!=encode(current_audit):raise NaturalGasCrossingsQuarantineError('original_source_values_or_semantics_changed')
@@ -394,9 +395,11 @@ def source_payloads(captures,identity,audit,manifest,table):
     for name,(body,receipt) in captures.items():values['raw/captures/'+name+'.body']=body;values['raw/captures/'+name+'.receipt.json']=encode(receipt)
     return values
 
-def checked_ready_write(path,body):
-    if path.write_bytes(body)!=len(body) or bounded_input(path,2*1024*1024)!=body:
-        raise NaturalGasCrossingsQuarantineError('private_ready_incomplete_write')
+def checked_ready_write(path, body):
+    candidate_transaction.write_verified_private_bytes(
+        path.parent, path.name, body,
+        readback=lambda root, name: bounded_input(root / name, 2 * 1024 * 1024),
+        error_type=NaturalGasCrossingsQuarantineError, error_code='private_ready_incomplete_write')
 
 def verify_private(root,version,capture_hash,captures,identity,audit,manifest,table):
     """Bind the complete source-owned inventory before first seal and exposure."""
@@ -471,21 +474,27 @@ def stage_natural_gas_border_crossings(storage,*,capture_dir=None):
                 pin={'sha256':sha256_file(parquet),'bytes':parquet.stat().st_size};manifest=manifest_for(captures,identity,pin)
                 # The entire private candidate is complete before first trust state
                 # is installed. A failed metadata/container build cannot bind history.
-                for name,body in source_payloads(captures,identity,audit,manifest,table).items():
-                    (private/name).parent.mkdir(parents=True,exist_ok=True)
-                    if (private/name).write_bytes(body)!=len(body)or(private/name).read_bytes()!=body:raise NaturalGasCrossingsQuarantineError('private_source_object_incomplete_write')
-                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'capture_fingerprint':capture_hash,'objects':{str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file()}}
-                checked_ready_write(private/READY,encode(ready))
-                verify_private(private,version,capture_hash,captures,identity,audit,manifest,table)
-                captures,manifest=original_bundle(storage,version,captures,identity,manifest,create=True)
-                # An existing complete outside witness returns original receipts.
-                # Rebuild only the private candidate from those exact originals.
-                for name,body in source_payloads(captures,identity,audit,manifest,table).items():
-                    if (private/name).write_bytes(body)!=len(body)or(private/name).read_bytes()!=body:raise NaturalGasCrossingsQuarantineError('original_private_source_object_incomplete_write')
-                ready['objects']={str(p.relative_to(private)):sha256_file(p) for p in private.rglob('*') if p.is_file() and str(p.relative_to(private))!=READY}
-                checked_ready_write(private/READY,encode(ready))
-                verify_private(private,version,capture_hash,captures,identity,audit,manifest,table)
-                os.rename(private,target)
+                def ready_marker(private, *, final=False):
+                    ready = {'version': version, 'approved': False, 'processing_fingerprint': fingerprint,
+                             'capture_fingerprint': capture_hash,
+                             'objects': candidate_transaction.private_inventory(private, exclude={READY} if final else ())}
+                    return READY, encode(ready)
+                def anchor():
+                    nonlocal captures, manifest
+                    captures, manifest = original_bundle(
+                        storage, version, captures, identity, manifest, create=True)
+                candidate_transaction.install_private_candidate(
+                    private, target, source_payloads(captures, identity, audit, manifest, table).items(),
+                    write_one=lambda root, name, body: candidate_transaction.write_verified_private_bytes(
+                        root, name, body, readback=lambda root, name: (root / name).read_bytes(),
+                        error_type=NaturalGasCrossingsQuarantineError, error_code='private_source_object_incomplete_write', create_parents=True),
+                    ready=ready_marker, write_ready=lambda root, name, body: checked_ready_write(root / name, body),
+                    validate_before=lambda private: verify_private(private, version, capture_hash, captures, identity, audit, manifest, table), anchor=anchor,
+                    rewrite_objects=lambda: source_payloads(captures, identity, audit, manifest, table).items(),
+                    write_replacement=lambda root, name, body: candidate_transaction.write_verified_private_bytes(
+                        root, name, body, readback=lambda root, name: (root / name).read_bytes(),
+                        error_type=NaturalGasCrossingsQuarantineError, error_code='original_private_source_object_incomplete_write'), ready_after=lambda private: ready_marker(private, final=True),
+                    validate_after=lambda private: verify_private(private, version, capture_hash, captures, identity, audit, manifest, table))
         return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
     except (ValueError,OSError,KeyError,TypeError,RuntimeError,sqlite3.Error,shapely.errors.GEOSException) as exc:
         retained=retain_failure(storage,captures,str(exc));raise NaturalGasCrossingsQuarantineError(str(exc)+'; retained:'+retained) from exc

@@ -7,8 +7,12 @@ capture; each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+
+from collections.abc import Mapping
+
 import json
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -16,11 +20,14 @@ from uuid import uuid4
 
 import httpx
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
     capture_witness,
@@ -41,6 +48,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 
 DATASET_SLUG = "nautical-publication-information-areas-usace-ienc"
@@ -84,8 +93,8 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
                  ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))])
     return urls
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items() if name != "bts_pdf"}
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
+    docs = CaptureDocuments(captures, (name for name in captures if name != 'bts_pdf'))
     bts_item = docs["bts_item"]
     bts_pdf = captures["bts_pdf"][0]
     description = bts_item.get("description")
@@ -149,14 +158,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "drift_guard":"BTS item delegation, exact layer id/name, count, field names/types, CRS, page errors, and before/after ID membership are checked."}
 
 def _write_outputs(storage, prefix: str, outputs: dict[str,bytes]) -> dict[str,dict[str,object]]:
-    descriptors={}
-    for name,body in outputs.items():
-        write_immutable(storage,f"{prefix}/{name}",body)
-        snapshot=storage.object_snapshot(f"{prefix}/{name}")
-        descriptor={"bytes":len(body),"sha256":_sha(body)}
-        if snapshot is None or snapshot.size!=descriptor["bytes"] or storage.sha256_key(f"{prefix}/{name}")!=descriptor["sha256"] or storage.object_snapshot(f"{prefix}/{name}")!=snapshot:
-            raise ValueError("candidate_object_readback_failed:"+name)
-        descriptors[name]=descriptor
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 def capture_usace_nautical_publication_information_areas(storage: StagingStorageResource, *, version: str,
@@ -200,9 +202,12 @@ def capture_usace_nautical_publication_information_areas(storage: StagingStorage
             names=["ids_seed","bts_item","bts_pdf","layer_before","count_before","ids_before",*[f"page_{i:03d}" for i in range((len(ids)+PAGE_SIZE-1)//PAGE_SIZE)],"layer_after","count_after","ids_after"]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures={name:_load_replay(root,name) for name in names}
-            if any(receipt!=retained_manifest["receipts"][name] for name,(_body,receipt) in captures.items()):
-                raise ValueError("retained_capture_manifest_receipt_mismatch")
+            captures=validated_capture_view(root,
+                receipts={name: retained_manifest["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_manifest_receipt_mismatch")
             attempt_map=retained_manifest.get("attempts",{})
             if not isinstance(attempt_map,dict): raise ValueError("retained_capture_attempt_manifest_invalid")
             for name,receipt in attempt_map.items():
@@ -220,15 +225,18 @@ def capture_usace_nautical_publication_information_areas(storage: StagingStorage
             capture_budget=[existing_bytes]
             if existing_bytes>MAX_CAPTURE_BYTES: raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
-                seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
-                ids=json.loads(seed_body).get("objectIds")
-                if (not isinstance(ids,list) or not ids
-                        or any(type(oid) is not int or oid <= 0 for oid in ids)
-                        or len(set(ids)) != len(ids)): raise ValueError("source_seed_id_roster_drift")
-                captures["ids_seed"]=(seed_body,seed_receipt)
-                for name,url in _capture_roster(ids):
-                    captures[name]=_fetch_retry(client,url,root,name,capture_budget,
-                        allow_arcgis_item_redirect=name=="bts_pdf")
+                def validate_seed(seed_body):
+                    ids=json.loads(seed_body).get("objectIds")
+                    if (not isinstance(ids,list) or not ids
+                            or any(type(oid) is not int or oid <= 0 for oid in ids)
+                            or len(set(ids)) != len(ids)): raise ValueError("source_seed_id_roster_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_seed', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, capture_budget, allow_arcgis_item_redirect=name == 'bts_pdf'),
+                    on_validation_error=_validate)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         retained={}
@@ -242,13 +250,13 @@ def capture_usace_nautical_publication_information_areas(storage: StagingStorage
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
-    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in sorted(captures.items())}))
+    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"]=capture_sha
     version="v"+_sha(_canonical({"source_record_sha256":audit["source_record_sha256"],
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    inputs=[{"input_id":name,"producer":("USDOT Bureau of Transportation Statistics (BTS)" if name in {"bts_item","bts_pdf"} else PUBLISHER),"host":urlsplit(receipt["url"]).hostname,"role":"official_distributor" if name in {"bts_item","bts_pdf"} else "producer_publication","canonical_url":BTS_ITEM_URL if name in {"bts_item","bts_pdf"} else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC / BTS; attribution and rights review pending.","release_date":None,"release_date_unknown_reason":("The BTS item describes the IENC distribution but does not identify this layer's release date." if name in {"bts_item","bts_pdf"} else "Official layer metadata does not establish the source release date."),**({"distributor":"USACE IENC Feature Classes service","delegation_evidence":{"bts_item_url":BTS_ITEM_URL,"bts_item_id":CURRENT_BTS_ITEM_ID,"bts_item_owner":"USDOT_BTS","linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes","basis":"Captured BTS IENC record identifies the program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase."}} if name in {"bts_item","bts_pdf"} else {})} for name,(_body,receipt) in sorted(captures.items())]
+    inputs=[{"input_id":name,"producer":("USDOT Bureau of Transportation Statistics (BTS)" if name in {"bts_item","bts_pdf"} else PUBLISHER),"host":urlsplit(receipt["url"]).hostname,"role":"official_distributor" if name in {"bts_item","bts_pdf"} else "producer_publication","canonical_url":BTS_ITEM_URL if name in {"bts_item","bts_pdf"} else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC / BTS; attribution and rights review pending.","release_date":None,"release_date_unknown_reason":("The BTS item describes the IENC distribution but does not identify this layer's release date." if name in {"bts_item","bts_pdf"} else "Official layer metadata does not establish the source release date."),**({"distributor":"USACE IENC Feature Classes service","delegation_evidence":{"bts_item_url":BTS_ITEM_URL,"bts_item_id":CURRENT_BTS_ITEM_ID,"bts_item_owner":"USDOT_BTS","linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes","basis":"Captured BTS IENC record identifies the program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase."}} if name in {"bts_item","bts_pdf"} else {})} for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest={"schema_version":1,"approved":False,"title":"Nautical Publication Information Areas (USACE IENC)","description":"Complete official USACE IENC NAUTICAL_PUBLICATION_INFORMATION_AREA feature class; unapproved faithful candidate. Does not assert national coverage or compatibility with the historical HIFLD/FEMA baseline.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":"USDOT_BTS current public item 7ec34864c8804468a9cf52d437fe4b6c and its PDF describe the current IENC distribution and link the official USACE IENC Feature Classes service and native geodatabase. Prior item 3607d485a9854d6fa458bf507058ceae is recorded as historical; succession/continuity is unverified and not accepted. This candidate represents only the complete observed NAUTICAL_PUBLICATION_INFORMATION_AREA layer 67, not national coverage.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/nautical-publication-information-areas-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No pinned complete native GDB inventory or schema/compatibility approval.","pmtiles":"No display transformation approved."}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"source_fields":fields,"official_layer_name":"NAUTICAL_PUBLICATION_INFORMATION_AREA","current_official_source_item":"USDOT_BTS 7ec34864c8804468a9cf52d437fe4b6c","prior_source_item":"USDOT_BTS 3607d485a9854d6fa458bf507058ceae","prior_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
@@ -256,7 +264,7 @@ def capture_usace_nautical_publication_information_areas(storage: StagingStorage
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/nautical-publication-information-areas-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
@@ -291,7 +299,12 @@ def capture_usace_nautical_publication_information_areas(storage: StagingStorage
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
     from dagster_hifld.sources.capture_common import seal_ready_candidate
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity
     )

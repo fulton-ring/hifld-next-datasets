@@ -17,6 +17,7 @@ import pyarrow.parquet as pq
 import shapely
 
 from dagster import AssetCheckSeverity
+from dagster_hifld.sources import arcgis_adaptive
 from dagster_hifld.assets.us_landslide_regions import (
     us_landslide_regions,
     us_landslide_regions_approved_baseline_drift,
@@ -706,7 +707,7 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
                            "wire_sha256": src._sha(body), "observed_at": "t"}
                 (capture_root / f"{name}.receipt.json").write_bytes(
                     json.dumps(receipt).encode())
-            gaps = src._plan_page_gaps(capture_root, roster)
+            gaps = arcgis_adaptive.plan_page_gaps(src._capture_spec(), capture_root, roster, src._load_state(capture_root))
             self.assertEqual(gaps, [(4, 2)])
 
     def test_complete_fixture_capture_materializes_and_repeats(self):

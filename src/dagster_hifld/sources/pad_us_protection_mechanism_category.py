@@ -26,18 +26,28 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import capture_retention_budget
+from dagster_hifld.sources.nhd_capture import capture_fixed_keyset_layer
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_layer import load_replay, save_state as _save_state
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
-    validate_capture_request_identity, write_immutable,
+    candidate_prefix,
+    capture_get,
+    content_derived_version,
+    processing_identity,
+    quarantine_incomplete_capture,
+    verify_cached_candidate,
+    validate_capture_request_identity,
+    write_immutable,
+    reuse_sealed_candidate,
+    load_candidate_checkpoint,
+    stage_candidate_objects,
+    write_immutable_file as _write_immutable_file,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.validation import sha256_file
@@ -713,15 +723,6 @@ def _parquet_descriptor(path: Path) -> dict[str, object]:
     return {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
 
 
-def _write_immutable_file(storage: StagingStorageResource, key: str, source: Path,
-                          descriptor: Mapping[str, object]) -> None:
-    """write_immutable for a local file too large to buffer as bytes."""
-    snapshot = storage.object_snapshot(key)
-    if snapshot is None:
-        storage.upload_local_file(source, key)
-        return
-    if snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
-        raise ValueError("immutable_staged_object_changed:" + key)
 
 
 def _default_client() -> httpx.Client:
@@ -738,6 +739,33 @@ def _doc_client() -> httpx.Client:
     )
 
 
+def _keyset_before(retained: dict) -> int:
+    count = json.loads(retained["count_before"][0]).get("count")
+    roster = _validate_ids_roster(
+        json.loads(retained["ids_before"][0]).get("objectIds"), "ids_before")
+    try:
+        validate_capture_witness(count, roster, count, roster)
+    except ValueError as exc:
+        raise PadUsProtectionError(str(exc)) from exc
+    return count
+
+
+def _keyset_cursor(features: list[dict], last_objectid: int) -> int:
+    for feature in features:
+        last_objectid, _vertices = _validate_feature(
+            feature, tuple(entry[0] for entry in NATIVE_FIELDS), last_objectid)
+    return last_objectid
+
+
+def _capture_capacity_budget(root: Path) -> int:
+    free = shutil.disk_usage(root).free
+    if free < MIN_FREE_BYTES:
+        raise PadUsProtectionError("disk_floor_before_acquisition")
+    retained = sum(path.stat().st_size for path in root.iterdir()
+                   if path.is_file() and path.name.endswith((".body", ".wire")))
+    return retained + max(0, free - MIN_FREE_BYTES)
+
+
 def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, client: httpx.Client | None = None,
                              doc_client: httpx.Client | None = None) -> dict[str, object]:
     """Retain every raw response for the pinned layer, resuming earlier progress.
@@ -746,102 +774,21 @@ def fetch_pad_us_protection_mechanism_category_pages(capture_root: Path, *, clie
     """
     capture_root = Path(capture_root).absolute()
     capture_root.mkdir(parents=True, exist_ok=True)
-    state = _load_state(capture_root)
-    pages: list[dict[str, object]] = list(state.get("data_pages", []))
-    tail: dict[str, object] | None = state.get("tail")
-    owner_client = client is None
-    owner_doc = doc_client is None
-    active = client or _default_client()
-    docs_active = doc_client or _doc_client()
-    first_captured_at = pages[0]["captured_at"] if pages else datetime.now(timezone.utc).isoformat()
-    try:
-        retained: dict[str, tuple[bytes, dict[str, object]]] = {}
-        for name in METADATA_NAMES:
-            url = _metadata_urls()[name]
-            active_client = docs_active if name == "service_doc" else active
-            retained[name] = _retained_or_fetch(active_client, capture_root, name, url)
-            if name != "service_doc":
-                _reject_error_response(capture_root, name, retained[name][0])
-        count_before = json.loads(retained["count_before"][0]).get("count")
-        roster_before = _validate_ids_roster(
-            json.loads(retained["ids_before"][0]).get("objectIds"), "ids_before")
-        try:
-            validate_capture_witness(count_before, roster_before, count_before, roster_before)
-        except ValueError as exc:
-            raise PadUsProtectionError(str(exc)) from exc
-        last_objectid = pages[-1]["last_objectid"] if pages else 0
-        while not (capture_root / "page_tail.body").exists():
-            name = f"page_{len(pages):06d}"
-            body, receipt = _retained_or_fetch(active, capture_root, name, _page_url(last_objectid))
-            page = json.loads(body)
-            if not isinstance(page, dict) or "error" in page:
-                _witness_error_response(capture_root, name)
-                raise PadUsProtectionError("source_page_error")
-            features = page.get("features")
-            if not isinstance(features, list):
-                raise PadUsProtectionError("source_page_missing_features")
-            if not features:
-                if last_objectid == 0:
-                    raise PadUsProtectionError("source_page_population_incomplete")
-                # An empty page in a data slot is the completeness witness: the same
-                # query URL defines page_tail, so retain its exact bytes under that name.
-                for suffix in ("body", "wire", "receipt.json"):
-                    (capture_root / f"page_tail.{suffix}").write_bytes(
-                        (capture_root / f"{name}.{suffix}").read_bytes())
-                break
-            for feature in features:
-                last_objectid, _vertices = _validate_feature(
-                    feature, tuple(entry[0] for entry in NATIVE_FIELDS), last_objectid)
-            more = page.get("exceededTransferLimit")
-            if len(features) < PAGE_SIZE and more is True:
-                raise PadUsProtectionError("source_page_transfer_truncated")
-            pages.append({"name": name, "last_objectid": last_objectid, "features": len(features),
-                          "exceeded_transfer_limit": more, "captured_at": receipt["observed_at"],
-                          "body_sha256": _sha(body)})
-            _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
-            if len(pages) > (count_before + PAGE_SIZE - 1) // PAGE_SIZE:
-                raise PadUsProtectionError("source_page_count_exceeds_reported_population")
-            if len(features) < PAGE_SIZE or more is False:
-                tail_body, tail_receipt = _retained_or_fetch(active, capture_root, "page_tail",
-                                                             _page_url(last_objectid))
-                _reject_error_response(capture_root, "page_tail", tail_body)
-                if json.loads(tail_body).get("features") != []:
-                    raise PadUsProtectionError("source_tail_page_not_empty")
-                tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                        "captured_at": tail_receipt["observed_at"], "body_sha256": _sha(tail_body)}
-                _save_state(capture_root, {"data_pages": pages, "tail": tail, "complete": False})
-                break
-        if tail is None and (capture_root / "page_tail.body").exists():
-            tail_receipt = json.loads((capture_root / "page_tail.receipt.json").read_bytes())
-            tail = {"name": "page_tail", "last_objectid": last_objectid, "features": 0,
-                    "captured_at": tail_receipt["observed_at"]}
-        if tail is None or not (capture_root / "page_tail.body").exists():
-            raise PadUsProtectionError("source_tail_page_not_empty")
-        for name, url in (("layer_after", LAYER_URL + "?f=pjson"),
-                          ("service_after", SERVICE_URL + "?f=pjson"),
-                          ("count_after", _count_url()),
-                          ("ids_after", _ids_url())):
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            _reject_error_response(capture_root, name, body)
-            retained[name] = (body, _read_capture(capture_root, name)[1])
-        if json.loads(retained["count_after"][0]).get("count") != count_before:
-            raise PadUsProtectionError("source_metadata_or_count_changed_during_capture")
-    except PadUsProtectionError:
-        if owner_client:
-            active.close()
-        if owner_doc:
-            docs_active.close()
-        raise
-    except Exception as exc:
-        if owner_client:
-            active.close()
-        if owner_doc:
-            docs_active.close()
-        raise PadUsProtectionError("source_capture_failed:" + type(exc).__name__) from exc
-    if owner_client:
-        active.close()
-    if owner_doc:
-        docs_active.close()
+    with capture_retention_budget(capture_root, _capture_capacity_budget(capture_root)):
+        pages, tail, first_captured_at = capture_fixed_keyset_layer(
+            capture_root, client=client, doc_client=doc_client,
+            load_state=_load_state, save_state=_save_state,
+            default_client=_default_client, document_client=_doc_client,
+            retained_or_fetch=_retained_or_fetch, reject_error_response=_reject_error_response,
+            witness=_witness_error_response, validate_cursor=_keyset_cursor,
+            page_url=_page_url, read_capture=_read_capture,
+            metadata_urls={name: _metadata_urls()[name] for name in METADATA_NAMES},
+            closing_urls={"layer_after": LAYER_URL + "?f=pjson",
+                          "service_after": SERVICE_URL + "?f=pjson",
+                          "count_after": _count_url(), "ids_after": _ids_url()},
+            error_type=PadUsProtectionError, page_size=PAGE_SIZE,
+            validate_before=_keyset_before,
+            page_count_error="source_page_count_exceeds_reported_population")
 
     last_captured_at = str(tail["captured_at"])
     # Construction happens once at seal time (capture_pad_us_protection_mechanism_category);
@@ -881,7 +828,7 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     parquet_path = Path(extracted["parquet_path"])
     parquet_descriptor = _parquet_descriptor(parquet_path)
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
-    if storage.object_snapshot(state_key) is not None:
+    def verify_existing():
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             {"source_record_sha256": extracted["record_sha"],
@@ -891,6 +838,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "source_reported_count": extracted["source_reported_count"],
              "null_geometry_count": extracted["null_geometry_count"]},
             parquet_descriptor)
+
+    reused = reuse_sealed_candidate(storage, state_key, verify_existing)
+    if reused is not None:
+        return reused
     audit = {
         "source_feature_count": extracted["feature_count"], "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
@@ -1110,23 +1061,12 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     descriptors: dict[str, dict[str, object]] = {}
     _write_immutable_file(storage, f"{prefix}/{parquet_name}", parquet_path, parquet_descriptor)
     descriptors[parquet_name] = dict(parquet_descriptor)
-    for relative, body in metadata_outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-        descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted(receipts):
-        body, receipt = _read_capture(capture_root, name)
-        wire = (capture_root / f"{name}.wire").read_bytes()
-        for suffix, blob in (("body", body), ("wire", wire),
-                             ("receipt.json", _canonical(receipt) + b"\n")):
-            relative = f"raw/{name}.{suffix}"
-            write_immutable(storage, f"{prefix}/{relative}", blob)
-            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
-    fingerprint = _sha(_canonical(identity))
-    payload = {"processing_identity": identity,
-               "source_record_sha256": audit["source_record_sha256"],
-               "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": receipts, "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    stage_candidate_objects(
+        storage, prefix, state_key, version, identity, metadata_outputs,
+        capture_root, receipts, _read_capture,
+        descriptors=descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'])
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
@@ -1147,15 +1087,9 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
                              version: str, identity: Mapping[str, object],
                              audit: Mapping[str, object],
                              current_parquet: Mapping[str, object]) -> dict[str, object]:
-    fingerprint = _sha(_canonical(identity))
-    bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
-    payload = bundle.get("payload")
-    if (not isinstance(payload, dict) or set(payload) != {"processing_identity",
-            "source_record_sha256", "source_schema_sha256", "capture_receipts", "objects"}
-            or payload["processing_identity"] != identity
-            or payload["source_record_sha256"] != audit["source_record_sha256"]
-            or payload["source_schema_sha256"] != audit["source_schema_sha256"]):
-        raise PadUsProtectionError("cached_first_candidate_identity_or_source_changed")
+    fingerprint, payload = load_candidate_checkpoint(
+        storage, state_key, version, identity,
+        audit['source_record_sha256'], audit['source_schema_sha256'], PadUsProtectionError)
     expected_objects = {name: descriptor for name, descriptor in payload["objects"].items()}
     verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
                             fingerprint, identity, audit["source_record_sha256"],

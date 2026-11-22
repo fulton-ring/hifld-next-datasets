@@ -15,6 +15,7 @@ contract, baseline, rights and release acceptance remain unapproved.
 """
 from __future__ import annotations
 
+
 import io
 import json
 import math
@@ -30,10 +31,12 @@ import pyarrow.parquet as pq
 import shapely
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
 from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
@@ -41,6 +44,7 @@ from dagster_hifld.sources.capture_common import (
     content_derived_version,
     processing_identity,
     write_immutable,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -251,7 +255,7 @@ def _validate_attributes(attributes: dict, fields: list[dict], label: str) -> No
 
 
 def _population(captures: dict[str, tuple[bytes, dict]], page_size: int = PAGE_SIZE) -> tuple[dict, list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     if _canonical(docs["service_before"]) != _canonical(docs["service_after"]):
         raise ValueError("wfigs_service_changed_during_capture")
     layer, layer_after = docs["layer_before"], docs["layer_after"]
@@ -508,30 +512,28 @@ def capture_wfigs_interagency_fire_perimeters(storage: StagingStorageResource, *
                     ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
                     ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
                 ]
-                for name, url in static:
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids, list) or not ids
-                        or any(type(value) is not int for value in ids)
-                        or len(ids) != len(set(ids))):
-                    raise ValueError("wfigs_initial_id_population_drift")
-                ordered_ids = sorted(ids)
-                for start in range(0, len(ordered_ids), page_size):
-                    name = f"page_{start:05d}"
-                    captures[name] = _capture(client, _scope_query(name), root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
-                for name, url in [
-                    ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                    ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                    ("layer_after", LAYER_URL + "?f=pjson"),
-                    ("service_after", SERVICE_URL + "?f=pjson"),
-                ]:
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
+                def fetch(client, url, root, name):
+                    nonlocal retained
+                    value = _capture(client, url, root, name, retained)
+                    retained += value[1]["bytes"] + value[1].get("wire_bytes", 0)
+                    return value
+                def roster(ids):
+                    return [(f"page_{start:05d}", _scope_query(f"page_{start:05d}"))
+                            for start in range(0, len(ids), page_size)] + [
+                        (name, _scope_query(name)) for name in ("count_after", "ids_after", "layer_after", "service_after")]
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids
+                            or any(type(value) is not int for value in ids) or len(ids) != len(set(ids))):
+                        raise ValueError("wfigs_initial_id_population_drift")
+                    return sorted(ids)
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, page_size, client=client,
+                    captures=captures, discovery_documents=static, roster=roster,
+                    validate_seed=validate_seed, fetch=fetch, on_validation_error=_population)
             manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         "artifact_names": sorted(captures),
-                        "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())}}
+                        "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}}
             (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")
         except Exception as exc:
             receipts = {}
@@ -554,7 +556,7 @@ def capture_wfigs_interagency_fire_perimeters(storage: StagingStorageResource, *
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, resolved_version)
     parquet_path = f"geoparquet/{FILE_SLUG}.parquet"
     inputs = []
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         inputs.append({
             "input_id": name + ":" + receipt["sha256"],
             "producer": PUBLISHER,
@@ -644,8 +646,7 @@ def capture_wfigs_interagency_fire_perimeters(storage: StagingStorageResource, *
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = (root / f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
+    write_candidate_outputs(storage, prefix, outputs, snapshot_check="none")
     ready = {"approved": False, "version": resolved_version,
              "objects": {parquet_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
              "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"],

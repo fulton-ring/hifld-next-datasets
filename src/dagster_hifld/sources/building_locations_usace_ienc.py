@@ -1,10 +1,12 @@
 """Native, receipt-bound draft capture of the official USACE IENC building layer."""
 from __future__ import annotations
 
+
 import json
 import math
 import shutil
 import struct
+
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -14,6 +16,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from pyproj import CRS
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -21,9 +25,12 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -55,24 +62,7 @@ EXPECTED_EXTENT = {"xmin":-96.41946399999995,"ymin":29.69832880000007,
 EXPECTED_CRS = CRS.from_epsg(4326)
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool=True) -> bool:
-    if not isinstance(value,dict): raise ValueError(label+"_crs_drift")
-    found=[]
-    for key in ("wkid","latestWkid"):
-        if key in value:
-            wkid=value[key]
-            if type(wkid) is not int or wkid != 4326: raise ValueError(label+"_crs_drift")
-            found.append(4326)
-    for key in ("wkt","wkt2"):
-        if key in value:
-            raw=value[key]
-            if not isinstance(raw,str) or not raw.strip(): raise ValueError(label+"_crs_drift")
-            try: parsed=CRS.from_wkt(raw)
-            except Exception as exc: raise ValueError(label+"_crs_drift") from exc
-            if not parsed.equals(EXPECTED_CRS,ignore_axis_order=True): raise ValueError(label+"_crs_drift")
-            found.append(4326)
-    if (required and not found) or len(set(found))>1: raise ValueError(label+"_crs_drift")
-    return bool(found)
+_validate_spatial_reference = crs_validation.validate_spatial_reference
 
 
 def _query(params: dict[str,object]) -> str:
@@ -109,16 +99,14 @@ def _read_replay(root: Path, ids: list[int]):
         raise ValueError("capture_manifest_invalid")
     validate_capture_roster(root,set(roster)|{"capture_manifest.json"})
     if roster!=capture_roster_digests(root,exclude={"capture_manifest.json"}): raise ValueError("capture_artifact_roster_changed")
-    result={}
-    for name in sorted(names):
-        body,wire,receipt=_load_capture(root,name)
-        if receipt!=manifest["receipts"].get(name): raise ValueError("capture_receipt_manifest_mismatch:"+name)
-        result[name]=(body,receipt)
-    return result
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=dict.fromkeys(manifest["receipts"], ""), load_capture=_load_capture,
+        validate_request_identity=lambda name, receipt, url: None,
+        receipt_error="capture_receipt_manifest_mismatch")
 
 
 def _validate(captures: dict[str,tuple[bytes,dict]]):
-    docs={name:json.loads(body) for name,(body,_receipt) in captures.items()}
+    docs=CaptureDocuments(captures)
     ids=capture_witness(captures)
     if docs["bts_item"].get("id")!=BTS_ITEM_ID or docs["bts_item"].get("owner")!="USDOT_BTS" or docs["bts_item"].get("type")!="PDF": raise ValueError("bts_item_identity_drift")
     bts_description=" ".join(str(docs["bts_item"].get(k,"")) for k in ("title","description"))
@@ -224,18 +212,22 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
         root.mkdir(parents=True,exist_ok=False);captures={}
         try:
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-building-draft"}) as client:
-                urls=[("bts_item",BTS_ITEM_URL),("directory",SERVICE_DIRECTORY_URL),("service_before",SERVICE_URL+"?f=pjson"),("layer_before",LAYER_URL+"?f=pjson"),
-                      ("count_before",_query({"where":"1=1","returnCountOnly":"true","f":"json"})),("ids_before",_query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
-                for name,url in urls: captures[name]=_capture(client,url,root,name)
-                ids=json.loads(captures["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids,list) or not ids or any(type(i)is not int or i<=0 for i in ids)
-                        or len(set(ids))!=len(ids)): raise ValueError("source_seed_id_roster_drift")
-                for i,start in enumerate(range(0,len(ids),BATCH_SIZE)):
-                    pageids=ids[start:start+BATCH_SIZE]
-                    url=_query({"objectIds":",".join(map(str,pageids)),"outFields":"*","returnGeometry":"true","orderByFields":"OBJECTID ASC","f":"json"})
-                    captures[f"page_{i:03d}"]=_capture(client,url,root,f"page_{i:03d}")
-                for name,url in [("service_after",SERVICE_URL+"?f=pjson"),("layer_after",LAYER_URL+"?f=pjson"),
-                    ("count_after",_query({"where":"1=1","returnCountOnly":"true","f":"json"})),("ids_after",_query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]: captures[name]=_capture(client,url,root,name)
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids or any(type(i) is not int or i <= 0 for i in ids)
+                            or len(set(ids)) != len(ids)):
+                        raise ValueError("source_seed_id_roster_drift")
+                    return ids
+                def roster(ids):
+                    return layer_capture_roster(ids, layer_url=LAYER_URL, service_url=SERVICE_URL,
+                        page_size=BATCH_SIZE,
+                        extra_documents=(("bts_item", BTS_ITEM_URL), ("directory", SERVICE_DIRECTORY_URL)),
+                        after_order=("service_after", "layer_after", "count_after", "ids_after"))
+                captures = RetainedCaptureView(root, captures)
+                discovery = roster([])[:6]
+                capture_layer(LAYER_URL, root, 192_000_000, BATCH_SIZE, client=client,
+                    captures=captures, discovery_documents=discovery, roster=roster,
+                    validate_seed=validate_seed, fetch=_capture, on_validation_error=_validate)
             fields,features,audit=_validate(captures)
         except Exception as exc:
             receipts={};names=set()
@@ -252,7 +244,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
                 except (OSError,ValueError): pass
             if captures:quarantine_incomplete_capture(storage,root,DATASET_SLUG,version,captures,type(exc).__name__)
             raise
-        (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"receipts":{n:r for n,(_b,r) in sorted(captures.items())},
+        (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
         captures=_read_replay(root,ids)
     fields,features,audit=_validate(captures)
@@ -271,7 +263,7 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
             cur,wire,receipt=_load_capture(root,name);old=previous[name]
             if any(receipt.get(k)!=old.get(k) for k in ("complete_body","status","bytes","sha256","wire_bytes","wire_sha256")) or cur!=body or _sha(wire)!=old.get("wire_sha256"):
                 raise ValueError("cached_source_capture_content_changed:"+name)
-    receipts=existing["capture_receipts"] if existing else {n:r for n,(_b,r) in sorted(captures.items())}
+    receipts=existing["capture_receipts"] if existing else {n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))}
     audit.update({"source_capture_evidence_sha256":capture_hash,"source_capture_evidence":capture_identity,
         "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
         "baseline_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
@@ -312,12 +304,13 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
             "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"baseline_accepted":False,
             "coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     objects={}
-    for name,body in sorted(outputs.items()):
-        key=f"{prefix}/{name}";write_immutable(storage,key,body);snap=storage.object_snapshot(key)
-        if snap is None or snap.size!=len(body) or storage.sha256_key(key)!=_sha(body):raise ValueError("candidate_readback_failed:"+name)
-        objects[name]={"bytes":len(body),"sha256":_sha(body)}
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],
-        "source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":objects})
+    objects = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content", error_prefix='candidate_readback_failed:')
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, objects,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(repo,identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],"source_population_complete":True,
         "source_id_sha256":audit["source_id_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"source_capture_evidence_sha256":capture_hash,

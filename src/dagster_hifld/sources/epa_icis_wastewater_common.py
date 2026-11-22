@@ -1,6 +1,7 @@
 """Shared EPA ICIS wastewater family core (EPA_GEO FRS_Wastewater FeatureServer)."""
 from __future__ import annotations
 
+
 import json
 import math
 import re
@@ -17,9 +18,14 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.epa_capture import OffsetCaptureSpec, capture_offset_pages
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -97,7 +103,7 @@ def _capture_descriptors(root: Path, captures: dict[str, tuple[bytes, dict]]) ->
         raise ValueError("capture_request_count_invalid")
     result = {}
     total_payload = total_receipts = 0
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
             raise ValueError("capture_name_invalid")
         if (root / f"{name}.body").read_bytes() != body:
@@ -205,9 +211,8 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
             max_size = (MAX_CAPTURE_RECEIPT_BYTES if kind == "receipt" else
                         min(MAX_RESPONSE_BYTES, manifest["response_budget_bytes"]))
             _read_bounded_capture_file(root / artifact["file"], max_size, expected_bytes=artifact["bytes"])
-    captures: dict[str, tuple[bytes, dict]] = {}
-    total = 0
-    for name, descriptor in descriptors.items():
+    def load(root, name):
+        descriptor = descriptors[name]
         artifacts = {kind: _read_bounded_capture_file(
                          root / descriptor[kind]["file"],
                          MAX_CAPTURE_RECEIPT_BYTES if kind == "receipt" else min(MAX_RESPONSE_BYTES, manifest["response_budget_bytes"]),
@@ -229,8 +234,13 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
                 or receipt.get("wire_sha256") != _sha(wire)
                 or receipt.get("error_code") is not None or receipt.get("error_type") is not None):
             raise ValueError("retained_capture_receipt_invalid:" + name)
-        captures[name] = (body, receipt)
-        total += len(body) + len(wire)
+        return body, receipt
+    receipts = {name: load(root, name)[1] for name in descriptors}
+    total = sum(receipt["bytes"] + receipt["wire_bytes"] for receipt in receipts.values())
+    captures = validated_capture_view(root, receipts=receipts,
+        expected_urls={name: descriptor["request_url"] for name, descriptor in descriptors.items()},
+        load_capture=load, capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
     if total != manifest["capture_retained_wire_plus_decoded_bytes"]:
         raise ValueError("retained_capture_budget_total_mismatch")
     return manifest, captures, _sha(encoded)
@@ -299,7 +309,7 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
         capture_root.mkdir(parents=True, exist_ok=True)
     _require_disk_space(base)
     _require_disk_space(capture_root)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures = RetainedCaptureView(capture_root)
     offline_manifest = offline_receipts = None
     offline_manifest_sha = None
     retained_bytes = 0
@@ -393,12 +403,17 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
             if 9 + math.ceil(count / PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
                 raise ValueError("source_capture_request_count_exceeded")
             seed = sorted(ids); features=[]
-            for page_no, offset in enumerate(range(0,count,PAGE_SIZE)):
-                page = get(client, f"page_{page_no:03d}", LAYER_URL+"/query", {"where":"1=1","outFields":"*","returnGeometry":"true","returnZ":"true","returnM":"true","outSR":"4269","orderByFields":"OBJECTID ASC","resultOffset":offset,"resultRecordCount":PAGE_SIZE,"f":"json"})
-                rows=page.get("features"); expected=min(PAGE_SIZE,count-offset)
-                if not isinstance(rows,list) or len(rows)!=expected: raise ValueError("source_page_incomplete")
-                if page.get("exceededTransferLimit") is True and offset+expected>=count:
-                    raise ValueError("source_final_page_exceeded_transfer_limit")
+            spec = OffsetCaptureSpec(
+                table_url=LAYER_URL, page_size=PAGE_SIZE,
+                page_name=lambda number: f"page_{number:03d}", error=ValueError,
+                incomplete_error="source_page_incomplete", reject_full_final_limit=True,
+                query={"where":"1=1","outFields":"*","returnGeometry":"true",
+                       "returnZ":"true","returnM":"true","outSR":"4269","orderByFields":"OBJECTID ASC"},
+            )
+            for captured in capture_offset_pages(
+                    spec, count, request=lambda name, url, params: get(client, name, url, params)):
+                page, rows = captured.payload, captured.features
+                offset, expected = captured.offset, captured.expected
                 page_sr=page.get("spatialReference",{})
                 if not isinstance(page_sr,dict) or page_sr.get("latestWkid",page_sr.get("wkid"))!=4269: raise ValueError("source_page_crs_drift")
                 page_ids=[row.get("attributes",{}).get("OBJECTID") if isinstance(row,dict) else None for row in rows]
@@ -437,7 +452,7 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
     null_geometry_count=sum(x["geometry"] is None for x in features)
     native_name=f"geoparquet/{dataset_slug}.parquet"
     audit={"feature_count":count,"source_id_sha256":_sha(_canonical(seed)),"source_record_sha256":record_sha,"source_geometry_sha256":geom_sha,"source_schema_sha256":schema_sha,"source_crs_epsg":4269,"geometry_type":"Point","null_geometry_count":null_geometry_count,"all_ids_captured_once":True,"ids_equal_before_after":True,"portal_item_id":ITEM_ID,"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_vintage":None,"source_vintage_note":"No source release vintage was asserted; the item modified timestamp is not evidence of source vintage."}
-    manifest={"schema_version":1,"approved":False,"title":LAYER_NAME,"publisher":PUBLISHER,"agency":"Environmental Protection Agency","source_url":LAYER_URL,"source_release_date":None,"source_modified":None,"portal_item_modified_epoch_ms":portal_item["modified"],"portal_item_modified_is_source_release_date":False,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"source_item_id":ITEM_ID,"source_vintage":None,"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":PORTAL_ITEM_URL.split("?",1)[0] if n=="portal_item" else SERVICE_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"wire_bytes":r["wire_bytes"],"wire_sha256":r["wire_sha256"],"license":"Unreviewed; no license claim made.","attribution":"EPA_GEO ArcGIS item attribution has not been reviewed.","release_date":None,"release_date_unknown_reason":"The service and item metadata do not establish an EPA producer release date."} for n,(_,r) in sorted(captures.items())],"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"layer_id":LAYER_ID,"fields":"all 63 fields retained in source order and declared physical types","geometry":"native point coordinates retained as WKB in EPSG:4269","capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}}],"prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri attributes, source IDs, and point coordinates are preserved without public mapping; approval gates remain open.","objects":[{"path":native_name,"bytes":len(native),"sha256":_sha(native)}]}}},"unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No approved display transformation."}}
+    manifest={"schema_version":1,"approved":False,"title":LAYER_NAME,"publisher":PUBLISHER,"agency":"Environmental Protection Agency","source_url":LAYER_URL,"source_release_date":None,"source_modified":None,"portal_item_modified_epoch_ms":portal_item["modified"],"portal_item_modified_is_source_release_date":False,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"source_item_id":ITEM_ID,"source_vintage":None,"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":capture_manifest["capture_retained_wire_plus_decoded_bytes"],"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":PORTAL_ITEM_URL.split("?",1)[0] if n=="portal_item" else SERVICE_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"wire_bytes":r["wire_bytes"],"wire_sha256":r["wire_sha256"],"license":"Unreviewed; no license claim made.","attribution":"EPA_GEO ArcGIS item attribution has not been reviewed.","release_date":None,"release_date_unknown_reason":"The service and item metadata do not establish an EPA producer release date."} for n,(_,r) in ((name, captures[name]) for name in sorted(captures))],"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"layer_id":LAYER_ID,"fields":"all 63 fields retained in source order and declared physical types","geometry":"native point coordinates retained as WKB in EPSG:4269","capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes,"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}}],"prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri attributes, source IDs, and point coordinates are preserved without public mapping; approval gates remain open.","objects":[{"path":native_name,"bytes":len(native),"sha256":_sha(native)}]}}},"unsupported_output_formats":{"geopackage":"No approved source-to-public schema mapping.","pmtiles":"No approved display transformation."}}
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
     outputs={native_name:native,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n","metadata/capture_manifest.json":_canonical(capture_manifest)+b"\n"}
@@ -461,16 +476,13 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
                 "capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":retained_bytes,
                 "capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes}
     _require_disk_space(base, sum(map(len, outputs.values())) + STAGING_OVERHEAD_BYTES)
-    for name,body in outputs.items():
-        key=f"{prefix}/{name}"
-        write_immutable(storage,key,body)
-        snapshot=storage.object_snapshot(key)
-        if snapshot is None or snapshot.size!=len(body) or storage.sha256_key(key)!=_sha(body) or storage.object_snapshot(key)!=snapshot:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_output_physical_readback_failed:')
     descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-                         "source_record_sha256":record_sha,"source_schema_sha256":schema_sha,
-                         "capture_receipts":{name:receipt for name,(_body,receipt) in captures.items()},
-                         "objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, {name: receipt for name, (_body, receipt) in captures.items()}, descriptors,
+        source_record_sha256=record_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":dataset_slug,"file_slug":file_slug,"version":version,"feature_count":count,"source_null_geometry_count":null_geometry_count,"candidate_ready":f"{prefix}/metadata/candidate_ready.json","source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root),"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":retained_bytes,"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes}

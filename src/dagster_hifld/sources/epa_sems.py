@@ -1,6 +1,6 @@
 """Complete EPA FRS SEMS-interest draft, including non-NPL sites; never release approval."""
 from __future__ import annotations
-import fcntl
+from dagster_hifld.sources import candidate_transaction
 import hashlib
 import importlib.metadata
 import json
@@ -14,7 +14,10 @@ from collections import Counter
 from urllib.parse import urlparse, parse_qs
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
+
 from pathlib import Path
 from uuid import uuid4
 import httpx
@@ -25,13 +28,15 @@ import pyproj
 import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
-from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.capture_common import _validate_cached_catalog_sidecars
 from dagster_hifld.validation import sha256_file
 from urllib.parse import urlencode
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.arcgis_raw_capture import FileRequestPolicy, capture_file_request
 
 SLUG='epa-superfund-enterprise-management-system-sems-sites-1'
 LANDING='https://catalog.data.gov/dataset/epa-facility-registry-service-frs-sems'
@@ -83,11 +88,8 @@ def local_only(storage):
         if stat.S_ISDIR(info.st_mode):continue
         if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise SEMSQuarantineError('staging_alias_or_special_file_refused')
 
-def immutable(storage,key,body):
-    snapshot=storage.object_snapshot(key)
-    if snapshot is None: storage.write_key_if_unchanged(key,body,None)
-    elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:
-        raise SEMSQuarantineError('immutable_capture_changed:'+key)
+immutable = partial(write_immutable, error_type=SEMSQuarantineError,
+                    error_prefix='immutable_capture_changed:')
 
 def quarantine(storage,captures,reason):
     key=f'_quarantine/{SLUG}/{uuid4().hex}'
@@ -144,41 +146,10 @@ def record_observed_loss(storage,version,fingerprint,reason):
         'operator_action':'Restore exact original witnesses and explicitly retain/review this negative incident; no automatic bootstrap.'})
     seal_first_construction(storage,key,version,fingerprint,body)
 
-def write_private(root,name,body):
-    path=root/name;path.parent.mkdir(parents=True,exist_ok=True)
-    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
-    try:
-        info=os.fstat(descriptor)
-        if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise SEMSQuarantineError('private_write_alias_or_special_file_refused')
-        os.ftruncate(descriptor,0)
-        if os.write(descriptor,body)!=len(body):raise SEMSQuarantineError('incomplete_private_write:'+name)
-        os.fsync(descriptor)
-    finally:os.close(descriptor)
-    if candidate_bytes(root,name)!=body:raise SEMSQuarantineError('incomplete_private_write:'+name)
+def write_private(root, name, body):
+    candidate_transaction.write_checked_private_file(
+        root, name, body, readback=candidate_bytes, error_type=SEMSQuarantineError)
 
-def retain_capture_fragment(path,body):
-    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
-    try:
-        if os.write(descriptor,body)!=len(body):raise OSError('short_pending_capture_write')
-        os.fsync(descriptor)
-    finally:os.close(descriptor)
-    if bounded_input(path,len(body))!=body:raise OSError('pending_capture_readback_mismatch')
-
-def preserve_transfer_result(path,result):
-    transfer={key:value for key,value in vars(result).items()if key not in('pending_wire','pending_decoded')}
-    for label in('wire','decoded'):
-        pending=getattr(result,'pending_'+label)
-        if pending:retain_capture_fragment(path/('pending_'+label+'.body'),pending)
-        transfer['pending_'+label+'_artifact']={'bytes':len(pending),'sha256':digest(pending),'path':'pending_'+label+'.body'if pending else None}
-        observed=path/(label+'.body')
-        transfer['physical_'+label]={'bytes':observed.stat().st_size,'sha256':sha256_file(observed)}
-    readback=(transfer['physical_wire']['bytes']==result.wire_bytes_retained
-        and transfer['physical_wire']['sha256']==result.wire_sha256
-        and transfer['physical_decoded']['bytes']==result.decoded_bytes_retained
-        and transfer['physical_decoded']['sha256']==result.decoded_sha256)
-    transfer['independent_physical_readback_matches_acknowledged_sinks']=readback
-    retain_capture_fragment(path/'transfer.json',encode(transfer))
-    return readback
 
 def parquet_table(table):
     geo={'version':'1.1.0','primary_column':'geometry','columns':{'geometry':{'encoding':'WKB','geometry_types':['Point'],'crs':NATIVE_CRS_JSON}}}
@@ -206,12 +177,13 @@ def original_context(storage,version,fingerprint,captures,identity,manifest,*,cr
         inspect_captures(captures);validate_construction_code_identity(Path(__file__).parents[3],manifest['code_commit'],identity['files'])
         body=seal_first_construction(storage,key,version,fingerprint,canonical_construction_bundle(version,fingerprint,{'manifest':manifest,'captures':{n:{'body_key':f'_raw-captures/{SLUG}/{digest(b)}/{n}.body','receipt':r}for n,(b,r)in captures.items()}}))
     else:body=load_first_construction(storage,key,version,fingerprint)
-    payload=strict_json(body)['payload'];original={}
+    payload=strict_json(body)['payload'];original=RetainedCaptureView(Path(storage.local_dir))
     if set(payload)!={'manifest','captures'}or set(payload['captures'])!=set(captures):raise SEMSQuarantineError('invalid_original_context')
     for n,item in payload['captures'].items():
         key=f"_raw-captures/{SLUG}/{item['receipt']['sha256']}/{n}.body"
         if item['body_key']!=key:raise SEMSQuarantineError('invalid_original_raw_key')
-        original[n]=(bounded_input(Path(storage.local_dir)/key,MAX_BODY_BYTES),item['receipt'])
+        bounded_input(Path(storage.local_dir)/key,MAX_BODY_BYTES)
+        original[n]=(Path(storage.local_dir)/key,item['receipt'])
     a,_=inspect_captures(original);b,_=inspect_captures(captures)
     if not a.equals(b,check_metadata=True):raise SEMSQuarantineError('original_source_population_drift')
     old=payload['manifest'];obj=manifest['prebuilt_output_policy']['formats']['geoparquet']['objects'][0]
@@ -256,10 +228,10 @@ def validate_candidate(root,table,identity,captures,audit,manifest,version,*,cac
 def stage_epa_sems(storage,*,capture_dir=None):
     local_only(storage);captures=acquire(storage,capture_dir);table,audit=inspect_captures(captures);identity=processing_identity();fingerprint=digest(encode(identity));version='v0.0.0-draft-epa-sems-'+source_fingerprint(captures)[:16]+'-'+fingerprint[:16]
     base=Path(storage.local_dir).absolute();prefix=f'{SLUG}/{SLUG}/{version}';root=base/prefix;locks=base/'_locks';locks.mkdir(exist_ok=True)
-    descriptor=os.open(locks/(SLUG+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b')as lock:
-        if os.fstat(lock.fileno()).st_nlink!=1:raise SEMSQuarantineError('linked_lock')
-        fcntl.flock(lock,fcntl.LOCK_EX);refuse_observed_loss(storage,version)
+    with candidate_transaction.lock_path(
+            locks / (SLUG + '.lock'), error_type=SEMSQuarantineError, unsafe_code='linked_lock',
+            require_regular=False, buffered=True):
+        refuse_observed_loss(storage, version)
         # A private deterministic output provides the pin before any trust seal.
         build=base/'_building'/SLUG;build.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='candidate-',dir=build)as temporary:
@@ -280,10 +252,16 @@ def stage_epa_sems(storage,*,capture_dir=None):
                     except Exception as exc:
                         q=base/'_quarantine'/SLUG/('invalid-candidate-'+uuid4().hex);q.parent.mkdir(parents=True,exist_ok=True);os.rename(root,q);raise SEMSQuarantineError('invalid_cache_moved_intact:'+str(q))from exc
                     return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':True}
-            for n,b in source_payloads(captures,identity,audit,manifest).items():write_private(temp,n,b)
-            ready={'approved':False,'version':version,'processing_fingerprint':fingerprint,'capture_fingerprint':source_fingerprint(captures),'objects':{str(p.relative_to(temp)):sha256_file(p)for p in temp.rglob('*')if p.is_file()}};write_private(temp,READY,encode(ready));validate_candidate(temp,table,identity,captures,audit,manifest,version)
-            captures,manifest=original_context(storage,version,fingerprint,captures,identity,manifest,create=True)
-            validate_candidate(temp,table,identity,captures,audit,manifest,version);root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+            def ready_marker(private):
+                ready = {'approved': False, 'version': version, 'processing_fingerprint': fingerprint, 'capture_fingerprint': source_fingerprint(captures), 'objects': candidate_transaction.private_inventory(private)}
+                return READY, encode(ready)
+            def anchor():
+                nonlocal captures, manifest
+                captures, manifest = original_context(storage, version, fingerprint, captures, identity, manifest, create=True)
+            candidate_transaction.install_private_candidate(
+                temp, root, source_payloads(captures, identity, audit, manifest).items(), write_one=write_private,
+                ready=ready_marker, validate_before=lambda private: validate_candidate(private, table, identity, captures, audit, manifest, version),
+                anchor=anchor, validate_after=lambda private: validate_candidate(private, table, identity, captures, audit, manifest, version))
     return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':table.num_rows,'reused':False}
 
 def id_roster(body,expected_count):
@@ -365,50 +343,26 @@ def validate_receipt(name,body,receipt):
 
 
 def acquire(storage,capture_dir=None):
-    local_only(storage);captures={};attempt=f'_acquisition-attempts/{SLUG}/{uuid4().hex}';root=Path(capture_dir).absolute()if capture_dir is not None else None
+    local_only(storage);captures=RetainedCaptureView(Path(storage.local_dir));attempt=f'_acquisition-attempts/{SLUG}/{uuid4().hex}';root=Path(capture_dir).absolute()if capture_dir is not None else None
     if root is not None and('..'in root.parts or any(p.is_symlink()for p in[root,*root.parents])):raise SEMSQuarantineError('unsafe_capture_root')
     plan=list(URLS.items())
     try:
-        for name,url in plan:
-            if root is not None:
-                body=bounded_input(root/(name+'.body'),MAX_BODY_BYTES)
-                immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body)
-                # Retain the actually read body before opening possibly unreadable metadata.
-                immutable(storage,f'{attempt}/{name}.body-reference.json',encode({'bytes':len(body),'sha256':digest(body),'body_key':f'_raw-captures/{SLUG}/{digest(body)}/{name}.body'}))
-                raw=bounded_input(root/(name+'.receipt.json'),65536)
-            else:
-                path=Path(storage.local_dir)/attempt/name;path.mkdir(parents=True)
-                with(path/'wire.body').open('xb')as wire,(path/'decoded.body').open('xb')as decoded:
-                    def retain(stream,block,target):
-                        before=os.fstat(stream.fileno());written=stream.write(block);stream.flush();os.fsync(stream.fileno())
-                        if written!=len(block):raise OSError('short_capture_write')
-                        reader=os.open(target,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
-                        try:
-                            actual=os.fstat(reader)
-                            if(not stat.S_ISREG(actual.st_mode)or actual.st_nlink!=1 or(actual.st_dev,actual.st_ino)!=(before.st_dev,before.st_ino)
-                                or actual.st_size!=before.st_size+len(block)or os.pread(reader,len(block),before.st_size)!=block):raise OSError('capture_block_readback_mismatch')
-                        finally:os.close(reader)
-                    def reserve(progress):
-                        if shutil.disk_usage(path).free<SPACE_FLOOR+progress.reserve_bytes:raise OSError('disk_floor_before_read')
-                    receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat()};result=None
-                    try:
-                        with httpx.Client(follow_redirects=False,timeout=60,headers={'Accept-Encoding':'identity'})as client,client.stream('GET',url)as response:
-                            result=capture_http_response(response,max_wire_bytes=MAX_BODY_BYTES,max_decoded_bytes=MAX_BODY_BYTES,reserve=reserve,
-                                retain_wire=lambda b:retain(wire,b,path/'wire.body'),retain_decoded=lambda b:retain(decoded,b,path/'decoded.body'))
-                            receipt.update(final_url=str(response.url),status=response.status_code,complete_body=result.complete,bytes=result.decoded_bytes_retained,
-                                sha256=result.decoded_sha256,wire_bytes=result.wire_bytes_received,error_code=result.error_code)
-                    finally:
-                        if result is not None:readback=preserve_transfer_result(path,result)
-                        wire.flush();decoded.flush()
-                receipt['complete_body']=result.complete and readback;receipt['independent_sink_readback_matches']=readback
-                body=bounded_input(path/'decoded.body',MAX_BODY_BYTES+1024*1024)
-                immutable(storage,f'_raw-captures/{SLUG}/{digest(body)}/{name}.body',body);raw=encode(receipt)
-            immutable(storage,f'{attempt}/{name}.raw-receipt.body',raw)
-            receipt=strict_json(raw);validate_receipt(name,body,receipt);captures[name]=(body,receipt)
-            if name=='ids_before':
+        def fetch_one(name, url):
+            captures[name] = capture_file_request(
+                url, name, Path(storage.local_dir), Path(storage.local_dir) / attempt / name,
+                policy=FileRequestPolicy(MAX_BODY_BYTES, SPACE_FLOOR, f"_raw-captures/{SLUG}"),
+                read=bounded_input, encode=encode, parse_receipt=strict_json, replay_root=root,
+                validate=lambda body, receipt: validate_receipt(name, body, receipt),
+                write=lambda key, value: immutable(storage, key, value),
+                write_receipt=lambda value: immutable(storage, f"{attempt}/{name}.raw-receipt.body", value),
+                write_replay_reference=lambda value: immutable(storage, f"{attempt}/{name}.body-reference.json", value),
+            )
+            if name == 'ids_before':
+                body = captures[name][0]
                 ids=id_roster(body,INITIAL_COUNT);count=strict_json(captures['count_before'][0]).get('count')
                 if type(count)is not int or count!=len(ids):raise SEMSQuarantineError('initial_count_or_ID_coverage_drift_requires_review')
                 plan.extend((n,u)for n,u in capture_urls(ids).items()if n not in URLS)
+        capture_request_steps(((name, url) for name, url in plan), fetch_one)
         return captures
     except Exception as exc:
         immutable(storage,attempt+'/failure.json',encode({'approved':False,'reason_type':type(exc).__name__}))
@@ -455,13 +409,13 @@ def inspect_captures(captures):
         count=strict_json(captures[n][0]).get('count')
         if type(count)is not int or count!=INITIAL_COUNT:raise SEMSQuarantineError('complete_count_drift_requires_review')
     if id_roster(captures['ids_after'][0],INITIAL_COUNT)!=ids:raise SEMSQuarantineError('source_ID_roster_changed_during_extraction')
-    pages=[]
-    for name,url in urls.items():
-        if not name.startswith('page_'):continue
-        expected=[int(x)for x in parse_qs(urlparse(url).query)['objectIds'][0].split(',')];page=strict_json(captures[name][0])
-        if sorted(x['attributes']['OBJECTID']for x in page.get('features',[]))!=expected:raise SEMSQuarantineError('targeted_page_missing_extra_ID')
-        pages.append(page)
-    table=decode_pages(pages,ids);interests=Counter(table['INTEREST_TYPE'].to_pylist());statuses=Counter(zip(table['INTEREST_TYPE'].to_pylist(),table['ACTIVE_STATUS'].to_pylist()))
+    def validated_pages():
+        for name,url in urls.items():
+            if not name.startswith('page_'):continue
+            expected=[int(x)for x in parse_qs(urlparse(url).query)['objectIds'][0].split(',')];page=strict_json(captures[name][0])
+            if sorted(x['attributes']['OBJECTID']for x in page.get('features',[]))!=expected:raise SEMSQuarantineError('targeted_page_missing_extra_ID')
+            yield page
+    table=decode_pages(validated_pages(),ids);interests=Counter(table['INTEREST_TYPE'].to_pylist());statuses=Counter(zip(table['INTEREST_TYPE'].to_pylist(),table['ACTIVE_STATUS'].to_pylist()))
     if not interests.get('SUPERFUND (NON-NPL)')or not interests.get('SUPERFUND NPL'):raise SEMSQuarantineError('partial_or_unrecognized_SEMS_scope')
     audit={'count':table.num_rows,'original_OBJECTIDs':ids,'original_ID_sha256':digest(encode(ids)),'registry_ID_unique_count':len(set(table['REGISTRY_ID'].to_pylist())),
         'program_ID_unique_count':len(set(table['PGM_SYS_ID'].to_pylist())),'interest_types':sorted(interests.items()),'interest_statuses':sorted(statuses.items(),key=repr),

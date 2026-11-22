@@ -52,6 +52,8 @@ draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
+
+from functools import partial
 import hashlib
 import json
 import math
@@ -65,9 +67,10 @@ from uuid import uuid4
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pyproj
 from shapely import from_wkb
 
+from dagster_hifld.sources import wbd_capture
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.sources.esri_geometry import esri_polyline_wkb
 from shapely.geometry import MultiLineString
 
@@ -84,6 +87,10 @@ from dagster_hifld.sources.capture_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
+    write_candidate_captures,
+    upload_candidate_local_file,
 )
 from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture_identity, _sha, load_replay, RetainedCaptureViews,
@@ -309,45 +316,11 @@ def _part_url(roster: list[int], index: int, part_name: str) -> str:
 
 def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
                          root: Path) -> tuple[dict[str, dict], list[str]]:
-    """Capture one nominal page window, bisecting refusing windows recursively.
-
-    The producer persistently refuses some windows (content-dependent
-    server-side budget, observed 2026-11-14/15); each refusal document is
-    retained as evidence and the window is re-fetched as two half-size parts
-    whose URLs are derived from the captured roster, recursively, until every
-    leaf part serves. A single-feature window that still refuses fails the
-    capture: the producer cannot serve that feature's native fidelity and no
-    simplified or re-encoded substitute is acceptable (fail-closed floor,
-    never a repair loop).
-    """
-    name = f"page_{index:04d}"
-    page_ids = roster[index * PAGE_SIZE:(index + 1) * PAGE_SIZE]
-    parts: dict[str, dict] = {}
-    refusals: list[str] = []
-
-    def walk(window_name: str, ids: list[int]) -> None:
-        body, receipt = _capture(client, _window_url(roster, index, window_name[9:]),
-                                 root, window_name)
-        if not _is_refusal(body):
-            parts[window_name] = receipt
-            return
-        # Persist the refusing document under its evidence artifact name; the
-        # receipt describes the request/response, not the retained file name.
-        for suffix in (".body", ".wire", ".receipt.json"):
-            (root / (window_name + suffix)).replace(root / (f"{window_name}_refusal" + suffix))
-        refusals.append(f"{window_name}_refusal")
-        parts[f"{window_name}_refusal"] = receipt
-        del body
-        if len(ids) == 1:
-            raise ValueError(
-                "source_page_window_refused_single_feature:"
-                + f"{window_name}:objectid={ids[0]}")
-        half = (len(ids) + 1) // 2
-        walk(window_name + "a", ids[:half])
-        walk(window_name + "b", ids[half:])
-
-    walk(name, page_ids)
-    return parts, refusals
+    return wbd_capture.capture_window_receipts(client, roster, index, root,
+        policy=wbd_capture.WindowPolicy(page_size=PAGE_SIZE, byte_budget=CAPTURE_MAX_BYTES,
+                                       minimum_ids=1),
+        window_url=_window_url, capture=_capture, is_refusal=_is_refusal,
+        at_floor=wbd_capture.fail_single_feature)
 
 
 class _GeometryGate(Exception):
@@ -386,42 +359,10 @@ def _assemble_geometry(paths: list) -> bytes:
     return wkb
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Validate every advertised ArcGIS CRS representation against EPSG:3857.
-
-    ArcGIS may return either/both WKID properties (102100 aliases 3857) and
-    optional WKT strings; all present representations must identify the
-    layer's native web-mercator CRS; a missing feature-level spatial reference
-    inherits only after its page CRS has been validated.
-    """
-    if value is None:
-        if required:
-            raise ValueError(f"{label}_crs_drift")
-        return False
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid not in (NATIVE_WKID, NATIVE_LATEST_WKID):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = pyproj.CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(pyproj.CRS.from_epsg(SOURCE_CRS_WKID), ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
+_validate_spatial_reference = partial(
+    crs_validation.validate_native_spatial_reference,
+    native_wkid=NATIVE_WKID, native_latest_wkid=NATIVE_LATEST_WKID,
+    source_crs_wkid=SOURCE_CRS_WKID)
 
 
 def _layer_stability_view(layer: dict) -> dict:
@@ -953,35 +894,12 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
             with httpx.Client(follow_redirects=False,
                               timeout=httpx.Timeout(120, connect=20, read=600),
                               headers={"User-Agent": USER_AGENT}) as client:
-                ids_body, ids_receipt = _capture(client, _ids_url(), root, "ids_before")
-                roster = _validate_roster_document(json.loads(ids_body), "seed")
-                captures["ids_before"] = ids_receipt
-                del ids_body
-                doc_client = httpx.Client(follow_redirects=True,
-                                          timeout=httpx.Timeout(60, connect=20, read=300),
-                                          headers={"Connection": "close",
-                                                   "User-Agent": DOC_USER_AGENT})
-                page_parts: dict[str, list[str]] = {}
-                page_refusals: list[str] = []
-                try:
-                    for name, url in _capture_roster(roster):
-                        if name in captures:
-                            continue
-                        if name.startswith("page_"):
-                            window, window_refusals = _capture_page_window(
-                                client, roster, int(name[5:9]), root)
-                            captures.update(window)
-                            page_parts[name] = [part for part in sorted(window)
-                                                if not part.endswith("_refusal")]
-                            page_refusals.extend(window_refusals)
-                            continue
-                        active = doc_client if name == "service_doc" else client
-                        body, captures[name] = _capture(active, url, root, name,
-                                                  max_bytes=DOC_MAX_BYTES
-                                                  if name == "service_doc" else PAGE_MAX_BYTES)
-                        del body
-                finally:
-                    doc_client.close()
+                page_parts, page_refusals = wbd_capture.capture_ordered_windows(
+                    wbd_capture.OrderedWindowPolicy(byte_budget=CAPTURE_MAX_BYTES,
+                        seed_url=_ids_url(), page_max_bytes=PAGE_MAX_BYTES,
+                        doc_max_bytes=DOC_MAX_BYTES, doc_user_agent=DOC_USER_AGENT),
+                    client, root, captures, capture=_capture, validate_seed=_validate_roster_document,
+                    roster=_capture_roster, window_capture=_capture_page_window)
         except Exception as exc:
             receipts = {}
             for path in sorted(root.glob("*.receipt.json")):
@@ -1000,7 +918,7 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
         (root / "capture_manifest.json").write_bytes(_canonical({
             "complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(),
-            "receipts": dict(sorted(captures.items())),
+            "receipts": dict(((name, captures[name]) for name in sorted(captures))),
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
             "page_parts": dict(sorted(page_parts.items())),
             "page_refusals": sorted(page_refusals)}) + b"\n")
@@ -1013,7 +931,7 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
     capture_hash = _capture_identity_hash(capture_views, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": _capture_identity(capture_views, root),
-        "source_receipts": dict(sorted(captures.items())),
+        "source_receipts": dict(((name, captures[name]) for name in sorted(captures))),
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
@@ -1028,7 +946,7 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
     parquet_path = derived["parquet_path"]
     parquet_bytes = parquet_path.stat().st_size
     parquet_sha = sha256_file(parquet_path)
-    receipts = dict(sorted(captures.items()))
+    receipts = dict(((name, captures[name]) for name in sorted(captures)))
     gate_note = (f"{audit['null_geometry_count']} rows gate to null geometry and are "
                  "counted by failure mode: "
                  + json.dumps(audit["unusable_geometry_counts"], sort_keys=True)
@@ -1152,44 +1070,24 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
             audit["source_schema_sha256"], original.get("objects", {}), original_receipts)
         return _candidate_result(audit, content_version, prefix, capture_hash,
                                  reused=True, root=root)
-    descriptors = {}
-    for name, key, body in (
-            (output_path, f"{prefix}/{output_path}", None),
-            ("metadata/source_manifest.json", f"{prefix}/metadata/source_manifest.json",
-             _canonical(manifest) + b"\n"),
-            ("metadata/source_audit.json", f"{prefix}/metadata/source_audit.json",
-             _canonical(audit) + b"\n"),
-            ("metadata/processing_identity.json", f"{prefix}/metadata/processing_identity.json",
-             _canonical(identity) + b"\n"),
-            ("metadata/candidate_ready.json", f"{prefix}/metadata/candidate_ready.json",
-             _canonical(ready) + b"\n")):
-        if body is None:
-            storage.upload_local_file(parquet_path, key)
-        else:
-            write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        if snapshot is None:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptor = {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-        if name == output_path and descriptor != {"bytes": parquet_bytes, "sha256": parquet_sha}:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    for name in sorted(captures):
-        body, wire, receipt = _load_capture(root, name)
-        for suffix, payload in (("body", body), ("wire", wire),
-                                ("receipt.json", _canonical(receipt) + b"\n")):
-            key = f"{prefix}/raw/{name}.{suffix}"
-            write_immutable(storage, key, payload)
-            snapshot = storage.object_snapshot(key)
-            if snapshot is None or snapshot.size != len(payload) \
-                    or storage.sha256_key(key) != _sha(payload):
-                raise ValueError("candidate_object_readback_failed:raw/" + name + "." + suffix)
-            descriptors[f"raw/{name}.{suffix}"] = {"bytes": len(payload), "sha256": _sha(payload)}
-    seal_ready_candidate(storage, state_key, content_version, fingerprint,
-                         {"processing_identity": identity,
-                          "source_record_sha256": audit["source_record_sha256"],
-                          "source_schema_sha256": audit["source_schema_sha256"],
-                          "capture_receipts": receipts, "objects": descriptors})
+    descriptors = {output_path: upload_candidate_local_file(
+        storage, prefix, output_path, parquet_path,
+        {"bytes": parquet_bytes, "sha256": parquet_sha})}
+    descriptors.update(write_candidate_outputs(
+        storage, prefix, {
+            'metadata/source_manifest.json': _canonical(manifest) + b'\n',
+            'metadata/source_audit.json': _canonical(audit) + b'\n',
+            'metadata/processing_identity.json': _canonical(identity) + b'\n',
+            'metadata/candidate_ready.json': _canonical(ready) + b'\n',
+        }, snapshot_check='observed'))
+    descriptors.update(write_candidate_captures(
+        storage, prefix, root, sorted(captures), _load_capture))
+    seal_candidate_objects(
+        storage, state_key, content_version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return _candidate_result(audit, content_version, prefix, capture_hash,

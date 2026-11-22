@@ -1,6 +1,7 @@
 """Lossless native capture of USACE FUDS Munitions Response Sites."""
 from __future__ import annotations
 
+
 import json
 import math
 
@@ -14,6 +15,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon
 
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -28,6 +30,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -133,7 +137,7 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
         raise ValueError("explicit_local_staging_resource_required")
     root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "98", "captures"))) / version
     root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: dict[str, tuple[bytes, dict]] = RetainedCaptureView(root)
     feature_srs: dict[int, dict] = {}
     first_page_sr: dict | None = None
 
@@ -184,8 +188,12 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
             roster = offset_layer_capture_roster(
                 count, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
                 page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"})
-            for name, url in roster[4:]:
+            captures = RetainedCaptureView(root, captures)
+            def fetch(client, url, root, name):
                 get(client, name, url)
+                return captures[name]
+            capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, roster=lambda ids: roster, fetch=fetch)
             for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
                 page = json.loads(captures[f"page_{page_no:03d}"][0])
                 rows = page.get("features")
@@ -260,7 +268,7 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
                  "license": "Unreviewed; no license claim made.",
                  "attribution": "USACE service attribution and terms have not been reviewed.",
                  "release_date": None, "release_date_unknown_reason": "USACE service metadata gives no producer release date."}
-                for n, (_body, r) in sorted(captures.items())],
+                for n, (_body, r) in ((name, captures[name]) for name in sorted(captures))],
             "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate", "parameters": {
                 "layer_id": LAYER_ID, "attributes": "all returned source attributes in source order and declared Arrow types",
                 "geometry": "ISO WKB MultiPolygon Z is derived for GeoParquet compatibility; exact ordered XY/Z/M tuples with nullable M retained in source_geometry and raw Esri JSON",
@@ -281,7 +289,7 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
                        "source_vertex_count":sum(len(ring) for r in features if r.get("geometry") for ring in r["geometry"]["rings"]),
                        "source_measure_null_count":sum(p[3] is None for r in features if r.get("geometry") for ring in r["geometry"]["rings"] for p in ring),
                        "source_measure_zero_count":sum(p[3] == 0 for r in features if r.get("geometry") for ring in r["geometry"]["rings"] for p in ring)} )+b"\n"}
-        receipts = {n:r for n,(_b,r) in sorted(captures.items())}
+        receipts = {n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))}
         for name,(body,receipt) in captures.items():
             outputs[f"raw/{name}.body"] = body
             outputs[f"raw/{name}.wire"] = (root/f"{name}.wire").read_bytes()
@@ -303,14 +311,13 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
             return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"prefix":prefix,
                     "feature_count":count,"capture_complete":True,"source_id_sha256":record_sha,
                     "candidate_approved":False,"reused":True}
-        for name,body in outputs.items():
-            write_immutable(storage,f"{prefix}/{name}",body)
-            snap=storage.object_snapshot(f"{prefix}/{name}")
-            if snap is None or snap.size != len(body) or storage.sha256_key(f"{prefix}/{name}") != _sha(body):
-                raise ValueError("candidate_output_physical_readback_failed:"+name)
-        seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-            "source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipts,
-            "objects":descriptors})
+        write_candidate_outputs(storage, prefix, outputs, snapshot_check="content", error_prefix='candidate_output_physical_readback_failed:')
+        seal_candidate_objects(
+            storage, state_key, version,
+            identity, receipts, descriptors,
+            source_record_sha256=record_sha,
+            source_schema_sha256=schema_sha,
+            fingerprint=fingerprint)
         validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"prefix":prefix,
                 "feature_count":count,"capture_complete":True,"source_id_sha256":record_sha,

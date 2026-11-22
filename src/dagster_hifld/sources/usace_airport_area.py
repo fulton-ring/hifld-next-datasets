@@ -5,8 +5,11 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -15,12 +18,15 @@ from uuid import uuid4
 import httpx
 import shapely
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -84,7 +90,7 @@ def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
 
-def _capture_started_at(captures: dict[str, tuple[bytes, dict]]) -> str:
+def _capture_started_at(captures: Mapping[str, tuple[bytes, dict]]) -> str:
     """Use the first request receipt as capture time, including on replay."""
     receipt = captures.get("ids_seed", (b"", {}))[1]
     observed_at = receipt.get("observed_at")
@@ -104,12 +110,12 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     )
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
     if not {"ids_seed","bts_item","service_directory","service_before","service_after",
             "layer_before","count_before","ids_before","layer_after","count_after","ids_after"} <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
             or item.get("type") != "PDF" or item.get("access") != "public"):
@@ -237,9 +243,12 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
             names=["ids_seed",*[name for name,_url in _capture_roster(ids)]]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures={name:_load_replay(root,name) for name in names}
-            if any(receipt!=retained_manifest["receipts"][name] for name,(_body,receipt) in captures.items()):
-                raise ValueError("retained_capture_manifest_receipt_mismatch")
+            captures=validated_capture_view(root,
+                receipts={name: retained_manifest["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_manifest_receipt_mismatch")
             attempt_map=retained_manifest.get("attempts",{})
             if not isinstance(attempt_map,dict): raise ValueError("retained_capture_attempt_manifest_invalid")
             for name,receipt in attempt_map.items():
@@ -262,11 +271,16 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
             if existing_bytes>MAX_CAPTURE_BYTES:
                 raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
-                seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
-                ids=json.loads(seed_body).get("objectIds")
-                if not isinstance(ids,list) or len(ids)!=len(features): raise ValueError("source_seed_id_count_drift")
-                captures["ids_seed"]=(seed_body,seed_receipt)
-                for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name,capture_budget)
+                def validate_seed(seed_body):
+                    ids=json.loads(seed_body).get("objectIds")
+                    if not isinstance(ids,list): raise ValueError("source_seed_id_count_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_seed', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, capture_budget),
+                    on_validation_error=_validate)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         retained={}
@@ -280,7 +294,7 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
-    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in sorted(captures.items())}))
+    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"]=capture_sha
     version="v"+_sha(_canonical({"source_record_sha256":audit["source_record_sha256"],
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
@@ -306,7 +320,7 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
                  "linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
                  "prior_bts_item_id":PRIOR_BTS_ITEM_ID}}
                 if name == "bts_item" else {})}
-            for name,(_body,receipt) in sorted(captures.items())]
+            for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest={"schema_version":1,"approved":False,"title":"Airport Area (USACE IENC)","description":"Complete official USACE IENC AIRPORT_AREA feature class; unapproved faithful candidate. Does not assert national airport coverage or compatibility with the historical HIFLD/FEMA baseline.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; BTS catalog-item succession, source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":f"Current public USDOT BTS IENC PDF item {BTS_ITEM_ID} links the official USACE IENC Feature Classes service and native master file geodatabase. The prior BTS map-service item {PRIOR_BTS_ITEM_ID} returned an anonymous-access denial and is retained only as a historical, unaccepted attribution; current-item succession is not approved. This candidate represents only that full official AIRPORT_AREA layer.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/airport-area-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":UNSUPPORTED_OUTPUT_FORMATS}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"source_fields":fields,"official_layer_name":"AIRPORT_AREA","official_source_item":"USDOT_BTS " + BTS_ITEM_ID,"prior_source_item":"USDOT_BTS " + PRIOR_BTS_ITEM_ID,"source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
@@ -314,7 +328,7 @@ def capture_usace_airport_area(storage: StagingStorageResource, *, version: str,
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":_capture_started_at(captures),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":_capture_started_at(captures),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/airport-area-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"

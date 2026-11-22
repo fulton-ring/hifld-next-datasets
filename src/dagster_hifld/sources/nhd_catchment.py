@@ -46,8 +46,6 @@ import json
 import re
 import shutil
 from array import array
-from collections import deque
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlencode, urlsplit
@@ -62,17 +60,23 @@ from shapely import from_wkb, is_valid_reason
 
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_geometry import to_wkb
-from dagster_hifld.sources import arcgis_layer
+from dagster_hifld.sources import arcgis_layer, nhd_capture
 from dagster_hifld.sources.capture_common import (
     load_checkpoint_receipt_map,
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    candidate_prefix,
+    capture_get,
+    content_derived_version,
+    processing_identity,
+    quarantine_incomplete_capture,
+    verify_cached_candidate,
     write_immutable,
+    reuse_sealed_candidate,
+    load_candidate_checkpoint,
+    stage_candidate_objects,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
@@ -399,136 +403,32 @@ def _load_state(capture_root: Path) -> dict[str, object]:
 
 def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
                        url: str) -> tuple[bytes, dict[str, object]]:
-    if (capture_root / f"{name}.body").exists():
-        try:
-            return _read_capture(capture_root, name)
-        except NhdCatchmentError:
-            _witness_aside(capture_root, name)
-    return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
+    return nhd_capture.retained_capture(
+        client, capture_root, name, url, read_capture=_read_capture,
+        fetch=lambda client, url, root, name: capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES),
+        discard=_witness_aside, error_type=NhdCatchmentError)
 
 
 def _plan_segment_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
-    """Plan the roster gaps that still need a capture this session.
-
-    A retained segment counts as accepted only when its receipt and body
-    verify, its body is not a producer error document, and it already sits in
-    the capture state; anything else is witnessed aside and refetched.
-    """
-    state = _load_state(capture_root)
-    accepted_names = {entry.get("name") for entry in state["segments"]
-                      if isinstance(entry, dict)}
-    retained: list[tuple[int, int]] = []
-    for path in sorted(capture_root.glob("page_*.body")):
-        name = path.name.removesuffix(".body")
-        match = _SEGMENT_NAME_PATTERN.fullmatch(name)
-        if match is None:
-            # Witnessed refusal evidence (page_*.error-*.body) and other
-            # non-canonical names are not roster segments; skip them.
-            continue
-        try:
-            body, _receipt = _read_capture(capture_root, name)
-        except NhdCatchmentError:
-            _witness_aside(capture_root, name)
-            continue
-        if body.lstrip().startswith(b'{"error"') or name not in accepted_names:
-            _witness_aside(capture_root, name)
-            continue
-        offset, count = _parse_segment_name(name)
-        if offset + count > len(roster) or roster[offset:offset + count] != \
-                list(range(offset + 1, offset + count + 1)):
-            _witness_aside(capture_root, name)
-            continue
-        retained.append((offset, count))
-    population = len(roster)
-    gaps: list[tuple[int, int]] = []
-    covered = bytearray(population)
-    for offset, count in sorted(retained):
-        if offset < 0 or count < 1 or offset + count > population \
-                or any(covered[offset:offset + count]):
-            _witness_aside(capture_root, _segment_name(offset, count))
-            continue
-        covered[offset:offset + count] = b"\x01" * count
-    cursor = 0
-    while cursor < population:
-        if covered[cursor]:
-            cursor += 1
-            continue
-        start = cursor
-        while cursor < population and not covered[cursor]:
-            cursor += 1
-        chunk_start = start
-        while chunk_start < cursor:
-            count_chunk = min(SEGMENT_START_RECORDS, cursor - chunk_start)
-            gaps.append((chunk_start, count_chunk))
-            chunk_start += count_chunk
-    return gaps
+    return nhd_capture.plan_segment_gaps(
+        capture_root, roster, load_state=_load_state, read_capture=_read_capture,
+        witness=_witness_aside, name_pattern=_SEGMENT_NAME_PATTERN,
+        parse_name=_parse_segment_name, segment_name=_segment_name,
+        producer_error=_producer_error_doc, error_type=NhdCatchmentError,
+        chunk_size=SEGMENT_START_RECORDS, strict_resume=False)
 
 
 def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
-                    state: dict[str, object]) -> None:
-    """Capture the complete layer as adaptively bisected roster segments.
-
-    Segments start at SEGMENT_START_RECORDS. A segment the producer keeps
-    refusing is bisected until the producer serves both halves, whether the
-    refusal is a persistent error document or a persistent incomplete transport
-    capture; the refused segment's final body and receipts stay on disk as
-    evidence under witnessed names. A single-record segment that still fails
-    ends the capture explicitly.
-    """
-    segments = state.setdefault("segments", [])
-    accepted = {entry.get("name") for entry in segments if isinstance(entry, dict)}
-    todo: deque[tuple[int, int]] = deque(_plan_segment_gaps(capture_root, roster))
-    while todo:
-        offset, count = todo.popleft()
-        name = _segment_name(offset, count)
-        if name in accepted and (capture_root / f"{name}.body").exists() \
-                and not (capture_root / f"{name}.body").read_bytes().lstrip().startswith(b'{"error"'):
-            continue
-        try:
-            body, receipt = _capture_with_retry(
-                client, _segment_query(offset, count), capture_root, name,
-                attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS,
-                max_bytes=MAX_BODY_BYTES)
-        except ValueError as exc:
-            # The producer cap can also manifest as truncation/connection reset
-            # instead of a clean error document; a multi-record segment whose
-            # attempts were still incomplete is bisected like an error
-            # document, while a single-record segment keeps failing explicitly.
-            if count > 1 and str(exc).startswith("incomplete_source_capture:"):
-                middle = count // 2
-                todo.appendleft((offset + middle, count - middle))
-                todo.appendleft((offset, middle))
-                continue
-            raise NhdCatchmentError("source_capture_failed:" + type(exc).__name__) from exc
-        if _producer_error_doc(body):
-            _witness_aside(capture_root, name)
-            if count == 1:
-                raise NhdCatchmentError("source_single_feature_unservable")
-            middle = count // 2
-            todo.appendleft((offset + middle, count - middle))
-            todo.appendleft((offset, middle))
-            continue
-        page = json.loads(body)
-        if not isinstance(page, dict) or "error" in page:
-            _witness_aside(capture_root, name)
-            raise NhdCatchmentError("source_page_error:" + name)
-        rows = page.get("features")
-        if not isinstance(rows, list) or len(rows) != count:
-            _witness_aside(capture_root, name)
-            raise NhdCatchmentError("source_page_row_count_incomplete:" + name)
-        expected = roster[offset:offset + count]
-        actual = [row.get("attributes", {}).get("OBJECTID") for row in rows if isinstance(row, dict)]
-        if actual != expected:
-            _witness_aside(capture_root, name)
-            raise NhdCatchmentError("source_page_id_slice_incomplete_or_reordered")
-        if name not in accepted:
-            segments.append({"name": name, "offset": offset, "count": count,
-                             "features": len(rows), "captured_at": receipt["observed_at"],
-                             "body_sha256": _sha(body)})
-            accepted.add(name)
-            _save_state(capture_root, state)
+                    state: dict[str, object]) -> bool:
+    return nhd_capture.fetch_segments(
+        client, capture_root, roster, state, plan_gaps=_plan_segment_gaps,
+        segment_name=_segment_name, segment_query=_segment_query,
+        capture_retry=_capture_with_retry, witness=_witness_aside,
+        producer_error=_producer_error_doc, save_state=_save_state,
+        error_type=NhdCatchmentError, probe_attempts=SEGMENT_PROBE_ATTEMPTS,
+        doc_attempts=DOC_CAPTURE_ATTEMPTS, probe_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS,
+        doc_delay=DOC_CAPTURE_BASE_DELAY_SECONDS, max_body_bytes=MAX_BODY_BYTES,
+        strict_resume=False)
 
 
 def fetch_nhd_catchment_pages(capture_root: Path, *, client: httpx.Client | None = None,
@@ -539,77 +439,21 @@ def fetch_nhd_catchment_pages(capture_root: Path, *, client: httpx.Client | None
     and document.
     """
     capture_root = Path(capture_root).absolute()
-    capture_root.mkdir(parents=True, exist_ok=True)
-    state = _load_state(capture_root)
-    owner_client = client is None
-    owner_doc = doc_client is None
-    active = client or _default_client()
-    docs_active = doc_client or _doc_client()
-    segments: list[dict[str, object]] = list(state.get("segments", []))
-    first_captured_at = (segments[0]["captured_at"] if segments
-                         else datetime.now(timezone.utc).isoformat())
-    try:
-        for name in METADATA_NAMES:
-            url = {"service_doc": SERVICE_DOC_URL,
-                   "alias_service": ALIAS_SERVICE_URL + "?f=pjson",
-                   "service_before": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url(),
-                   "ids_seed": _ids_url(),
-                   "ids_before": _ids_url()}[name]
-            active_client = docs_active if name == "service_doc" else active
-            body, _receipt = _retained_or_fetch(active_client, capture_root, name, url)
-            if name != "service_doc" and _producer_error_doc(body):
-                raise NhdCatchmentError("source_page_error:" + name)
-        seed = json.loads(_read_capture(capture_root, "ids_seed")[0]).get("objectIds")
-        ids = _validate_roster(seed, "ids_seed")
-        before = json.loads(_read_capture(capture_root, "ids_before")[0])
-        if before.get("objectIdFieldName") != "OBJECTID":
-            raise NhdCatchmentError("source_id_field_changed")
-        roster = _validate_roster(before.get("objectIds"), "ids_before")
-        if sorted(roster) != ids:
-            raise NhdCatchmentError("source_id_population_drift:ids_seed_vs_before")
-        count_before = json.loads(_read_capture(capture_root, "count_before")[0]).get("count")
-        if type(count_before) is not int or count_before <= 0:
-            raise NhdCatchmentError("source_count_drift")
-        if len(roster) != count_before:
-            raise NhdCatchmentError("source_count_or_id_roster_drift")
-        _fetch_segments(active, capture_root, roster, state)
-        segments = list(state["segments"])
-        for name in AFTER_NAMES:
-            url = {"layer_after": LAYER_URL + "?f=pjson",
-                   "service_after": SERVICE_URL + "?f=pjson",
-                   "count_after": _count_url(),
-                   "ids_after": _ids_url()}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            if _producer_error_doc(body):
-                raise NhdCatchmentError("source_page_error:" + name)
-        count_after = json.loads(_read_capture(capture_root, "count_after")[0]).get("count")
-        if type(count_after) is not int or count_after != count_before:
-            raise NhdCatchmentError("source_metadata_or_count_changed_during_capture")
-        after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
-        if after_ids.get("objectIdFieldName") != "OBJECTID" \
-                or sorted(_validate_roster(after_ids.get("objectIds"), "ids_after")) != roster:
-            raise NhdCatchmentError("source_id_population_drift:ids_after")
-    except NhdCatchmentError:
-        if owner_client:
-            active.close()
-        if owner_doc:
-            docs_active.close()
-        raise
-    except Exception as exc:
-        if owner_client:
-            active.close()
-        if owner_doc:
-            docs_active.close()
-        raise NhdCatchmentError("source_capture_failed:" + type(exc).__name__) from exc
-    if owner_client:
-        active.close()
-    if owner_doc:
-        docs_active.close()
-    _save_state(capture_root, {"segments": segments, "complete": True})
-    last_captured_at = max((str(entry.get("captured_at", "")) for entry in segments),
-                           default=first_captured_at)
+    segments, count_before, first_captured_at, last_captured_at = nhd_capture.capture_roster_layer(
+        capture_root, client=client, doc_client=doc_client,
+        default_client=_default_client, document_client=_doc_client,
+        load_state=_load_state, save_state=_save_state,
+        retained_or_fetch=_retained_or_fetch, read_capture=_read_capture,
+        capture_get=capture_get, witness=_witness_aside,
+        producer_error=_producer_error_doc, validate_roster=_validate_roster,
+        fetch_segments=_fetch_segments, metadata_names=METADATA_NAMES,
+        after_names=AFTER_NAMES, urls={"service_doc": SERVICE_DOC_URL, "alias_service": ALIAS_SERVICE_URL + "?f=pjson",
+        "service_before": SERVICE_URL + "?f=pjson", "layer_before": LAYER_URL + "?f=pjson",
+        "count_before": _count_url(), "ids_seed": _ids_url(), "ids_before": _ids_url(),
+        "layer_after": LAYER_URL + "?f=pjson", "service_after": SERVICE_URL + "?f=pjson",
+        "count_after": _count_url(), "ids_after": _ids_url()},
+        error_type=NhdCatchmentError, max_body_bytes=MAX_BODY_BYTES,
+        refresh_witnesses=False, byte_budget=MAX_CAPTURE_BYTES)
     extracted = _stream_validate(capture_root, parquet_sink=None)
     (capture_root / "computed_baseline.json").write_bytes(_canonical({
         "source_record_sha256": extracted["record_sha"],
@@ -901,7 +745,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                       extracted["schema_sha"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
+
+    def verify_existing():
         parquet_body = Path(extracted["parquet_path"]).read_bytes()
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
@@ -912,6 +757,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "source_null_geometry_count": extracted["null_geometry_count"],
              "ogc_invalid_geometry_counts": extracted["ogc_invalid_geometry_counts"]},
             parquet_body)
+
+    reused = reuse_sealed_candidate(storage, state_key, verify_existing)
+    if reused is not None:
+        return reused
     audit = {
         "source_feature_count": extracted["feature_count"],
         "source_reported_count": extracted["feature_count"],
@@ -1072,24 +921,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     }
     # Stream every retained capture to storage one page at a time; the seal never
     # holds more than one segment body/wire pair plus the small receipt maps.
-    descriptors: dict[str, dict[str, object]] = {}
-    for relative, body in metadata_outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-        descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted(receipts):
-        body, receipt = _read_capture(capture_root, name)
-        wire = (capture_root / f"{name}.wire").read_bytes()
-        for suffix, blob in (("body", body), ("wire", wire),
-                             ("receipt.json", _canonical(receipt) + b"\n")):
-            relative = f"raw/{name}.{suffix}"
-            write_immutable(storage, f"{prefix}/{relative}", blob)
-            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
-    fingerprint = _sha(_canonical(identity))
-    payload = {"processing_identity": identity,
-               "source_record_sha256": audit["source_record_sha256"],
-               "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": receipts, "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    stage_candidate_objects(
+        storage, prefix, state_key, version, identity, metadata_outputs,
+        capture_root, receipts, _read_capture,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'])
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
@@ -1113,15 +949,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
 def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
                              version: str, identity: Mapping[str, object],
                              audit: Mapping[str, object], current_parquet: bytes) -> dict[str, object]:
-    fingerprint = _sha(_canonical(identity))
-    bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
-    payload = bundle.get("payload")
-    if (not isinstance(payload, dict) or set(payload) != {"processing_identity",
-            "source_record_sha256", "source_schema_sha256", "capture_receipts", "objects"}
-            or payload["processing_identity"] != identity
-            or payload["source_record_sha256"] != audit["source_record_sha256"]
-            or payload["source_schema_sha256"] != audit["source_schema_sha256"]):
-        raise NhdCatchmentError("cached_first_candidate_identity_or_source_changed")
+    fingerprint, payload = load_candidate_checkpoint(
+        storage, state_key, version, identity,
+        audit['source_record_sha256'], audit['source_schema_sha256'], NhdCatchmentError)
     expected_objects = {name: descriptor for name, descriptor in payload["objects"].items()}
     verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
                             fingerprint, identity, audit["source_record_sha256"],

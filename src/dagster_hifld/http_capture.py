@@ -10,10 +10,13 @@ overshoot behavior so evidence is never silently clipped.
 from __future__ import annotations
 
 import hashlib
+import copy
 import json
 import stat
 import zlib
 from collections.abc import Callable, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,6 +24,98 @@ import httpx
 
 
 DECODE_BLOCK_BYTES = 1024 * 1024
+
+
+@dataclass
+class _RetentionBudget:
+    root: Path
+    limit: int
+    exceeded: bool = False
+    parent: _RetentionBudget | None = None
+
+    def response_charge(self):
+        # Capture helpers unlink the current response slots before calling the
+        # HTTP owner. Rescan here so resumed attempts, renames and overwritten
+        # slots are charged by their physical retained size exactly once.
+        retained = sum(path.stat().st_size for path in self.root.iterdir()
+                       if path.is_file() and path.name.endswith((".body", ".wire")))
+        applicable = []
+        ancestor = self
+        while ancestor is not None:
+            if ancestor.root == self.root:
+                applicable.append(ancestor)
+            ancestor = ancestor.parent
+        limit = min(budget.limit for budget in applicable)
+
+        def refuse() -> None:
+            for budget in applicable:
+                budget.exceeded = True
+            raise ValueError("source_capture_budget_exceeded")
+
+        if any(budget.exceeded for budget in applicable) or retained > limit:
+            refuse()
+
+        def charge(block: bytes) -> None:
+            nonlocal retained
+            if any(budget.exceeded for budget in applicable) or retained + len(block) > limit:
+                refuse()
+            retained += len(block)
+        return charge
+
+
+_retention_budget: ContextVar[_RetentionBudget | None] = ContextVar("capture_retention_budget", default=None)
+
+
+@contextmanager
+def capture_retention_budget(root: Path, limit: int):
+    """Bound one synchronous acquisition, including opaque family fetch callbacks.
+
+    Actual wire and decoded sink blocks are charged before persistence. Native
+    reservation callbacks retain their allocation/disk checks independently;
+    speculative decoder allocation is not charged as retained disk evidence.
+    A refused block stays fatal even if a callback retries or swallows its
+    incomplete result. Nested scopes for the same physical directory also honor
+    every enclosing limit and latch refusals in each applicable scope. Native
+    capture helpers get to write truthful receipts
+    before the acquisition boundary raises the budget refusal.
+    """
+    budget = _RetentionBudget(Path(root).resolve(), limit, parent=_retention_budget.get())
+    token = _retention_budget.set(budget)
+    try:
+        yield
+    except Exception as exc:
+        if budget.exceeded:
+            raise ValueError("source_capture_budget_exceeded") from exc
+        raise
+    else:
+        if budget.exceeded:
+            raise ValueError("source_capture_budget_exceeded")
+    finally:
+        _retention_budget.reset(token)
+
+
+def reserve_capture_retention(root: Path, additional_bytes: int, *, replaced_bytes: int = 0) -> None:
+    """Refuse a planned non-HTTP body/wire write before modifying retained slots.
+
+    This is a reservation against physical retained bytes, not a cumulative
+    charge: subsequent HTTP responses rescan those files after persistence.
+    """
+    applicable = []
+    budget = _retention_budget.get()
+    root = Path(root).resolve()
+    while budget is not None:
+        if budget.root == root:
+            applicable.append(budget)
+        budget = budget.parent
+    if not applicable:
+        return
+    retained = sum(path.stat().st_size for path in root.iterdir()
+                   if path.is_file() and path.name.endswith((".body", ".wire")))
+    projected = retained - replaced_bytes + additional_bytes
+    if any(budget.exceeded or projected > budget.limit for budget in applicable):
+        for budget in applicable:
+            budget.exceeded = True
+        raise ValueError("source_capture_budget_exceeded")
 
 
 def validate_capture_roster(root: Path, expected: set[str] | dict[str, dict[str, object]]) -> None:
@@ -69,6 +164,92 @@ def capture_roster_digests(root: Path, *, exclude: set[str] = frozenset()) -> di
     return result
 
 
+class CaptureDocuments(Mapping):
+    """Read capture documents one at a time with eager decoder validity checks.
+
+    Tuple captures default to JSON decoding. Explicit projection and decoder
+    callbacks preserve byte-only or stricter source document contracts.
+    """
+    def __init__(self, captures: Mapping, names=None, *, decode=json.loads,
+                 body_from_capture=lambda value: value[0], load_document=None):
+        self._read = load_document or (lambda name: decode(body_from_capture(captures[name])))
+        self._names = dict.fromkeys(captures if names is None else names)
+        for name in self:
+            self[name]
+
+    def __getitem__(self, name):
+        if name not in self._names:
+            raise KeyError(name)
+        return self._read(name)
+
+    def __contains__(self, name):
+        return name in self._names
+
+    def __iter__(self):
+        return iter(self._names)
+
+    def __len__(self):
+        return len(self._names)
+
+
+class RetainedReplayView(Mapping):
+    """Validated capture identities with bodies loaded and rechecked on demand.
+
+    The loader owns the source's body/wire digest and safe-path checks. Receipts
+    are pinned independently so changing both artifacts and their receipt after
+    validation cannot introduce new bytes into an existing replay.
+    """
+    def __init__(self, root, *, receipts, expected_urls, load_capture,
+                 validate_request_identity,
+                 receipt_error="retained_capture_manifest_receipt_mismatch",
+                 capture_value=lambda value: (value[0], value[2]), preserve_order=False):
+        self._root = root
+        self._receipts = copy.deepcopy(dict(receipts if preserve_order else sorted(receipts.items())))
+        self._urls = dict(expected_urls)
+        self._load = load_capture
+        self._validate_identity = validate_request_identity
+        self._receipt_error = receipt_error
+        self._capture_value = capture_value
+
+    def __getitem__(self, name):
+        expected = self._receipts[name]
+        body, receipt = self._capture_value(self._load(self._root, name))
+        if receipt != expected:
+            raise ValueError(self._receipt_error(name) if callable(self._receipt_error)
+                             else self._receipt_error + ":" + name)
+        self._validate_identity(name, receipt, self._urls[name])
+        return body, receipt
+
+    def __contains__(self, name):
+        return name in self._receipts
+
+    def __iter__(self):
+        return iter(self._receipts)
+
+    def __len__(self):
+        return len(self._receipts)
+
+
+def validated_capture_view(root: Path, *, receipts: Mapping[str, dict],
+                           expected_urls: Mapping[str, str],
+                           load_capture: Callable[[Path, str], tuple[bytes, bytes, dict]],
+                           validate_request_identity: Callable[[str, Mapping[str, object], str], None],
+                           receipt_error: str | Callable[[str], str] = "retained_capture_manifest_receipt_mismatch",
+                           capture_value=lambda value: (value[0], value[2]), preserve_order=False,
+                           ) -> Mapping[str, tuple[bytes, dict]]:
+    """Check every sealed receipt before exposing a disk-backed replay view.
+
+    Callers own their native manifest and artifact admission checks. Bodies are
+    discarded after each check and never cached by the view.
+    """
+    view = RetainedReplayView(root, receipts=receipts, expected_urls=expected_urls,
+        load_capture=load_capture, validate_request_identity=validate_request_identity,
+        receipt_error=receipt_error, capture_value=capture_value, preserve_order=preserve_order)
+    for name in view:
+        view[name]
+    return view
+
+
 def validate_retained_capture_replay(
     root: Path,
     *,
@@ -76,7 +257,7 @@ def validate_retained_capture_replay(
     expected_urls: Mapping[str, str],
     load_capture: Callable[[Path, str], tuple[bytes, bytes, dict]],
     validate_request_identity: Callable[[str, Mapping[str, object], str], None],
-) -> dict[str, tuple[bytes, dict]]:
+) -> Mapping[str, tuple[bytes, dict]]:
     """Replay a retained capture directory against its sealed manifest.
 
     Reads ``capture_manifest.json`` (refusing a symlinked manifest), requires a
@@ -86,7 +267,8 @@ def validate_retained_capture_replay(
     capture with the caller's established loader and binds each stored receipt
     to the manifest receipt plus the caller's expected request URL. Artifact
     names and URLs are passed explicitly, so the validator never inherits one
-    dataset's pins from another. Returns ``{name: (body, receipt)}``.
+    dataset's pins from another. Returns a disk-backed ``Mapping`` of
+    ``name: (body, receipt)``; each lookup revalidates the retained capture.
     """
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
@@ -100,14 +282,9 @@ def validate_retained_capture_replay(
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    captures = {}
-    for name in sorted(capture_names):
-        body, _wire, receipt = load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        validate_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=expected_urls, load_capture=load_capture,
+        validate_request_identity=validate_request_identity)
 
 
 @dataclass(frozen=True)
@@ -165,6 +342,7 @@ def capture_http_response(
     reserve: Callable[[CaptureProgress], None],
     retain_wire: Callable[[bytes], None],
     retain_decoded: Callable[[bytes], None],
+    apply_retention_budget: bool = True,
 ) -> HTTPCaptureResult:
     """Consume a fresh synchronous streamed response using unbuffered iter_raw.
 
@@ -202,6 +380,8 @@ def capture_http_response(
     pending_wire = pending_decoded = b""
     failure = error_type = None
     phase = "response_validation"
+    budget = _retention_budget.get() if apply_retention_budget else None
+    charge = None
 
     def reservation(kind: str, allocation: int) -> None:
         nonlocal phase
@@ -216,12 +396,15 @@ def capture_http_response(
         produced_hash.update(block)
         pending_decoded = block
         phase = "decoded_sink"
+        if charge is not None:
+            charge(block)
         retain_decoded(block)
         decoded_retained += len(block)
         decoded_hash.update(block)
         pending_decoded = b""
 
     try:
+        charge = budget.response_charge() if budget is not None else None
         if response.is_stream_consumed:
             failure = "wire_stream_unavailable"
         elif encoding not in {"identity", "gzip", "deflate"}:
@@ -256,6 +439,8 @@ def capture_http_response(
                 if max_wire_block_bytes is not None:
                     reservation("wire_block", len(block))
                 phase = "wire_sink"
+                if charge is not None:
+                    charge(block)
                 retain_wire(block)
                 retained += len(block)
                 retained_hash.update(block)

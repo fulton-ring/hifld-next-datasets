@@ -2,8 +2,7 @@
 
 Canonical CRS-drift guard and ArcGIS ring contract for service payloads. The
 error codes (``<label>_crs_drift`` and ``source_*``) are part of the contract
-with downstream checks and must not change; the function bodies are
-byte-identical to the copies they replace.
+with downstream checks and must not change.
 """
 from __future__ import annotations
 
@@ -20,15 +19,20 @@ from shapely.geometry import LinearRing, MultiPolygon, Polygon
 SOURCE_CRS = CRS.from_epsg(4326)
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    """Require every advertised ArcGIS CRS representation to agree with EPSG:4326."""
+def validate_spatial_reference(value: object, label: str, *, required: bool = True,
+                               wkids: tuple[int, ...] = (4326,),
+                               source_crs: CRS = SOURCE_CRS,
+                               allow_none: bool = False) -> bool:
+    """Require every advertised WKID and WKT to identify the native source CRS."""
+    if value is None and allow_none and not required:
+        return False
     if not isinstance(value, dict):
         raise ValueError(f"{label}_crs_drift")
     found = False
     for key in ("wkid", "latestWkid"):
         if key in value:
             wkid = value[key]
-            if type(wkid) is not int or wkid != 4326:
+            if type(wkid) is not int or wkid not in wkids:
                 raise ValueError(f"{label}_crs_drift")
             found = True
     for key in ("wkt", "wkt2"):
@@ -40,12 +44,95 @@ def _validate_spatial_reference(value: object, label: str, *, required: bool = T
                 parsed = CRS.from_wkt(wkt)
             except Exception as exc:
                 raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(SOURCE_CRS, ignore_axis_order=True):
+            if not parsed.equals(source_crs, ignore_axis_order=True):
                 raise ValueError(f"{label}_crs_drift")
             found = True
     if required and not found:
         raise ValueError(f"{label}_crs_drift")
     return found
+
+
+_validate_spatial_reference = validate_spatial_reference
+
+
+def validate_required_spatial_reference(value: object, label: str, *,
+                                         wkids: tuple[int, ...], source_crs: CRS) -> None:
+    """Strict native declarations for callers with a validation-only contract."""
+    validate_spatial_reference(value, label, wkids=wkids, source_crs=source_crs)
+
+
+def validate_advertised_wkids(value: object, label: str, *, native_wkid: int,
+                              required: bool = False) -> None:
+    """Check non-null numeric WKIDs without interpreting WKT declarations."""
+    if not isinstance(value, dict):
+        raise ValueError(label + "_crs_missing")
+    found = False
+    for key in ("wkid", "latestWkid"):
+        wkid = value.get(key)
+        if wkid is not None:
+            if wkid != native_wkid:
+                raise ValueError(label + "_crs_drift")
+            found = True
+    if required and not found:
+        raise ValueError(label + "_crs_drift")
+
+
+def validate_native_wkid_pair(value: object, label: str, *, native_wkid: int,
+                              native_latest_wkid: int, error_type: type[ValueError] = ValueError,
+                              missing_error: str = "{label}_crs_missing",
+                              drift_error: str = "{label}_crs_drift") -> None:
+    """Require the producer's latest code and its nullable legacy alias."""
+    if not isinstance(value, dict):
+        raise error_type(missing_error.format(label=label))
+    if (value.get("latestWkid") != native_latest_wkid
+            or value.get("wkid") not in (None, native_wkid)):
+        raise error_type(drift_error.format(label=label))
+
+
+def validate_pinned_spatial_reference(value: object, label: str,
+                                      expected: dict[str, int]) -> None:
+    """Validate exact codes by property, requiring a code even when WKT is given."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{label}_crs_drift")
+    for key, code in expected.items():
+        if key in value and (type(value[key]) is not int or value[key] != code):
+            raise ValueError(f"{label}_crs_drift")
+    # The strict validator owns WKT parsing; pinned codes are checked above.
+    declarations = {key: value[key] for key in ("wkt", "wkt2") if key in value}
+    if declarations:
+        validate_spatial_reference(declarations, label, required=False,
+                                   source_crs=CRS.from_epsg(expected["latestWkid"]))
+    if not {"wkid", "latestWkid"} & set(value):
+        raise ValueError(f"{label}_crs_drift")
+
+
+def validate_spatial_reference_with_raw_wkt(value: object, label: str) -> None:
+    """Validate coverage declarations, retaining native pyproj parsing errors."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{label}_crs_drift")
+    # This producer contract distinguishes absent declarations and exposes WKT
+    # parsing failures directly. Parsed declarations still use the strict owner.
+    declarations = {key: value[key] for key in ("wkid", "latestWkid") if key in value}
+    validate_spatial_reference(declarations, label, required=False)
+    for key in ("wkt", "wkt2"):
+        if key in value:
+            if not isinstance(value[key], str):
+                raise ValueError(f"{label}_crs_drift")
+            if not CRS.from_wkt(value[key]).equals(SOURCE_CRS, ignore_axis_order=True):
+                raise ValueError(f"{label}_crs_drift")
+    if not any(key in value for key in ("wkid", "latestWkid", "wkt", "wkt2")):
+        raise ValueError(f"{label}_crs_missing")
+
+
+def validate_native_spatial_reference(value: object, label: str, *, required: bool = True,
+                                      native_wkid: int = 102100,
+                                      native_latest_wkid: int = 3857,
+                                      source_crs_wkid: int = 3857) -> bool:
+    """WBD native alias declarations permit absent inherited feature-level CRS."""
+    return validate_spatial_reference(value, label, required=required,
+                                      wkids=(native_wkid, native_latest_wkid),
+                                      source_crs=CRS.from_epsg(source_crs_wkid),
+                                      allow_none=True)
 
 
 def _ring_coordinates(ring: list) -> tuple:

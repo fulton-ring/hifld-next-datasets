@@ -134,6 +134,33 @@ class FemaRegionsStructuralTests(unittest.TestCase):
                 s.persist_response_stream(storage,response,Path(temporary)/'never-read.body',100)
             self.assertEqual(response.raw.reads,0)
 
+    def test_live_owner_retains_failed_prefix_and_stops_before_next_request(self):
+        from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
+        class Interrupted:
+            reads=0
+            def read(self, size):
+                self.reads+=1
+                if self.reads==1:return b'consumed before interruption'
+                raise OSError('synthetic_live_interrupt')
+        response=SimpleNamespace(raw=Interrupted(),url=s.PINS['official-layer']['requested_url'],
+                                 status_code=200,headers={})
+        from contextlib import nullcontext
+        with tempfile.TemporaryDirectory()as temporary:
+            storage=StagingStorageResource(local_dir=temporary)
+            with patch.object(s.requests,'get',return_value=nullcontext(response))as get,patch.object(
+                    s,'capture_request_sequence',wraps=capture_request_sequence,create=True)as owner:
+                with self.assertRaisesRegex(OSError,'synthetic_live_interrupt'):
+                    s.capture_live_observation(storage,{})
+            self.assertEqual(get.call_count,1)
+            owner.assert_called_once()
+            folder=next((Path(temporary)/'_observations'/s.SLUG).iterdir())
+            self.assertEqual((folder/'official-layer.body').read_bytes(),b'consumed before interruption')
+            receipt=json.loads((folder/'official-layer.failed-receipt.json').read_bytes())
+            self.assertFalse(receipt['complete'])
+            self.assertEqual(receipt['persisted_bytes'],len(b'consumed before interruption'))
+            self.assertEqual(receipt['persisted_sha256'],s.digest(b'consumed before interruption'))
+            self.assertFalse((folder/'official-layer.receipt.json').exists())
+
     def test_receipts_strict_times_status_types_and_body_pins(self):
         body=(FIXTURES/'official_gis_root.json').read_bytes();receipt=s.strict_json((FIXTURES/'official_gis_root.receipt.json').read_bytes())
         s.validate_capture('official-gis-root',body,receipt)

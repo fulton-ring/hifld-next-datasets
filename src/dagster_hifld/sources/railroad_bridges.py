@@ -44,12 +44,12 @@ Latitude/Longitude attributes (the producer publishes them separately; the
 """
 from __future__ import annotations
 
+
+from functools import partial
 import hashlib
 import json
 import re
 import shutil
-import time
-from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -62,16 +62,28 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
+from dagster_hifld.http_capture import capture_retention_budget
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages, capture_offset_documents
+from dagster_hifld.sources.arcgis_layer import (
+    capture_with_retry as _capture_with_retry,
+    producer_error_doc as _producer_error_doc,
+    preserve_failed_attempt as _preserve_failed_attempt,
+)
 from dagster_hifld.sources.capture_common import (
-    capture_get, candidate_prefix, content_derived_version,
+    candidate_prefix, content_derived_version,
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -208,13 +220,8 @@ def _after_doc_urls() -> list[tuple[str, str]]:
     ]
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_missing")
-    for key in ("wkid", "latestWkid"):
-        wkid = value.get(key)
-        if wkid is not None and wkid != SOURCE_CRS_WKID:
-            raise ValueError(label + "_crs_drift")
+_validate_spatial_reference = partial(
+    crs_validation.validate_advertised_wkids, native_wkid=SOURCE_CRS_WKID)
 
 
 def _collect_page(offset: int, count: int, total_count: int, page: object, ids: list[int],
@@ -278,8 +285,7 @@ def _classify_geometries(features: list[dict[str, object]], attr_names: list[str
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()
-            if not name.startswith("page_")}
+    docs = CaptureDocuments(captures, (name for name in captures if not name.startswith('page_')))
     page_names = sorted(name for name in captures if name.startswith("page_"))
     pages = [_parse_page_name(name) for name in page_names]
     position = 0
@@ -446,90 +452,14 @@ def _code_identity() -> dict[str, object]:
     return processing_identity(Path(__file__).parents[3])
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents and
-    incomplete transport captures; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
-    final attempt's body is always returned as captured, so a persistent
-    producer failure surfaces to the caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
-
-
-def _capture_pages(client: httpx.Client, capture_root: Path,
-                   total: int) -> dict[str, tuple[bytes, dict[str, object]]]:
-    """Capture the complete layer as ordered, adaptively bisected roster pages.
-
-    Pages start at PAGE_START_RECORDS. A page the producer keeps refusing with
-    an error document or keeps dropping mid-stream is bisected until the
-    producer serves both halves; the refused page's final body and receipts stay
-    on disk as evidence under its own name. A single-record page that still
-    fails ends the capture explicitly.
-    """
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
-    pages: deque[tuple[int, int]] = deque(
-        (offset, min(PAGE_START_RECORDS, total - offset))
-        for offset in range(0, total, PAGE_START_RECORDS)
+def _slice_capture_spec() -> SliceCaptureSpec:
+    return SliceCaptureSpec(
+        byte_budget=MAX_CAPTURE_TOTAL_BYTES,
+        page_name=_page_name, page_url=_page_query,
+        capture=partial(_capture_with_retry, max_bytes=MAX_CAPTURE_BYTES), producer_error=_producer_error_doc,
+        page_attempts=PAGE_PROBE_ATTEMPTS, page_delay=PAGE_PROBE_BASE_DELAY_SECONDS,
+        doc_attempts=DOC_CAPTURE_ATTEMPTS, doc_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
     )
-    while pages:
-        offset, count = pages.popleft()
-        name = _page_name(offset, count)
-        try:
-            body, receipt = _capture_with_retry(
-                client, _page_query(offset, count), capture_root, name,
-                max_bytes=MAX_CAPTURE_BYTES,
-                attempts=PAGE_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                base_delay=PAGE_PROBE_BASE_DELAY_SECONDS if count > 1 else DOC_CAPTURE_BASE_DELAY_SECONDS)
-        except ValueError as exc:
-            if count == 1 or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            middle = count // 2
-            pages.appendleft((offset + middle, count - middle))
-            pages.appendleft((offset, middle))
-            continue
-        if _producer_error_doc(body):
-            if count == 1:
-                raise ValueError("source_single_feature_unservable")
-            middle = count // 2
-            pages.appendleft((offset + middle, count - middle))
-            pages.appendleft((offset, middle))
-            continue
-        captures[name] = (body, receipt)
-    return captures
 
 
 def capture_railroad_bridges(storage: StagingStorageResource, *, version: str,
@@ -552,9 +482,9 @@ def capture_railroad_bridges(storage: StagingStorageResource, *, version: str,
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures = RetainedCaptureView(capture_root)
     try:
-        with httpx.Client(follow_redirects=False, timeout=180,
+        with capture_retention_budget(capture_root, MAX_CAPTURE_TOTAL_BYTES), httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/railroad-bridges-draft"}) as client:
             seed_body, seed_receipt = _capture_with_retry(
                 client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
@@ -567,32 +497,18 @@ def capture_railroad_bridges(storage: StagingStorageResource, *, version: str,
             seed_count = len(seed)
             captures["ids_seed"] = (seed_body, seed_receipt)
             captured_total = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
-            for name, url in _doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name,
-                                                    max_bytes=MAX_CAPTURE_BYTES,
-                                                    attempts=DOC_CAPTURE_ATTEMPTS,
-                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                captures[name] = (body, receipt)
-                captured_total += receipt["bytes"] + receipt["wire_bytes"]
-                if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
+            captured_total = capture_offset_documents(_slice_capture_spec(), client, capture_root, _doc_urls(), captures,
+                retained_bytes=captured_total, max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
             layer_doc = json.loads(captures["layer_before"][0])
             if layer_doc.get("maxRecordCount") != 2000 or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
                 raise ValueError("source_record_limit_drift")
-            captures.update(_capture_pages(client, capture_root, seed_count))
+            captures.update(capture_offset_pages(_slice_capture_spec(), client, capture_root, seed_count, page_size=PAGE_START_RECORDS))
             captured_total += sum(receipt["bytes"] + receipt["wire_bytes"]
                                   for _, receipt in _page_receipts(captures))
             if captured_total > MAX_CAPTURE_TOTAL_BYTES:
                 raise ValueError("source_capture_exceeds_scratch_budget")
-            for name, url in _after_doc_urls():
-                body, receipt = _capture_with_retry(client, url, capture_root, name,
-                                                    max_bytes=MAX_CAPTURE_BYTES,
-                                                    attempts=DOC_CAPTURE_ATTEMPTS,
-                                                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-                captures[name] = (body, receipt)
-                captured_total += receipt["bytes"] + receipt["wire_bytes"]
-                if captured_total > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
+            captured_total = capture_offset_documents(_slice_capture_spec(), client, capture_root, _after_doc_urls(), captures,
+                retained_bytes=captured_total, max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}
@@ -604,7 +520,7 @@ def capture_railroad_bridges(storage: StagingStorageResource, *, version: str,
         (capture_root / "capture_manifest.json").write_bytes(
             _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                         "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        retained = dict(captures)
+        retained = RetainedCaptureView(capture_root, captures)
         for receipt_path in capture_root.glob("*.receipt.json"):
             name = receipt_path.name.removesuffix(".receipt.json")
             if name in retained:
@@ -683,7 +599,7 @@ def capture_railroad_bridges(storage: StagingStorageResource, *, version: str,
                     "license": "https://www.usa.gov/publicdomain/label/1.0/",
                     "attribution": "BTS NTAD; item metadata states the work is U.S. public domain; "
                                    "rights review remains pending."}
-                   for name, (_, receipt) in sorted(captures.items())],
+                   for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "source_fields": "all twenty-eight source fields "
@@ -756,7 +672,7 @@ def capture_railroad_bridges(storage: StagingStorageResource, *, version: str,
                     "source_feature_count": len(extracted["features"]),
                     "source_record_sha256": audit["source_record_sha256"],
                     "source_geometry_sha256": audit["source_geometry_sha256"],
-                    "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}) + b"\n")
+                    "receipts": {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))}}) + b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {rel: parquet_body, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
                "metadata/source_audit.json": _canonical(audit) + b"\n",
@@ -792,21 +708,19 @@ def capture_railroad_bridges(storage: StagingStorageResource, *, version: str,
                 "source_release_accepted": False, "source_freshness_accepted": False,
                 "schema_contract_accepted": False, "id_contract_accepted": False,
                 "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
-    for relative, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-    descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
-    for name, descriptor in descriptors.items():
-        key = f"{prefix}/{name}"
-        snap = storage.object_snapshot(key)
-        if snap is None or snap.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"] \
-                or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_output_physical_readback_failed:" + name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_physical_readback_failed:')
     payload = {"processing_identity": identity,
                "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
                "capture_receipts": {name: receipt for name, (_, receipt) in captures.items()},
                "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
@@ -824,6 +738,6 @@ def capture_railroad_bridges(storage: StagingStorageResource, *, version: str,
 
 
 def _page_receipts(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    for name, (_, receipt) in sorted(captures.items()):
+    for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures)):
         if name.startswith("page_"):
             yield name, receipt

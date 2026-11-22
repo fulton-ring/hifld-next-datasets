@@ -32,10 +32,16 @@ bounded by the page size plus the metadata, not by the population.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import seal_candidate_objects
+
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs,
+)
+
+from functools import partial
 import hashlib
 import json
 import shutil
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -49,14 +55,21 @@ import pyproj
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import (
+    capture_with_retry as _capture_with_retry,
+    producer_error_doc as _producer_error_doc,
+    preserve_failed_attempt as _preserve_failed_attempt,
+)
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
@@ -160,57 +173,8 @@ def _feature_urls(ids: list[int]) -> list[tuple[str, str]]:
     return urls
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise ValueError(label + "_crs_missing")
-    for key in ("wkid", "latestWkid"):
-        wkid = value.get(key)
-        if wkid is not None and wkid != SOURCE_CRS_WKID:
-            raise ValueError(label + "_crs_drift")
-
-
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    for suffix in (".body", ".wire", ".receipt.json"):
-        path = capture_root / f"{name}{suffix}"
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{attempt:02d}{suffix}")
-
-
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        max_bytes: int, attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer request, retrying bounded times on transient failures.
-
-    Retries cover the producer's transient complete-200 Esri error documents and
-    incomplete transport captures; failed attempts are preserved on disk under
-    ``<name>.attempt-NN`` evidence names and never enter the capture roster. The
-    final attempt's body is always returned as captured, so a persistent
-    producer failure surfaces to the caller unchanged.
-    """
-    for attempt in range(1, attempts + 1):
-        try:
-            body, receipt = capture_get(client, url, capture_root, name, max_bytes=max_bytes)
-        except ValueError as exc:
-            if attempt >= attempts or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        if _producer_error_doc(body) and attempt < attempts:
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(base_delay * (3 ** (attempt - 1)))
-            continue
-        return body, receipt
-    raise AssertionError("unreachable_retry_state")
+_validate_spatial_reference = partial(
+    crs_validation.validate_advertised_wkids, native_wkid=SOURCE_CRS_WKID)
 
 
 def _read_capture_body(capture_root: Path, name: str) -> bytes:
@@ -545,25 +509,20 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/nfhl-lomas-draft"}) as client:
-            seed_body, seed_receipt = _capture_with_retry(
-                client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                capture_root, "ids_seed", max_bytes=MAX_CAPTURE_BYTES,
-                attempts=DOC_CAPTURE_ATTEMPTS, base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-            seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or any(type(value) is not int for value in seed)
-                    or len(set(seed)) != len(seed)):
-                raise ValueError("source_seed_id_population_drift")
-            receipts["ids_seed"] = seed_receipt
-            for name, url in _feature_urls(sorted(seed)):
-                _, receipt = _capture_with_retry(
-                    client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES,
-                    attempts=PAGE_CAPTURE_ATTEMPTS if name.startswith("page_") else DOC_CAPTURE_ATTEMPTS,
-                    base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS if name.startswith("page_")
-                    else DOC_CAPTURE_BASE_DELAY_SECONDS)
-                # Capture bodies stay on disk in the attempt directory; only the
-                # small hash-pinned receipts are kept in memory and streamed back
-                # during validation, so the population is never held.
-                receipts[name] = receipt
+            def validate_seed(seed_body):
+                seed = json.loads(seed_body).get("objectIds")
+                if (not isinstance(seed, list) or any(type(value) is not int for value in seed)
+                        or len(set(seed)) != len(seed)):
+                    raise ValueError("source_seed_id_population_drift")
+                return sorted(seed)
+            captures = RetainedCaptureView(capture_root)
+            capture_layer(LAYER_URL, capture_root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                validate_seed=validate_seed, roster=_feature_urls,
+                fetch=lambda client, url, root, name: _capture_with_retry(client, url, capture_root, name, max_bytes=MAX_CAPTURE_BYTES, attempts=PAGE_CAPTURE_ATTEMPTS if name.startswith('page_') else DOC_CAPTURE_ATTEMPTS, base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS if name.startswith('page_') else DOC_CAPTURE_BASE_DELAY_SECONDS),
+                on_validation_error=lambda view: _validate_and_extract(capture_root, view.receipts,
+                    parquet_path=capture_root / "candidate.parquet"))
+            receipts = captures.receipts
         parquet_path = capture_root / "candidate.parquet"
         source_fields, extracted = _validate_and_extract(capture_root, receipts, parquet_path=parquet_path)
     except Exception as exc:
@@ -689,14 +648,8 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
     descriptors: dict[str, dict[str, object]] = {}
 
     def _stage(name: str, body: bytes) -> None:
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        snap = storage.object_snapshot(key)
-        if snap is None or snap.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"] \
-                or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_output_physical_readback_failed:" + name)
-        descriptors[name] = descriptor
+        descriptors.update(write_candidate_outputs(
+            storage, prefix, {name: body}, error_prefix="candidate_output_physical_readback_failed:"))
 
     _stage(rel, parquet_body)
     _stage("metadata/source_manifest.json", _canonical(manifest) + b"\n")
@@ -716,7 +669,12 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
                "source_schema_sha256": audit["source_schema_sha256"],
                "capture_receipts": receipts,
                "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": audit["source_feature_count"],

@@ -5,11 +5,13 @@ Int16/Float32/Int32/Float64 declarations control explicit physical decoding;
 original JSON numeric literals remain separately preserved without modification.
 """
 from __future__ import annotations
+from dagster_hifld.sources import candidate_transaction
 import ast
 import collections
 from contextlib import contextmanager,nullcontext
 from datetime import datetime,timezone
 import fcntl,gzip,hashlib,importlib.metadata,io,json,math,os,platform,re,sqlite3,stat,struct,subprocess,tempfile,zipfile
+from dagster_hifld.sources.capture_common import write_immutable
 from pathlib import Path,PurePosixPath
 from urllib.parse import urlencode,urlsplit
 from uuid import uuid4
@@ -20,6 +22,7 @@ from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.release_approval import validate_release_provenance,verifier_implementation_sha256
 from dagster_hifld.resources import StagingStorageResource,PublishedStorageResource
 from dagster_hifld.validation import compare_full_rows,sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
 
 SLUG='historical-tsunami-observations'
 URL='https://services2.arcgis.com/C8EMgrsFcRFL6LrL/arcgis/rest/services/tsunami_observations/FeatureServer/0'
@@ -97,12 +100,8 @@ def require_local(storage: StagingStorageResource) -> Path:
 
 def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
     local_candidate_path(storage, key)
-    before = storage.object_snapshot(key)
-    if before is not None:
-        if storage.read_key(key) != body or storage.object_snapshot(key) != before:
-            raise ObservationQuarantineError(f'immutable_staging_conflict:{key}')
-    else:
-        storage.write_key_if_unchanged(key, body, None)
+    write_immutable(storage, key, body, error_type=ObservationQuarantineError,
+                    error_prefix='immutable_staging_conflict:')
 
 def quarantine(storage: StagingStorageResource, body: bytes, receipt: dict, reason: str) -> str:
     prefix = f'_quarantine/{SLUG}/{sha(body)}/{uuid4().hex}'
@@ -141,11 +140,9 @@ def candidate_version_lock(storage: StagingStorageResource, prefix: str):
     """One stable lock inode for lookup, validation, invalid detach and install."""
     target=local_candidate_path(storage,prefix)
     target.parent.mkdir(parents=True,exist_ok=True)
-    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:
-            raise ObservationQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
+    with candidate_transaction.lock_path(
+            target.parent / ('.' + target.name + '.lock'), error_type=ObservationQuarantineError,
+            unsafe_code='linked_candidate_lock', require_regular=False, buffered=True):
         yield target
 
 def quarantine_cached_candidate(storage: StagingStorageResource, prefix: str, reason: str, *, already_locked: bool=False) -> str | None:
@@ -231,8 +228,14 @@ def acquire(storage: StagingStorageResource, capture_dir: Path|None) -> dict[str
                     target=Path(tmp)/(archive+'.zip')
                     with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
                         with httpx.Client(timeout=60,follow_redirects=True,headers={'Accept-Encoding':'identity'}) as client:
-                            for n,url in urls.items():
-                                for attempt in range(3):
+                            def fetch_one(n, url):
+                                nonlocal cumulative
+                                # Retry only a refusal whose evidence was retained successfully.
+                                retained_refusal = [None]
+                                def capture_attempt(attempt_number):
+                                    retained_refusal[0] = None
+                                    nonlocal cumulative
+                                    attempt = attempt_number - 1
                                     raw=b'';receipt={'url':url,'fetched_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                                     try:
                                         with client.stream('GET',url) as response:
@@ -247,14 +250,21 @@ def acquire(storage: StagingStorageResource, capture_dir: Path|None) -> dict[str
                                             validate_http(raw,receipt,url,KNOWN_FINAL_URLS.get(n,url))
                                             if response.headers.get('content-length') is not None and int(response.headers['content-length'])!=response.num_bytes_downloaded:
                                                 raise ObservationQuarantineError('incomplete_original_http_wire_length')
-                                        cumulative+=len(raw);break
+                                        cumulative+=len(raw);return raw, receipt
                                     except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
                                         receipt.update(bytes=len(raw),sha256=sha(raw),partial=True)
                                         quarantine(storage,raw,receipt,str(exc))
+                                        retained_refusal[0] = exc
                                         if attempt==2:raise ObservationQuarantineError(f'bounded_original_http_retry_exhausted:{n}:{exc}') from exc
+                                        raise
+                                raw, receipt = retry_capture_request(
+                                    capture_attempt, attempts=3, schedule=(),
+                                    retryable=lambda exc, attempt: exc is retained_refusal[0],
+                                    preserve_failed=lambda exc, attempt: None)
                                 z.writestr(n+'.body',raw);z.writestr(n+'.receipt.json',encode(receipt))
                                 if n in ('count_before','count_after') and strict_json(raw).get('count')!=FEATURE_COUNT:
                                     raise ObservationQuarantineError('source_population_drift_requires_review')
+                            capture_request_steps(((n, url) for n, url in urls.items()), fetch_one)
                     packs[archive]=target.read_bytes()
             except (ValueError,TypeError,KeyError,OSError,zipfile.BadZipFile) as exc:
                 location=f'_quarantine/{SLUG}/acquisitions/{uuid4().hex}'
@@ -596,12 +606,14 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
         if target.exists() or target.is_symlink():raise ObservationQuarantineError('concurrent_or_incomplete_existing_candidate')
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
             private=StagingStorageResource(local_dir=tmp,use_local=True)
-            for n,b in payloads.items():immutable(private,n,b)
-            immutable(private,'metadata/observations_candidate_ready.json',encode(ready))
-            original,original_manifest=original_provenance_bundle(storage,ready['version'],packs,manifest,identity,create=True)
-            if original!=packs or original_manifest!=manifest:
-                raise ObservationQuarantineError('concurrent_original_provenance_winner_retry_required')
-            os.rename(tmp,target)
+            def anchor():
+                original,original_manifest=original_provenance_bundle(storage,ready['version'],packs,manifest,identity,create=True)
+                if original!=packs or original_manifest!=manifest:
+                    raise ObservationQuarantineError('concurrent_original_provenance_winner_retry_required')
+            candidate_transaction.install_private_candidate(
+                Path(tmp), target, payloads.items(),
+                write_one=lambda root, name, body: immutable(private, name, body),
+                ready=lambda root: ('metadata/observations_candidate_ready.json', encode(ready)), anchor=anchor)
 
 
 def stage_tsunami_observations_candidate(storage: StagingStorageResource,*,capture_dir: Path|None=None) -> dict:

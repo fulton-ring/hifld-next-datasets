@@ -1,6 +1,12 @@
 """USACE Offices candidate source; preserves exact public FeatureServer responses."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import verify_cached_objects
+
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs, write_immutable, write_candidate_ready_state,
+)
+
 import hashlib
 import json
 import math
@@ -20,11 +26,13 @@ import pyarrow.parquet as pq
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps
 
 SLUG = "us-army-corps-of-engineers-usace-offices"
 SERVICE = "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/ArcGIS/rest/services/usace_offices/FeatureServer"
@@ -400,12 +408,8 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
         objects = ready.get("objects")
         if ready.get("version") != version or ready.get("approved") is not False or not isinstance(objects, dict):
             raise USACEOfficesSourceError("cached_candidate_ready_identity_invalid")
-        for relative, expected in objects.items():
-            key = f"{version_prefix}/{relative}"
-            snapshot = storage.object_snapshot(key)
-            if (not isinstance(expected, dict) or snapshot is None or snapshot.size != expected.get("bytes")
-                    or storage.sha256_key(key) != expected.get("sha256") or storage.object_snapshot(key) != snapshot):
-                raise USACEOfficesSourceError("cached_candidate_bytes_changed:" + str(relative))
+        verify_cached_objects(storage, version_prefix, objects, descriptor_check="fields",
+            error_prefix="cached_candidate_bytes_changed:", error_type=USACEOfficesSourceError)
         # A mutable READY marker is not sufficient authority for reuse. Recheck
         # the immutable first-construction record and its full raw/native roster.
         identity = _strict_json(storage.read_key(f"{version_prefix}/metadata/processing_identity.json"))
@@ -444,33 +448,50 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
         raise USACEOfficesSourceError("incomplete_existing_candidate_requires_review")
     run_capture = capture / version
     run_capture.mkdir(mode=0o700, exist_ok=False)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: dict[str, tuple[bytes, dict]] = RetainedCaptureView(run_capture)
     def get(client, name, url):
         body, receipt = _capture(client, url, run_capture, name)
-        captures[name] = (body, receipt)
+        captures[name] = (run_capture / (name + ".decoded"), receipt)
         return body
 
     with httpx.Client(timeout=45, follow_redirects=True, headers={"Accept-Encoding": "identity"}) as client:
-        layer_before = _strict_json(get(client, "layer_before", BASE + "?f=pjson"))
-        _validate_layer_schema(layer_before)
-        count_before = _strict_json(get(client, "count_before", _query_url(where="1=1", returnCountOnly="true"))).get("count")
-        ids_field_before, ids_before = _object_ids(get(client, "ids_before", _query_url(where="1=1", returnIdsOnly="true")))
-        if type(count_before) is not int or count_before > MAX_COUNT or ids_field_before != layer_before.get("objectIdField"):
-            raise USACEOfficesSourceError("initial_count_or_id_probe_invalid")
-        features = []
-        batch_size = min(500, max(1, int(layer_before.get("maxRecordCount", 500))))
-        for index in range(0, len(ids_before), batch_size):
-            page_ids = ids_before[index:index + batch_size]
-            url = _query_url(objectIds=",".join(map(str, page_ids)), outFields="*", returnGeometry="true", returnZ="true", returnM="true", orderByFields=layer_before["objectIdField"])
-            page = _strict_json(get(client, f"features_{index:05d}", url))
-            if page.get("exceededTransferLimit") is True:
-                raise USACEOfficesSourceError("source_page_exceeded_transfer_limit")
-            _validate_page_schema(page.get("fields"), layer_before.get("fields"))
-            features.extend(page.get("features", []))
-        layer_after = _strict_json(get(client, "layer_after", BASE + "?f=pjson"))
-        _validate_layer_schema(layer_after)
-        count_after = _strict_json(get(client, "count_after", _query_url(where="1=1", returnCountOnly="true"))).get("count")
-        ids_field_after, ids_after = _object_ids(get(client, "ids_after", _query_url(where="1=1", returnIdsOnly="true")))
+        def request_steps():
+            layer_before = _strict_json((yield ('layer_before', BASE + '?f=pjson',)))
+            _validate_layer_schema(layer_before)
+            count_before = _strict_json((yield ('count_before', _query_url(where='1=1', returnCountOnly='true'),))).get("count")
+            ids_field_before, ids_before = _object_ids((yield ('ids_before', _query_url(where='1=1', returnIdsOnly='true'),)))
+            if type(count_before) is not int or count_before > MAX_COUNT or ids_field_before != layer_before.get("objectIdField"):
+                raise USACEOfficesSourceError("initial_count_or_id_probe_invalid")
+            batch_size = min(500, max(1, int(layer_before.get("maxRecordCount", 500))))
+
+            def validate_page(offset, requested, body):
+                page = _strict_json(body)
+                if page.get("exceededTransferLimit") is True:
+                    raise USACEOfficesSourceError("source_page_exceeded_transfer_limit")
+                _validate_page_schema(page.get("fields"), layer_before.get("fields"))
+                return list(page.get("features", []))
+
+            def validate_closing(name, body, closed):
+                if name == "layer_after":
+                    _validate_layer_schema(_strict_json(body))
+                elif name == "count_after":
+                    _strict_json(body)
+
+            features, _pages, closed = yield ExactIdCapturePlan(ids_before, batch_size,
+                page_request=lambda offset, requested: (f"features_{offset:05d}", _query_url(
+                    objectIds=",".join(map(str, requested)), outFields="*", returnGeometry="true", returnZ="true",
+                    returnM="true", orderByFields=layer_before["objectIdField"])),
+                validate_page=validate_page, read_page=lambda offset: captures[f"features_{offset:05d}"][0],
+                validate_closing=validate_closing,
+                closing_requests=(("layer_after", BASE + "?f=pjson"),
+                    ("count_after", _query_url(where="1=1", returnCountOnly="true")),
+                    ("ids_after", _query_url(where="1=1", returnIdsOnly="true"))))
+            layer_after = _strict_json(closed["layer_after"])
+            count_after = _strict_json(closed["count_after"]).get("count")
+            ids_field_after, ids_after = _object_ids(closed["ids_after"])
+
+            return layer_before, count_before, ids_field_before, ids_before, list(features), layer_after, count_after, ids_field_after, ids_after
+        layer_before, count_before, ids_field_before, ids_before, features, layer_after, count_after, ids_field_after, ids_after = capture_request_steps(request_steps(), lambda name, url: get(client, name, url))
 
     schema_drift = _schema_identity(layer_before) != _schema_identity(layer_after)
     witness_before, witness_after = _editing_witness(layer_before), _editing_witness(layer_after)
@@ -515,7 +536,7 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
                 "data-update observation, not a producer release date; release_date stays unset pending acceptance.")
         else:
             release_reason = "This capture exposed no ArcGIS editingInfo timestamps and no producer release-date field."
-        for name, (_body, receipt) in sorted(captures.items()):
+        for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
             decoded_info = receipt["decoded"]
             provenance_inputs.append({"input_id": "usace-offices-" + name, "producer": "U.S. Army Corps of Engineers",
                 "host": "services7.arcgis.com", "canonical_url": BASE, "retrieval_url": receipt["url"],
@@ -562,18 +583,13 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
             original = json.loads(load_first_construction(storage, state_key, version, fingerprint))
             if original.get("payload", {}).get("id_roster_sha256") != audit["id_roster_sha256"]:
                 raise USACEOfficesSourceError("first_construction_source_roster_changed")
-        for name, body in payloads.items():
-            key = f"{version_prefix}/{name}"
-            snapshot = storage.object_snapshot(key)
-            if snapshot is None:
-                storage.write_key_if_unchanged(key, body, None)
-            elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-                raise USACEOfficesSourceError("immutable_staged_object_changed:" + name)
-        ready_key = f"{version_prefix}/metadata/candidate_ready.json"
-        if storage.object_snapshot(ready_key) is None:
-            storage.write_key_if_unchanged(ready_key, _json(ready), None)
-        elif storage.read_key(ready_key) != _json(ready):
-            raise USACEOfficesSourceError("candidate_ready_state_changed")
+        write_candidate_outputs(
+            storage, version_prefix, payloads, snapshot_check="none",
+            writer=lambda target, key, body: write_immutable(
+                target, key, body, error_type=USACEOfficesSourceError,
+                error_name=key.removeprefix(version_prefix + "/")))
+        write_candidate_ready_state(
+            storage, f"{version_prefix}/metadata/candidate_ready.json", _json(ready), USACEOfficesSourceError)
     return {"version": version, "rows": len(features), "quality_passed": not audit["quality_errors"],
         "quality_errors": audit["quality_errors"], "source_release_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,

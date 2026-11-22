@@ -1,6 +1,7 @@
 """Lossless, approval-gated capture of USACE's FUDS district layer."""
 from __future__ import annotations
 
+
 import json
 import math
 from pathlib import Path
@@ -12,6 +13,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon
 
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
@@ -26,6 +28,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -96,6 +100,34 @@ def _native_parquet(fields: list[dict], source_fields: list[dict], features: lis
     return sink.getvalue().to_pybytes()
 
 
+def _validate_capture_pages(captures, count, seed, fields, layer, service):
+    features = []
+    for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
+        page = json.loads(captures[f"page_{page_no:03d}"][0])
+        rows = page.get("features")
+        expected = min(PAGE_SIZE, count - offset)
+        if not isinstance(rows, list) or len(rows) != expected:
+            raise ValueError("source_page_incomplete")
+        if page.get("exceededTransferLimit") is True and offset + expected >= count:
+            raise ValueError("source_final_page_exceeded_transfer_limit")
+        page_sr = page.get("spatialReference", {})
+        if page_sr.get("latestWkid", page_sr.get("wkid")) != 4326:
+            raise ValueError("source_page_crs_drift")
+        names = [f["name"] for f in fields]
+        if any(not isinstance(r, dict) or list(r.get("attributes", {})) != names for r in rows):
+            raise ValueError("source_record_schema_drift")
+        if [r["attributes"].get("OBJECTID") for r in rows] != seed[offset:offset + expected]:
+            raise ValueError("source_page_id_slice_mismatch")
+        features.extend(rows)
+    layer_after = json.loads(captures["layer_after"][0])
+    service_after = json.loads(captures["service_after"][0])
+    count_after = json.loads(captures["count_after"][0]).get("count")
+    ids_after = json.loads(captures["ids_after"][0]).get("objectIds")
+    if layer_after != layer or service_after != service or count_after != count or sorted(ids_after or []) != seed:
+        raise ValueError("source_changed_during_capture")
+    return features
+
+
 def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version: str,
                                      capture_directory: str | None = None) -> dict:
     """Bracket a complete, ID-ordered native capture; retain exact response bytes."""
@@ -143,31 +175,14 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
             roster = offset_layer_capture_roster(
                 count, layer_url=LAYER_URL, service_url=SERVICE_URL, page_size=PAGE_SIZE,
                 page_params={"returnZ": "true", "returnM": "true", "outSR": "4326"})
-            for name, url in roster[4:]:
+            captures = RetainedCaptureView(root, captures)
+            def fetch(client, url, root, name):
                 get(client, name, url)
-            for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
-                page = json.loads(captures[f"page_{page_no:03d}"][0])
-                rows = page.get("features")
-                expected = min(PAGE_SIZE, count - offset)
-                if not isinstance(rows, list) or len(rows) != expected:
-                    raise ValueError("source_page_incomplete")
-                if page.get("exceededTransferLimit") is True and offset + expected >= count:
-                    raise ValueError("source_final_page_exceeded_transfer_limit")
-                page_sr = page.get("spatialReference", {})
-                if page_sr.get("latestWkid", page_sr.get("wkid")) != 4326:
-                    raise ValueError("source_page_crs_drift")
-                names = [f["name"] for f in fields]
-                if any(not isinstance(r, dict) or list(r.get("attributes", {})) != names for r in rows):
-                    raise ValueError("source_record_schema_drift")
-                if [r["attributes"].get("OBJECTID") for r in rows] != seed[offset:offset + expected]:
-                    raise ValueError("source_page_id_slice_mismatch")
-                features.extend(rows)
-            layer_after = json.loads(captures["layer_after"][0])
-            service_after = json.loads(captures["service_after"][0])
-            count_after = json.loads(captures["count_after"][0]).get("count")
-            ids_after = json.loads(captures["ids_after"][0]).get("objectIds")
-        if layer_after != layer or service_after != service or count_after != count or sorted(ids_after or []) != seed:
-            raise ValueError("source_changed_during_capture")
+                return captures[name]
+            capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, roster=lambda ids: roster, fetch=fetch,
+                on_validation_error=lambda retained: _validate_capture_pages(retained, count, seed, fields, layer, service))
+            features = _validate_capture_pages(captures, count, seed, fields, layer, service)
         capture_witness(captures, captured_ids=[row["attributes"]["OBJECTID"] for row in features])
         for row in features:
             _esri_polygon(row.get("geometry", {}))
@@ -187,7 +202,7 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     native_name = f"geoparquet/{DATASET_SLUG}.parquet"
     objects = {native_name: native}
-    receipts = {n: r for n, (_, r) in sorted(captures.items())}
+    receipts = {n: r for n, (_, r) in ((name, captures[name]) for name in sorted(captures))}
     inputs = []
     for name, receipt in sorted(receipts.items()):
         parsed = urlsplit(receipt["url"])
@@ -272,13 +287,13 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
                 "capture_complete": True, "source_id_sha256": records_sha,
                 "native_id_column": "OBJECTID", "source_schema_sha256": schema_sha,
                 "candidate_approved": False, "reused": True}
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-    seal_ready_candidate(storage, state_key, version, fingerprint, {
-        "processing_identity": identity, "source_record_sha256": records_sha,
-        "source_schema_sha256": schema_sha, "capture_receipts": receipts,
-        "objects": expected_objects,
-    })
+    write_candidate_outputs(storage, prefix, outputs, snapshot_check="none")
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, expected_objects,
+        source_record_sha256=records_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG,
             "version": version, "prefix": prefix, "feature_count": count,

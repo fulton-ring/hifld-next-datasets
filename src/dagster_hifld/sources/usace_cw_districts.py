@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -15,9 +14,13 @@ import pyproj
 import shapely
 from shapely.geometry import MultiPolygon
 
+from dagster_hifld.sources.arcgis_raw_capture import (
+    RawCapturePolicy, request_raw, capture_exact_id_population, population_snapshot,
+    validate_population_snapshot,
+)
+
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups
 
-from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.sources.capture_common import processing_identity
 
@@ -104,64 +107,10 @@ def _request_url(name: str, params: dict[str, object]) -> str:
 def _request(client: httpx.Client, params: dict[str, object], staging, version_key: str, name: str,
              budget: list[int], max_bytes: int = DOCUMENT_CAPTURE_LIMIT) -> dict:
     retained = getattr(client, "retained_capture", None)
-    if retained is not None:
-        body, wire, receipt = retained.read_response(name, params)
-        budget[0] += len(body) + len(wire)
-        if budget[0] > TOTAL_CAPTURE_BUDGET:
-            raise ValueError("source_total_capture_budget_exceeded")
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.json", body)
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.wire", wire)
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{name}.receipt.json", _json_bytes(receipt))
-        parsed = json.loads(body)
-        if not isinstance(parsed, dict) or "error" in parsed:
-            raise ValueError(f"invalid_arcgis_response:{name}")
-        return parsed
-    url = _request_url(name, params)
-    for attempt in range(3):
-        raw_parts: list[bytes] = []
-        wire_parts: list[bytes] = []
-        try:
-            with client.stream("GET", url, params=params, headers={"Accept-Encoding": "identity"}) as response:
-                capture = capture_http_response(
-                    response, max_wire_bytes=max_bytes, max_decoded_bytes=max_bytes,
-                    reserve=lambda progress: _reserve(budget, progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes),
-                    retain_wire=wire_parts.append, retain_decoded=raw_parts.append,
-                )
-        except Exception as exc:
-            raise ValueError("source_transport_error:" + type(exc).__name__) from exc
-        body = b"".join(raw_parts)
-        wire = b"".join(wire_parts)
-        status_ok = capture.complete and 200 <= capture.status_code < 300
-        # Preserve unsuccessful responses under attempt-specific names before retrying.
-        artifact_name = name if status_ok else f"{name}.attempt_{attempt + 1}"
-        receipt = {
-            "method": "GET", "url": str(response.request.url), "status": capture.status_code,
-            "attempt": attempt + 1, "observed_at": datetime.now(timezone.utc).isoformat(), "bytes": len(body),
-            "sha256": _digest(body), "wire_bytes": len(wire), "wire_sha256": _digest(wire),
-            "content_type": response.headers.get("content-type"), "content_encoding": capture.content_encoding,
-            "complete": capture.complete, "error_code": capture.error_code,
-        }
-        budget[0] += len(body) + len(wire)
-        if budget[0] > TOTAL_CAPTURE_BUDGET:
-            raise ValueError("source_total_capture_budget_exceeded")
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{artifact_name}.json", body)
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{artifact_name}.wire", wire)
-        staging.write(DATASET_SLUG, FILE_SLUG, version_key, f"raw/{artifact_name}.receipt.json", _json_bytes(receipt))
-        if status_ok:
-            parsed = json.loads(body)
-            if not isinstance(parsed, dict) or "error" in parsed:
-                raise ValueError(f"invalid_arcgis_response:{name}")
-            return parsed
-        if capture.status_code in {429, 500, 502, 503, 504} and attempt < 2:
-            time.sleep(0.25 * (attempt + 1))
-            continue
-        raise ValueError("incomplete_source_response:" + name)
-    raise ValueError("source_retry_limit_exceeded:" + name)
-
-
-def _reserve(budget: list[int], upcoming: int) -> None:
-    if budget[0] + upcoming > TOTAL_CAPTURE_BUDGET:
-        raise ValueError("source_total_capture_budget_exceeded")
+    return request_raw(client, _request_url(name, params), params, name, budget,
+        write=lambda relative, data: staging.write(DATASET_SLUG, FILE_SLUG, version_key, relative, data),
+        encode=_json_bytes, retained=retained.read_response if retained is not None else None,
+        policy=RawCapturePolicy(max_bytes, TOTAL_CAPTURE_BUDGET, attempts=3))
 
 
 def _metadata(client: httpx.Client, staging, version_key: str, budget: list[int], pin_extent: bool = False) -> dict:
@@ -506,20 +455,21 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             service_before = _request(client, {"f": "json"}, staging, version_key, "service_before", budget)
             _validate_service(service_before)
         metadata = _metadata(client, staging, version_key, budget, pin_extent=distribution_chain)
-        count_before = _count_snapshot(client, staging, version_key, "count_before", budget)
-        before = _id_snapshot(client, staging, version_key, "ids_before", budget)
+        count_before, before = population_snapshot(
+            lambda: _count_snapshot(client, staging, version_key, "count_before", budget),
+            lambda: _id_snapshot(client, staging, version_key, "ids_before", budget))
         if len(before) != count_before:
             raise ValueError("source_count_drift")
-        features = []
         grouped_geometries = []
         wkb_rows: list[bytes] = []
-        pages = []
-        for offset in range(0, len(before), PAGE_SIZE):
-            requested = before[offset:offset + PAGE_SIZE]
+        def fetch_page(offset, requested):
             result = _request(client, {
                 "f": "json", "objectIds": ",".join(map(str, requested)), "outFields": "*",
                 "returnGeometry": "true",
             }, staging, version_key, f"page_{offset:07d}", budget, max_bytes=PAGE_CAPTURE_LIMIT)
+            return result
+
+        def validate_page(offset, requested, result):
             page = result.get("features")
             if not isinstance(page, list) or len(page) > metadata["maxRecordCount"]:
                 raise ValueError(f"source_incomplete_page:{offset}")
@@ -543,17 +493,24 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
                 multipolygon, grouped = _esri_multipolygon(feature.get("geometry"))
                 grouped_geometries.append(grouped)
                 wkb_rows.append(shapely.to_wkb(multipolygon, byte_order=1, output_dimension=2))
-            features.extend(page)
-            pages.append({"offset": offset, "requested_ids": requested, "returned_ids": page_ids, "count": len(page)})
-        after = _id_snapshot(client, staging, version_key, "ids_after", budget)
-        count_after = _count_snapshot(client, staging, version_key, "count_after", budget)
+            return page
+
+        def close_witnesses():
+            return population_snapshot(
+                lambda: _count_snapshot(client, staging, version_key, "count_after", budget),
+                lambda: _id_snapshot(client, staging, version_key, "ids_after", budget), ids_first=True)
+
+        features, pages, (count_after, after) = capture_exact_id_population(
+            before, PAGE_SIZE, fetch_page=fetch_page, validate_page=validate_page,
+            close_witnesses=close_witnesses,
+            read_page=lambda offset: staging.read_key(
+                f"{DATASET_SLUG}/{FILE_SLUG}/{version_key}/raw/page_{offset:07d}.json"))
         if distribution_chain:
             service_after = _request(client, {"f": "json"}, staging, version_key, "service_after", budget)
             if service_after != service_before:
                 raise ValueError("official_usace_cw_districts_service_changed_during_capture")
-        fetched_ids = [feature["attributes"]["OBJECTID"] for feature in features]
-        if count_before != count_after or before != after or fetched_ids != before or len(features) != len(before):
-            raise ValueError("source_population_changed_during_capture")
+        validate_population_snapshot(count_before, before, count_after, after, features)
+        features = list(features)
         rows = [{"attributes": f["attributes"], "geometry": {"rings": grouped}} for f, grouped in zip(features, grouped_geometries)]
         row_digest = _digest(_json_bytes(rows))
         ids_digest = _digest(_json_bytes(before))

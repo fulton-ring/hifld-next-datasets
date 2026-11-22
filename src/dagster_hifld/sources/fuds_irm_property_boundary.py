@@ -7,6 +7,9 @@ publication.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import verify_cached_objects, verify_cached_capture_receipts
+
+
 import base64
 import json
 import math
@@ -23,6 +26,8 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, zero_area_rings
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -31,6 +36,8 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
@@ -40,6 +47,7 @@ from dagster_hifld.sources.arcgis_layer import (
     capture_page, capture_witness, layer_capture_roster,
 )
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 
 SERVICE_ITEM_ID = "df5f8412d041469692ff4846c7131a56"
 SERVICE_URL = "https://geospatial.sec.usace.army.mil/server/rest/services/Military/FUDS_Data/MapServer"
@@ -91,7 +99,7 @@ def _source_polygon_geometry(rings: list[list[list[object]]]):
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict[str, object], list[dict[str, object]], dict[str, object]]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     expected_names = {
         "service_before", "layer_before", "count_before", "ids_before",
         "ids_seed", "layer_after", "service_after", "count_after", "ids_after",
@@ -286,27 +294,13 @@ def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_
                             audit["source_schema_sha256"], objects, payload["capture_receipts"])
     if not isinstance(objects, dict) or set(objects) != expected_keys:
         raise ValueError("cached_candidate_roster_changed")
-    for name, descriptor in objects.items():
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if (not isinstance(descriptor, dict) or snapshot is None
-                or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_candidate_object_integrity_failed:" + name)
+    verify_cached_objects(storage, prefix, objects, descriptor_check="dict")
     parquet_key = f"{prefix}/geoparquet/{DATASET_SLUG}.parquet"
     if objects.get(f"geoparquet/{DATASET_SLUG}.parquet") != {"bytes": len(current_parquet), "sha256": _sha(current_parquet)}:
         raise ValueError("cached_native_candidate_changed")
     receipt_map = payload["capture_receipts"]
     if not isinstance(receipt_map, dict): raise ValueError("cached_capture_receipts_missing")
-    for name, receipt in receipt_map.items():
-        raw_key = f"{prefix}/raw/{name}.body"; wire_key = f"{prefix}/raw/{name}.wire"
-        body = storage.read_key(raw_key); wire = storage.read_key(wire_key)
-        receipt_body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
-        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt_body != _canonical(receipt)+b"\n"):
-            raise ValueError("cached_original_capture_changed:" + name)
+    verify_cached_capture_receipts(storage, prefix, receipt_map)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],
             "capture_complete":True,"source_id_sha256":audit["source_id_sha256"],
@@ -338,7 +332,7 @@ def capture_fuds_irm_property_boundary(storage: StagingStorageResource, *, versi
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures: dict[str, tuple[bytes, dict[str, object]]] = RetainedCaptureView(capture_root)
     try:
         with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/fuds-irm-property-boundary-draft"}) as client:
             seed_body, seed_receipt = _fetch(client, LAYER_URL + "/query?" + urlencode({"where":"1=1","returnIdsOnly":"true","f":"json"}), capture_root, "ids_seed")
@@ -348,9 +342,8 @@ def capture_fuds_irm_property_boundary(storage: StagingStorageResource, *, versi
                     or len(set(seed)) != len(seed)):
                 raise ValueError("source_seed_id_count_drift")
             captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _feature_urls(seed):
-                body, receipt = _fetch(client, url, capture_root, name)
-                captures[name] = (body, receipt)
+            capture_request_sequence(captures, (), lambda _: _feature_urls(seed),
+                lambda name, url: _fetch(client, url, capture_root, name))
         layer, fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}
@@ -370,7 +363,7 @@ def capture_fuds_irm_property_boundary(storage: StagingStorageResource, *, versi
       "schema_version":1,"approved":False,"title":LAYER_NAME,"description":"Exact USACE Military/FUDS_Data MapServer layer 8 IRM property-boundary polygons. The layer metadata and query responses do not declare Z or M dimensions. Precise source release date is unknown, so currentness and successor decision are pending.",
       "publisher":PUBLISHER,"agency":"U.S. Army Corps of Engineers","source_url":LAYER_URL,"license":None,
       "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":SERVICE_URL if name == "service_before" or name == "service_after" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"unknown_pending_rights_review","attribution":"USACE service copyrightText is U.S. Army Corps of Engineers; downstream license and rights review remain pending.","release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in sorted(captures.items())],
+      "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":SERVICE_URL if name == "service_before" or name == "service_after" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"unknown_pending_rights_review","attribution":"USACE service copyrightText is U.S. Army Corps of Engineers; downstream license and rights review remain pending.","release_date":None,"release_date_unknown_reason":SOURCE_VINTAGE_NOTE} for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))],
       "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"feature_layer_id":LAYER_ID,"source_fields":"all source fields preserved in producer order and declared physical types","source_ids":"Preserve each OBJECTID, all source identifiers unchanged","geometry":"Primary GeoParquet XY WKB derives shell/hole grouping from Esri ring winding at source EPSG:4326. Auxiliary source_geometry retains exact Esri geometry JSON, including coordinate and ring order; raw response pages retain absent hasZ/hasM flags. No reprojection, closure, or geometry repair is performed.","candidate_status":"unapproved; production publication prohibited pending source freshness, schema/ID contract, rights and mapping acceptance"}}],
       "lineage":"The USACE Military/FUDS_Data MapServer exposes layer 8, IRM Property Boundary, under group layer 5 Interim Risk Management (IRM). Layer 7 IRM Project Boundary is a distinct source product. The precise source release date is unknown; service or portal modification timestamps are not treated as source release dates.",
       "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native Esri query values, all attributes, IDs and source XY geometry retained exactly in source_geometry; raw pages preserve undeclared hasZ/hasM flags. Source vintage and release approvals remain unresolved.","objects":[{"path":next(iter(source_objects)),**next(iter(source_objects.values()))}]}}},
@@ -383,7 +376,7 @@ def capture_fuds_irm_property_boundary(storage: StagingStorageResource, *, versi
                                       audit["source_geometry_sha256"],
                                       audit["source_schema_sha256"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":len(extracted["features"]),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+    (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"error_code":None,"source_feature_count":len(extracted["features"]),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {
         f"geoparquet/{DATASET_SLUG}.parquet":parquet_body,
@@ -400,13 +393,14 @@ def capture_fuds_irm_property_boundary(storage: StagingStorageResource, *, versi
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
         return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs),parquet_body)
-    for relative, body in outputs.items(): _write_immutable(storage,f"{prefix}/{relative}",body)
-    descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    for name, descriptor in descriptors.items():
-        key=f"{prefix}/{name}"; snapshot=storage.object_snapshot(key)
-        if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"] or storage.object_snapshot(key) != snapshot:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_physical_readback_failed:', writer=_write_immutable)
     payload = {"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fingerprint,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(extracted["features"]),"capture_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_null_geometry_count":audit["null_geometry_count"],"source_invalid_geometry_count":audit["invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}

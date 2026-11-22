@@ -46,13 +46,13 @@ is stopped.
 """
 from __future__ import annotations
 
+from functools import partial
 import hashlib
 import json
 import re
 import shutil
 import struct
 from array import array
-from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator, Mapping
@@ -64,15 +64,22 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_adaptive import AdaptiveCaptureSpec, capture_adaptive_layer
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    candidate_prefix,
+    content_derived_version,
+    processing_identity,
+    quarantine_incomplete_capture,
+    verify_cached_candidate,
     write_immutable,
+    reuse_sealed_candidate,
+    load_candidate_checkpoint,
+    stage_candidate_objects,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
@@ -255,14 +262,11 @@ def _validate_roster(roster: object, label: str) -> list[int]:
     return sorted(roster)
 
 
-def _validate_spatial_reference(value: object, label: str) -> None:
-    if not isinstance(value, dict):
-        raise GnisOtherHydrographicFeaturesError(
-            "source_spatial_reference_missing:" + label)
-    if (value.get("latestWkid") != NATIVE_LAYER_SR["latestWkid"]
-            or value.get("wkid") not in (None, NATIVE_LAYER_SR["wkid"])):
-        raise GnisOtherHydrographicFeaturesError(
-            "source_spatial_reference_drift:" + label)
+_validate_spatial_reference = partial(
+    crs_validation.validate_native_wkid_pair,
+    native_wkid=NATIVE_LAYER_SR["wkid"], native_latest_wkid=NATIVE_LAYER_SR["latestWkid"],
+    error_type=GnisOtherHydrographicFeaturesError, missing_error="source_spatial_reference_missing:{label}",
+    drift_error="source_spatial_reference_drift:{label}")
 
 
 def _validate_service_document(service: object, label: str) -> None:
@@ -486,18 +490,6 @@ def _load_state(capture_root: Path) -> dict[str, object]:
     return state
 
 
-def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
-                       url: str) -> tuple[bytes, dict[str, object]]:
-    if (capture_root / f"{name}.body").exists():
-        try:
-            return _read_capture(capture_root, name)
-        except GnisOtherHydrographicFeaturesError:
-            _witness_aside(capture_root, name)
-    return _capture_with_retry(client, url, capture_root, name,
-                               attempts=DOC_CAPTURE_ATTEMPTS,
-                               base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
-
-
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
     return read_capture(capture_root, name, GnisOtherHydrographicFeaturesError)
 
@@ -506,69 +498,9 @@ def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
     return load_receipt(capture_root, name, GnisOtherHydrographicFeaturesError)
 
 
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    return capture_with_retry(client, url, capture_root, name, attempts=attempts,
-                              base_delay=base_delay, max_bytes=MAX_BODY_BYTES)
-
-
 _witness_aside = witness_aside
 _producer_error_doc = producer_error_doc
 _preserve_failed_attempt = preserve_failed_attempt
-
-
-def _plan_page_gaps(capture_root: Path, roster: list[int]) -> list[tuple[int, int]]:
-    """Plan the roster gaps that still need a capture this session.
-
-    A retained page counts as accepted only when its receipt and body verify,
-    its body is not a producer error document, and it already sits in the
-    capture state; anything else is witnessed aside and refetched.
-    """
-    state = _load_state(capture_root)
-    accepted_names = {entry.get("name") for entry in state["pages"]
-                      if isinstance(entry, dict)}
-    retained: list[tuple[int, int]] = []
-    for path in sorted(capture_root.glob("page_*.body")):
-        name = path.name.removesuffix(".body")
-        if _PAGE_NAME_PATTERN.fullmatch(name) is None:
-            # Witnessed refusal evidence (page_*.error-*.body) and other
-            # non-canonical names are not roster pages; skip them.
-            continue
-        try:
-            body, _receipt = _read_capture(capture_root, name)
-        except GnisOtherHydrographicFeaturesError:
-            _witness_aside(capture_root, name)
-            continue
-        if body.lstrip().startswith(b'{"error"') or name not in accepted_names:
-            _witness_aside(capture_root, name)
-            continue
-        offset, count = _parse_page_name(name)
-        if offset + count > len(roster):
-            _witness_aside(capture_root, name)
-            continue
-        retained.append((offset, count))
-    gaps: list[tuple[int, int]] = []
-    covered = bytearray(len(roster))
-    for offset, count in sorted(retained):
-        if offset < 0 or count < 1 or offset + count > len(roster) \
-                or any(covered[offset:offset + count]):
-            _witness_aside(capture_root, _page_name(offset, count))
-            continue
-        covered[offset:offset + count] = b"\x01" * count
-    cursor = 0
-    while cursor < len(roster):
-        if covered[cursor]:
-            cursor += 1
-            continue
-        start = cursor
-        while cursor < len(roster) and not covered[cursor]:
-            cursor += 1
-        chunk_start = start
-        while chunk_start < cursor:
-            count_chunk = min(PAGE_START_RECORDS, cursor - chunk_start)
-            gaps.append((chunk_start, count_chunk))
-            chunk_start += count_chunk
-    return gaps
 
 
 def _page_matches_slice(body: bytes, offset: int, count: int,
@@ -589,65 +521,24 @@ def _page_matches_slice(body: bytes, offset: int, count: int,
     return actual == expected
 
 
-def _fetch_pages(client: httpx.Client, capture_root: Path, roster: list[int],
-                 state: dict[str, object]) -> None:
-    """Capture the complete layer as adaptively bisected roster pages.
-
-    Pages start at PAGE_START_RECORDS. A page the producer keeps refusing is
-    bisected until the producer serves both halves, whether the refusal is a
-    persistent error document or a persistent incomplete transport capture;
-    the refused page's final body and receipts stay on disk as evidence under
-    witnessed names. A single-record page that still fails ends the capture
-    explicitly.
-    """
-    pages = state.setdefault("pages", [])
-    accepted = {entry.get("name") for entry in pages if isinstance(entry, dict)}
-    todo: deque[tuple[int, int]] = deque(_plan_page_gaps(capture_root, roster))
-    while todo:
-        offset, count = todo.popleft()
-        name = _page_name(offset, count)
-        if name in accepted and (capture_root / f"{name}.body").exists() \
-                and not (capture_root / f"{name}.body").read_bytes().lstrip().startswith(
-                    b'{"error"'):
-            continue
-        url = _segment_query(offset, count)
-        try:
-            body, receipt = _capture_with_retry(
-                client, url, capture_root, name,
-                attempts=PAGE_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                base_delay=PAGE_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS)
-        except ValueError as exc:
-            # The producer cap can also manifest as truncation/connection reset
-            # instead of a clean error document; a multi-record page whose
-            # attempts were still incomplete is bisected like an error
-            # document, while a single-record page keeps failing explicitly.
-            if count > 1 and str(exc).startswith("incomplete_source_capture:"):
-                middle = count // 2
-                todo.appendleft((offset + middle, count - middle))
-                todo.appendleft((offset, middle))
-                continue
-            raise GnisOtherHydrographicFeaturesError(
-                "source_capture_failed:" + type(exc).__name__) from exc
-        if _producer_error_doc(body):
-            _witness_aside(capture_root, name)
-            if count == 1:
-                raise GnisOtherHydrographicFeaturesError(
-                    "source_single_feature_unservable")
-            middle = count // 2
-            todo.appendleft((offset + middle, count - middle))
-            todo.appendleft((offset, middle))
-            continue
-        if not _page_matches_slice(body, offset, count, roster):
-            _witness_aside(capture_root, name)
-            raise GnisOtherHydrographicFeaturesError(
-                "source_page_id_slice_incomplete_or_reordered")
-        if name not in accepted:
-            pages.append({"name": name, "offset": offset, "count": count,
-                          "features": count, "captured_at": receipt["observed_at"],
-                          "body_sha256": _sha(body)})
-            accepted.add(name)
-            _save_state(capture_root, state)
+def _capture_spec() -> AdaptiveCaptureSpec:
+    return AdaptiveCaptureSpec(
+        byte_budget=MAX_CAPTURE_BYTES,
+        service_url=SERVICE_URL, layer_url=LAYER_URL,
+        count_url=_count_url(), ids_url=_ids_url(),
+        metadata_names=tuple(METADATA_NAMES), after_names=tuple(AFTER_NAMES),
+        page_size=PAGE_START_RECORDS, page_pattern=_PAGE_NAME_PATTERN,
+        page_name=_page_name, parse_page_name=_parse_page_name,
+        page_url=lambda roster, offset, count: _segment_query(offset, count),
+        page_matches=_page_matches_slice, validate_roster=_validate_roster,
+        load_state=_load_state, save_state=_save_state,
+        read_capture=_read_capture, witness_aside=witness_aside,
+        capture=partial(capture_with_retry, max_bytes=MAX_BODY_BYTES), producer_error=producer_error_doc,
+        default_client=_default_client, error=GnisOtherHydrographicFeaturesError,
+        page_attempts=PAGE_PROBE_ATTEMPTS, page_delay=PAGE_PROBE_BASE_DELAY_SECONDS,
+        doc_attempts=DOC_CAPTURE_ATTEMPTS, doc_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+        reconcile_invalidated_pages=False,
+    )
 
 
 def fetch_gnis_other_hydrographic_features_pages(
@@ -658,71 +549,11 @@ def fetch_gnis_other_hydrographic_features_pages(
     Pure-local when the capture directory already holds every required page
     and document.
     """
-    capture_root = Path(capture_root).absolute()
-    capture_root.mkdir(parents=True, exist_ok=True)
-    state = _load_state(capture_root)
-    owner = client is None
-    active = client or _default_client()
-    pages: list[dict[str, object]] = list(state.get("pages", []))
-    first_captured_at = (pages[0]["captured_at"] if pages
-                         else datetime.now(timezone.utc).isoformat())
-    try:
-        for name in METADATA_NAMES:
-            url = {"service_before": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url(),
-                   "ids_seed": _ids_url(),
-                   "ids_before": _ids_url()}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            if _producer_error_doc(body):
-                raise GnisOtherHydrographicFeaturesError(
-                    "source_page_error:" + name)
-        seed = json.loads(_read_capture(capture_root, "ids_seed")[0]).get("objectIds")
-        ids = _validate_roster(seed, "ids_seed")
-        before = json.loads(_read_capture(capture_root, "ids_before")[0])
-        if before.get("objectIdFieldName") != "OBJECTID":
-            raise GnisOtherHydrographicFeaturesError("source_id_field_changed")
-        roster = _validate_roster(before.get("objectIds"), "ids_before")
-        if roster != ids:
-            raise GnisOtherHydrographicFeaturesError(
-                "source_id_population_drift:ids_seed_vs_before")
-        count_before = json.loads(_read_capture(capture_root, "count_before")[0])
-        if count_before.get("count") != len(roster):
-            raise GnisOtherHydrographicFeaturesError("source_count_drift")
-        _fetch_pages(active, capture_root, roster, state)
-        pages = list(state["pages"])
-        for name in AFTER_NAMES:
-            url = {"layer_after": LAYER_URL + "?f=pjson",
-                   "service_after": SERVICE_URL + "?f=pjson",
-                   "count_after": _count_url(),
-                   "ids_after": _ids_url()}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            if _producer_error_doc(body):
-                raise GnisOtherHydrographicFeaturesError(
-                    "source_page_error:" + name)
-        count_after = json.loads(_read_capture(capture_root, "count_after")[0])
-        if count_after.get("count") != len(roster):
-            raise GnisOtherHydrographicFeaturesError(
-                "source_metadata_or_count_changed_during_capture")
-        after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
-        if after_ids.get("objectIdFieldName") != "OBJECTID" \
-                or _validate_roster(after_ids.get("objectIds"), "ids_after") != roster:
-            raise GnisOtherHydrographicFeaturesError(
-                "source_id_population_drift:ids_after")
-    except GnisOtherHydrographicFeaturesError:
-        if owner:
-            active.close()
-        raise
-    except Exception as exc:
-        if owner:
-            active.close()
-        raise GnisOtherHydrographicFeaturesError(
-            "source_capture_failed:" + type(exc).__name__) from exc
-    if owner:
-        active.close()
-    _save_state(capture_root, {"pages": pages, "complete": True})
-    last_captured_at = max((str(entry.get("captured_at", "")) for entry in pages),
-                           default=first_captured_at)
+    acquisition = capture_adaptive_layer(_capture_spec(), capture_root, client=client)
+    capture_root = acquisition.root
+    roster, pages = acquisition.roster, acquisition.pages
+    first_captured_at = acquisition.first_captured_at
+    last_captured_at = acquisition.last_captured_at
     extracted = _stream_validate(capture_root, parquet_sink=None)
     (capture_root / "computed_baseline.json").write_bytes(_canonical({
         "source_record_sha256": extracted["record_sha"],
@@ -1031,7 +862,8 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                       extracted["schema_sha"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
+
+    def verify_existing():
         parquet_body = Path(extracted["parquet_path"]).read_bytes()
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
@@ -1041,6 +873,10 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
              "null_geometry_count": extracted["null_geometry_count"],
              "source_id_sha256": extracted["ids_sha"]},
             parquet_body)
+
+    reused = reuse_sealed_candidate(storage, state_key, verify_existing)
+    if reused is not None:
+        return reused
     audit = {
         "source_feature_count": extracted["feature_count"],
         "source_id_sha256": extracted["ids_sha"],
@@ -1205,24 +1041,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
     }
     # Stream every retained capture to storage one page at a time; the seal never
     # holds more than one page body/wire pair plus the small receipt maps.
-    descriptors: dict[str, dict[str, object]] = {}
-    for relative, body in metadata_outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-        descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted(receipts):
-        body, receipt = _read_capture(capture_root, name)
-        wire = (capture_root / f"{name}.wire").read_bytes()
-        for suffix, blob in (("body", body), ("wire", wire),
-                             ("receipt.json", _canonical(receipt) + b"\n")):
-            relative = f"raw/{name}.{suffix}"
-            write_immutable(storage, f"{prefix}/{relative}", blob)
-            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
-    fingerprint = _sha(_canonical(identity))
-    payload = {"processing_identity": identity,
-               "source_record_sha256": audit["source_record_sha256"],
-               "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": receipts, "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    stage_candidate_objects(
+        storage, prefix, state_key, version, identity, metadata_outputs,
+        capture_root, receipts, _read_capture,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'])
     # identity= selects the scheme-aware validation branch: a packaged runtime
     # (/app without .git) carries a packaged-sha256: commit that the Git-only
     # branch would reject as construction_invalid_commit after a valid seal.
@@ -1250,17 +1073,9 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str,
                              identity: Mapping[str, object],
                              audit: Mapping[str, object], current_parquet: bytes) \
         -> dict[str, object]:
-    fingerprint = _sha(_canonical(identity))
-    bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
-    payload = bundle.get("payload")
-    if (not isinstance(payload, dict) or set(payload) != {"processing_identity",
-            "source_record_sha256", "source_schema_sha256", "capture_receipts",
-            "objects"}
-            or payload["processing_identity"] != identity
-            or payload["source_record_sha256"] != audit["source_record_sha256"]
-            or payload["source_schema_sha256"] != audit["source_schema_sha256"]):
-        raise GnisOtherHydrographicFeaturesError(
-            "cached_first_candidate_identity_or_source_changed")
+    fingerprint, payload = load_candidate_checkpoint(
+        storage, state_key, version, identity,
+        audit['source_record_sha256'], audit['source_schema_sha256'], GnisOtherHydrographicFeaturesError)
     expected_objects = {name: descriptor
                         for name, descriptor in payload["objects"].items()}
     verify_cached_candidate(storage, REPO_ROOT, state_key, prefix, version,

@@ -6,11 +6,11 @@ Pinned drift quarantines; historical published IDs remain separately preserved.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources import candidate_transaction
 import collections
 import hashlib
 import importlib.metadata
 import io
-import fcntl
 import os
 import json
 import platform
@@ -25,6 +25,8 @@ import tempfile
 import zipfile
 from datetime import datetime, timezone
 from contextlib import contextmanager, nullcontext
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
@@ -42,6 +44,7 @@ from dagster_hifld.sources.capture_common import processing_identity as shared_p
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.validation import compare_full_rows, sha256_file
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
 
 FIDELITY_FILES = ('baseline_comparison.json','baseline_comparison.md','baseline_differences.jsonl','baseline_field_changes.jsonl')
 SLUG = 'current-dart-deployments'
@@ -97,13 +100,8 @@ def require_local(storage: StagingStorageResource) -> None:
         raise DartQuarantineError('draft_requires_explicit_isolated_local_staging')
 
 
-def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
-    before = storage.object_snapshot(key)
-    if before is not None:
-        if storage.read_key(key) != body or storage.object_snapshot(key) != before:
-            raise DartQuarantineError(f'immutable_staging_conflict:{key}')
-    else:
-        storage.write_key_if_unchanged(key, body, None)
+immutable = partial(write_immutable, error_type=DartQuarantineError,
+                    error_prefix='immutable_staging_conflict:')
 
 
 def quarantine(storage: StagingStorageResource, body: bytes, receipt: dict, reason: str) -> str:
@@ -131,7 +129,7 @@ def validate_receipt(body: bytes, receipt: dict, url: str) -> None:
 def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
     require_local(storage)
     captures = {}
-    for name,url in URLS.items():
+    def fetch_one(name, url):
         if capture_dir is not None:
             body = b''; receipt_body=b''; receipt = {'capture_path':str(capture_dir),'url':url}
             try:
@@ -146,7 +144,11 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                 immutable(storage,f'{location}/original-receipt.body',receipt_body)
                 raise DartQuarantineError(f'{exc}; retained:{location}') from exc
         else:
-            for attempt in range(3):
+            # Retry only a refusal whose evidence was retained successfully.
+            retained_refusal = [None]
+            def capture_attempt(attempt_number):
+                retained_refusal[0] = None
+                attempt = attempt_number - 1
                 body=b'';receipt={'url':url,'fetched_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                 try:
                     with httpx.Client(follow_redirects=False,timeout=45,headers={'Accept-Encoding':'identity'}) as client:
@@ -164,14 +166,21 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
                             if (response.headers.get('content-length') is not None
                                     and int(response.headers['content-length'])!=receipt['wire_bytes']):
                                 raise DartQuarantineError('incomplete_content_length')
-                    break
+                    return body, receipt
                 except (httpx.HTTPError,OSError,ValueError,TypeError) as exc:
                     receipt.update(bytes=len(body),sha256=sha(body),partial=True)
                     location=quarantine(storage,body,receipt,str(exc))
+                    retained_refusal[0] = exc
                     if attempt==2: raise DartQuarantineError(f'bounded_fetch_exhausted:{exc}; retained:{location}') from exc
+                    raise
+            body, receipt = retry_capture_request(
+                capture_attempt, attempts=3, schedule=(),
+                retryable=lambda exc, attempt: exc is retained_refusal[0],
+                preserve_failed=lambda exc, attempt: None)
         captures[name]=(body,receipt)
         immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/{name}.body',body)
         immutable(storage,f'_raw-captures/{SLUG}/{sha(body)}/{sha(encode(receipt))}.receipt.json',encode(receipt))
+    capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
     return captures
 
 
@@ -485,11 +494,9 @@ def candidate_version_lock(storage: StagingStorageResource, prefix: str):
     """One stable lock inode for lookup, validation, invalid detach and install."""
     target=local_candidate_path(storage,prefix)
     target.parent.mkdir(parents=True,exist_ok=True)
-    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:
-            raise DartQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
+    with candidate_transaction.lock_path(
+            target.parent / ('.' + target.name + '.lock'), error_type=DartQuarantineError,
+            unsafe_code='linked_candidate_lock', require_regular=False, buffered=True):
         yield target
 
 
@@ -500,14 +507,16 @@ def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloa
             raise DartQuarantineError('concurrent_or_incomplete_existing_candidate')
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
             private=StagingStorageResource(local_dir=tmp,use_local=True)
-            for name,value in payloads.items(): immutable(private,name,value)
-            immutable(private,'metadata/current_dart_candidate_ready.json',encode(ready))
-            captures={name:(payloads[f'raw/captures/{name}.body'],strict_json(payloads[f'raw/captures/{name}.receipt.json'])) for name in URLS}
-            manifest=strict_json(payloads['metadata/source_manifest.json'])
-            original_captures,original_manifest=original_provenance_bundle(storage,ready['version'],captures,manifest,strict_json(payloads['metadata/processing_identity.json']),create=True)
-            if original_captures!=captures or original_manifest!=manifest:
-                raise DartQuarantineError('concurrent_original_construction_bundle_changed_retry_with_original')
-            os.rename(tmp,target)
+            def anchor():
+                captures={name:(payloads[f'raw/captures/{name}.body'],strict_json(payloads[f'raw/captures/{name}.receipt.json'])) for name in URLS}
+                manifest=strict_json(payloads['metadata/source_manifest.json'])
+                original_captures,original_manifest=original_provenance_bundle(storage,ready['version'],captures,manifest,strict_json(payloads['metadata/processing_identity.json']),create=True)
+                if original_captures!=captures or original_manifest!=manifest:
+                    raise DartQuarantineError('concurrent_original_construction_bundle_changed_retry_with_original')
+            candidate_transaction.install_private_candidate(
+                Path(tmp), target, payloads.items(),
+                write_one=lambda root, name, body: immutable(private, name, body),
+                ready=lambda root: ('metadata/current_dart_candidate_ready.json', encode(ready)), anchor=anchor)
 
 
 def quarantine_cached_candidate(storage: StagingStorageResource, prefix: str, reason: str, *, already_locked: bool=False) -> str | None:

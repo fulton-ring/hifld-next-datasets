@@ -10,13 +10,14 @@ GDAL assembles source polygons without repair. All approvals stay false.
 """
 from __future__ import annotations
 
+from functools import partial
+
 import hashlib
 import json
 import re
 import shutil
 import stat
 from array import array
-from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -29,20 +30,30 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import capture_retention_budget
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.esri_pbf import decode_feature_collection_pbf
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources import arcgis_layer as shared
+from dagster_hifld.sources.arcgis_adaptive import (
+    SliceCaptureSpec, capture_checkpoint_segments, plan_verified_segments, capture_document_group,
+)
 from dagster_hifld.sources.esri_geometry import to_wkb
+from dagster_hifld.sources.arcgis_layer import capture_with_retry
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, content_derived_version, processing_identity,
+    candidate_prefix,
+    content_derived_version,
+    processing_identity,
     validate_capture_request_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    quarantine_incomplete_capture,
+    verify_cached_candidate,
     write_immutable,
+    reuse_sealed_candidate,
+    load_candidate_checkpoint,
+    stage_candidate_objects,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -424,167 +435,76 @@ def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,
             raise
         except PadUsManagerNameError:
             _witness_aside(capture_root, name)
-    return _capture_with_retry(client, url, capture_root, name,
-                               attempts=DOC_CAPTURE_ATTEMPTS,
-                               base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
+    return capture_with_retry(client, url, capture_root, name,
+        attempts=DOC_CAPTURE_ATTEMPTS,
+        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
+        max_bytes=MAX_BODY_BYTES,
+        max_total_bytes=MAX_CAPTURE_BYTES,
+        budget_error=PadUsManagerNameError,
+        reserve_all_attempts=True)
 
 
 _producer_error_doc = shared.producer_error_doc
 
 
-def _capture_with_retry(client: httpx.Client, url: str, capture_root: Path, name: str, *,
-                        attempts: int, base_delay: float) -> tuple[bytes, dict[str, object]]:
-    retained_bytes = sum(path.stat().st_size for path in capture_root.iterdir()
-                         if path.name.endswith((".body", ".wire", ".receipt.json")))
-    remaining = MAX_CAPTURE_BYTES - retained_bytes - attempts * 65536
-    if remaining < 2 * attempts:
-        raise PadUsManagerNameError("source_capture_exceeds_scratch_budget")
-    return shared.capture_with_retry(client, url, capture_root, name,
-                                     attempts=attempts, base_delay=base_delay,
-                                     max_bytes=min(MAX_BODY_BYTES, remaining // (2 * attempts)))
+def _segment_page_ids(body: bytes) -> list[int]:
+    page = decode_feature_collection_pbf(body, allow_transfer_limit=True)
+    return [row.get("attributes", {}).get("OBJECTID") for row in page["features"]]
 
 
-def _plan_segment_gaps(capture_root: Path, roster: list[int],
-                       state: dict[str, object]) -> list[tuple[int, int]]:
-    """Plan the roster gaps that still need a capture this session.
-
-    A retained segment counts as accepted only when its receipt and body
-    verify, its body decodes as a complete PBF page, and it already sits in
-    the capture state; anything else is witnessed aside and refetched.
-    """
-    accepted_entries = {entry.get("name"): entry for entry in state["segments"]
-                        if isinstance(entry, dict)}
-    for path in (*capture_root.glob("page_*.wire"),
-                 *capture_root.glob("page_*.receipt.json")):
-        name = path.name.removesuffix(".wire").removesuffix(".receipt.json")
-        if _SEGMENT_NAME_PATTERN.fullmatch(name) and not (capture_root / f"{name}.body").exists():
-            _witness_aside(capture_root, name)
-    retained: list[tuple[int, int]] = []
-    for path in sorted(capture_root.glob("page_*.body")):
-        name = path.name.removesuffix(".body")
-        match = _SEGMENT_NAME_PATTERN.fullmatch(name)
-        if match is None:
-            continue
-        try:
-            body, _receipt = _read_capture(capture_root, name)
-        except PadUsManagerNameAdmissionError:
-            raise
-        except PadUsManagerNameError:
-            _witness_aside(capture_root, name)
-            continue
-        entry = accepted_entries.get(name)
-        if (entry is None or entry.get("body_sha256") != _receipt["sha256"]
-                or entry.get("captured_at") != _receipt["observed_at"]):
-            _witness_aside(capture_root, name)
-            continue
-        try:
-            page = decode_feature_collection_pbf(body, allow_transfer_limit=True)
-        except ValueError:
-            _witness_aside(capture_root, name)
-            continue
-        offset, count = _parse_segment_name(name)
-        if offset + count > len(roster) or \
-                [row.get("attributes", {}).get("OBJECTID") for row in page["features"]] \
-                != roster[offset:offset + count]:
-            _witness_aside(capture_root, name)
-            continue
-        retained.append((offset, count))
-    gaps: list[tuple[int, int]] = []
-    covered = bytearray(len(roster))
-    accepted_segments = []
-    for offset, count in sorted(retained):
-        if offset < 0 or count < 1 or offset + count > len(roster) \
-                or any(covered[offset:offset + count]):
-            _witness_aside(capture_root, _segment_name(offset, count))
-            continue
-        covered[offset:offset + count] = b"\x01" * count
-        name = _segment_name(offset, count)
-        receipt = _load_receipt(capture_root, name)
-        accepted_segments.append({"name": name, "offset": offset, "count": count,
-                                  "features": count, "captured_at": receipt["observed_at"],
-                                  "body_sha256": receipt["sha256"]})
-    state["segments"] = accepted_segments
-    _save_state(capture_root, state)
-    cursor = 0
-    while cursor < len(roster):
-        if covered[cursor]:
-            cursor += 1
-            continue
-        start = cursor
-        while cursor < len(roster) and not covered[cursor]:
-            cursor += 1
-        chunk_start = start
-        while chunk_start < cursor:
-            count_chunk = min(SEGMENT_START_RECORDS, cursor - chunk_start)
-            gaps.append((chunk_start, count_chunk))
-            chunk_start += count_chunk
-    return gaps
+def _segment_capture_plan():
+    return partial(plan_verified_segments,
+        read_capture=_read_capture, load_receipt=_load_receipt,
+        witness=_witness_aside, name_pattern=_SEGMENT_NAME_PATTERN,
+        parse_name=_parse_segment_name, segment_name=_segment_name,
+        page_ids=_segment_page_ids, error_type=PadUsManagerNameError,
+        admission_error=PadUsManagerNameAdmissionError,
+        save_state=_save_state, page_size=SEGMENT_START_RECORDS)
 
 
-def _fetch_segments(client: httpx.Client, capture_root: Path, roster: list[int],
-                    state: dict[str, object]) -> None:
-    """Capture the complete layer as adaptively bisected roster segments.
+def _segment_capture_spec() -> SliceCaptureSpec:
+    return SliceCaptureSpec(
+        byte_budget=MAX_CAPTURE_BYTES,
+        page_name=_segment_name, page_url=_segment_query,
+        capture=partial(capture_with_retry, max_bytes=MAX_BODY_BYTES,
+            max_total_bytes=MAX_CAPTURE_BYTES, budget_error=PadUsManagerNameError,
+            reserve_all_attempts=True),
+        producer_error=_producer_error_doc, error=PadUsManagerNameError,
+        wrap_capture_errors=True,
+        page_attempts=SEGMENT_PROBE_ATTEMPTS, page_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS,
+        doc_attempts=DOC_CAPTURE_ATTEMPTS, doc_delay=DOC_CAPTURE_BASE_DELAY_SECONDS)
 
-    Segments start at SEGMENT_START_RECORDS. A segment the producer keeps
-    refusing is bisected until the producer serves both halves, whether the
-    refusal is a persistent error document or a persistent incomplete transport
-    capture. A single-record segment that still fails ends the capture
-    explicitly.
-    """
-    todo: deque[tuple[int, int]] = deque(_plan_segment_gaps(capture_root, roster, state))
-    segments = state["segments"]
-    accepted = {entry["name"] for entry in segments}
-    while todo:
-        offset, count = todo.popleft()
-        name = _segment_name(offset, count)
-        if name in accepted and (capture_root / f"{name}.body").exists():
-            continue
-        try:
-            body, receipt = _capture_with_retry(
-                client, _segment_query(offset, count), capture_root, name,
-                attempts=SEGMENT_PROBE_ATTEMPTS if count > 1 else DOC_CAPTURE_ATTEMPTS,
-                base_delay=SEGMENT_PROBE_BASE_DELAY_SECONDS if count > 1
-                else DOC_CAPTURE_BASE_DELAY_SECONDS)
-        except ValueError as exc:
-            if count > 1 and str(exc).startswith("incomplete_source_capture:"):
-                middle = count // 2
-                todo.appendleft((offset + middle, count - middle))
-                todo.appendleft((offset, middle))
-                continue
-            raise PadUsManagerNameError(
-                "source_capture_failed:" + type(exc).__name__) from exc
-        if _producer_error_doc(body):
-            _witness_aside(capture_root, name)
-            if count == 1:
-                raise PadUsManagerNameError("source_single_feature_unservable")
-            middle = count // 2
-            todo.appendleft((offset + middle, count - middle))
-            todo.appendleft((offset, middle))
-            continue
-        try:
-            page = decode_feature_collection_pbf(body, allow_transfer_limit=True)
-        except ValueError as exc:
-            _witness_aside(capture_root, name)
-            raise PadUsManagerNameError("source_page_decode_failed:" + name) from exc
-        rows = page.get("features")
-        if not isinstance(rows, list) or len(rows) != count:
-            _witness_aside(capture_root, name)
-            raise PadUsManagerNameError("source_page_row_count_incomplete:" + name)
-        expected = roster[offset:offset + count]
-        actual = [row.get("attributes", {}).get("OBJECTID") for row in rows
-                  if isinstance(row, dict)]
-        if actual != expected:
-            _witness_aside(capture_root, name)
-            raise PadUsManagerNameError("source_page_id_slice_incomplete_or_reordered")
-        if name not in accepted:
-            segments.append({"name": name, "offset": offset, "count": count,
-                             "features": len(rows), "captured_at": receipt["observed_at"],
-                             "body_sha256": _sha(body)})
-            accepted.add(name)
-            _save_state(capture_root, state)
+
+def _validate_segment_page(body: bytes, name: str, count: int, expected: list[int], *,
+                           capture_root: Path) -> None:
+    try:
+        page = decode_feature_collection_pbf(body, allow_transfer_limit=True)
+    except ValueError as exc:
+        _witness_aside(capture_root, name)
+        raise PadUsManagerNameError("source_page_decode_failed:" + name) from exc
+    rows = page.get("features")
+    if not isinstance(rows, list) or len(rows) != count:
+        _witness_aside(capture_root, name)
+        raise PadUsManagerNameError("source_page_row_count_incomplete:" + name)
+    actual = [row.get("attributes", {}).get("OBJECTID") for row in rows
+              if isinstance(row, dict)]
+    if actual != expected:
+        _witness_aside(capture_root, name)
+        raise PadUsManagerNameError("source_page_id_slice_incomplete_or_reordered")
+
+
+def _validate_discovery_response(name: str, body: bytes) -> None:
+    if name not in ("sb_item", "agol_item") and _producer_error_doc(body):
+        raise PadUsManagerNameError("source_page_error:" + name)
 
 
 def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client | None = None,
+                                    doc_client: httpx.Client | None = None) -> dict[str, object]:
+    with capture_retention_budget(capture_root, MAX_CAPTURE_BYTES):
+        return _fetch_manager_pages(capture_root, client=client, doc_client=doc_client)
+
+
+def _fetch_manager_pages(capture_root: Path, *, client: httpx.Client | None = None,
                                     doc_client: httpx.Client | None = None) \
         -> dict[str, object]:
     """Retain every raw response for the pinned layer, resuming earlier progress.
@@ -621,18 +541,14 @@ def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client 
     first_captured_at = (segments[0]["captured_at"] if segments
                          else datetime.now(timezone.utc).isoformat())
     try:
-        for name in METADATA_NAMES:
-            url = {"sb_item": SB_ITEM_URL,
-                   "agol_item": AGOL_ITEM_URL,
-                   "service_before": SERVICE_URL + "?f=pjson",
-                   "layer_before": LAYER_URL + "?f=pjson",
-                   "count_before": _count_url(),
-                   "ids_seed": _ids_url(),
-                   "ids_before": _ids_url()}[name]
-            active_client = docs_active if name in ("sb_item", "agol_item") else active
-            body, _receipt = _retained_or_fetch(active_client, capture_root, name, url)
-            if name not in ("sb_item", "agol_item") and _producer_error_doc(body):
-                raise PadUsManagerNameError("source_page_error:" + name)
+        document_urls = {"sb_item": SB_ITEM_URL, "agol_item": AGOL_ITEM_URL,
+            "service_before": SERVICE_URL + "?f=pjson", "layer_before": LAYER_URL + "?f=pjson",
+            "count_before": _count_url(), "ids_seed": _ids_url(), "ids_before": _ids_url()}
+        capture_document_group(active, capture_root,
+            ((name, document_urls[name]) for name in METADATA_NAMES),
+            fetch=lambda client, url, root, name: _retained_or_fetch(client, root, name, url),
+            validate=_validate_discovery_response,
+            client_for=lambda name: docs_active if name in ("sb_item", "agol_item") else active)
         _validate_corroboration_documents(capture_root)
         seed = json.loads(_read_capture(capture_root, "ids_seed")[0]).get("objectIds")
         ids = _validate_roster(seed, "ids_seed")
@@ -648,16 +564,17 @@ def fetch_pad_us_manager_name_pages(capture_root: Path, *, client: httpx.Client 
                                      count_before.get("count"), roster)
         except ValueError as exc:
             raise PadUsManagerNameError(str(exc)) from exc
-        _fetch_segments(active, capture_root, roster, state)
+        capture_checkpoint_segments(_segment_capture_spec(), active, capture_root, roster, state,
+            plan_gaps=_segment_capture_plan(),
+            validate_page=partial(_validate_segment_page, capture_root=capture_root),
+            witness=_witness_aside, save_state=_save_state)
         segments = list(state["segments"])
-        for name in AFTER_NAMES:
-            url = {"layer_after": LAYER_URL + "?f=pjson",
-                   "service_after": SERVICE_URL + "?f=pjson",
-                   "count_after": _count_url(),
-                   "ids_after": _ids_url()}[name]
-            body, _receipt = _retained_or_fetch(active, capture_root, name, url)
-            if _producer_error_doc(body):
-                raise PadUsManagerNameError("source_page_error:" + name)
+        document_urls = {"layer_after": LAYER_URL + "?f=pjson", "service_after": SERVICE_URL + "?f=pjson",
+            "count_after": _count_url(), "ids_after": _ids_url()}
+        capture_document_group(active, capture_root,
+            ((name, document_urls[name]) for name in AFTER_NAMES),
+            fetch=lambda client, url, root, name: _retained_or_fetch(client, root, name, url),
+            validate=_validate_discovery_response)
         count_after = json.loads(_read_capture(capture_root, "count_after")[0])
         after_ids = json.loads(_read_capture(capture_root, "ids_after")[0])
         if after_ids.get("objectIdFieldName") != "OBJECTID" \
@@ -1104,12 +1021,17 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                                       extracted["schema_sha"], identity)
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
+
+    def verify_existing():
         parquet_body = Path(extracted["parquet_path"]).read_bytes()
         return _verify_sealed_candidate(
             storage, prefix, state_key, version, identity,
             extracted,
             parquet_body)
+
+    reused = reuse_sealed_candidate(storage, state_key, verify_existing)
+    if reused is not None:
+        return reused
     audit = {
         "source_feature_count": extracted["feature_count"], "source_id_sha256": extracted["ids_sha"],
         "source_record_sha256": extracted["record_sha"],
@@ -1288,24 +1210,11 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
         "metadata/candidate_ready.json": _canonical(ready) + b"\n",
         "metadata/segment_pages_index.json": segment_index_body,
     }
-    descriptors: dict[str, dict[str, object]] = {}
-    for relative, body in metadata_outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-        descriptors[relative] = {"bytes": len(body), "sha256": _sha(body)}
-    for name in sorted((*METADATA_NAMES, *AFTER_NAMES, *segment_names)):
-        body, receipt = _read_capture(capture_root, name)
-        wire = (capture_root / f"{name}.wire").read_bytes()
-        for suffix, blob in (("body", body), ("wire", wire),
-                             ("receipt.json", _canonical(receipt) + b"\n")):
-            relative = f"raw/{name}.{suffix}"
-            write_immutable(storage, f"{prefix}/{relative}", blob)
-            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
-    fingerprint = _sha(_canonical(identity))
-    payload = {"processing_identity": identity,
-               "source_record_sha256": audit["source_record_sha256"],
-               "source_schema_sha256": audit["source_schema_sha256"],
-               "capture_receipts": doc_receipts, "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    stage_candidate_objects(
+        storage, prefix, state_key, version, identity, metadata_outputs,
+        capture_root, doc_receipts, _read_capture, capture_names=(*METADATA_NAMES, *AFTER_NAMES, *segment_names),
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'])
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
@@ -1331,15 +1240,9 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
                              version: str, identity: Mapping[str, object],
                              extracted: Mapping[str, object], current_parquet: bytes) \
         -> dict[str, object]:
-    fingerprint = _sha(_canonical(identity))
-    bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
-    payload = bundle.get("payload")
-    if (not isinstance(payload, dict) or set(payload) != {"processing_identity",
-            "source_record_sha256", "source_schema_sha256", "capture_receipts", "objects"}
-            or payload["processing_identity"] != identity
-            or payload["source_record_sha256"] != extracted["record_sha"]
-            or payload["source_schema_sha256"] != extracted["schema_sha"]):
-        raise PadUsManagerNameError("cached_first_candidate_identity_or_source_changed")
+    fingerprint, payload = load_candidate_checkpoint(
+        storage, state_key, version, identity,
+        extracted['record_sha'], extracted['schema_sha'], PadUsManagerNameError)
     expected_objects = {name: descriptor for name, descriptor in payload["objects"].items()}
     verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
                             fingerprint, identity, extracted["record_sha"],

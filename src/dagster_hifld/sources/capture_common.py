@@ -14,7 +14,7 @@ import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable, Iterable, Mapping
 from uuid import uuid4
 
 import httpx
@@ -179,12 +179,25 @@ def load_checkpoint_receipt_map(
     return {name: load_receipt(capture_root, name) for name in names}
 
 
-def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
+def write_immutable(storage: StagingStorageResource, key: str, body: bytes, *,
+                    error_type: type[Exception] = ValueError,
+                    error_name: str | None = None,
+                    error_prefix: str = "immutable_staged_object_changed:",
+                    before_create: Callable[[], None] | None = None) -> None:
     snapshot = storage.object_snapshot(key)
     if snapshot is None:
+        if before_create is not None:
+            before_create()
         storage.write_key_if_unchanged(key, body, None)
     elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-        raise ValueError("immutable_staged_object_changed:" + key)
+        raise error_type(error_prefix + (key if error_name is None else error_name))
+
+
+def write_immutable_key(storage, key, body, *, error_type=ValueError,
+                        error_prefix="immutable_staged_object_changed:") -> str:
+    """Write immutable bytes and return the storage-prefixed key for provenance."""
+    write_immutable(storage, key, body, error_type=error_type, error_prefix=error_prefix)
+    return storage._ensure_prefixed(key)
 
 
 CODE_IDENTITY_GIT = "git-commit-blobs-v1"
@@ -326,6 +339,355 @@ def seal_ready_candidate(storage: StagingStorageResource, state_key: str, versio
                             canonical_construction_bundle(version, fingerprint, dict(payload)))
 
 
+def write_candidate_outputs(
+    storage: StagingStorageResource, prefix: str, outputs: Mapping[str, bytes | Path], *,
+    snapshot_check: str = "stable", readback_order: str = "per-object",
+    error_prefix: str = "candidate_object_readback_failed:",
+    error_type: type[Exception] = ValueError,
+    writer: Callable[[StagingStorageResource, str, bytes], None] | None = None,
+    reserve: Callable[[int], None] | None = None,
+    file_snapshot_check: str = "content",
+) -> dict[str, dict[str, object]]:
+    """Write an ordered candidate inventory and prove each stored object's bytes.
+
+    Preserve the adapter's admission policy: some producers verify content
+    only, others also require a stable snapshot; two-pass candidates finish
+    every immutable write before admitting any readback. Mapping order is the
+    upload order, so callers can supply sorted outputs when required. Native
+    file paths use the streamed immutable-file writer and are never buffered.
+    """
+    if snapshot_check not in {"content", "stable", "observed", "none"} or readback_order not in {"per-object", "after-all"}:
+        raise ValueError("invalid_candidate_readback_policy")
+    write = writer or write_immutable
+    descriptors = {}
+    files = {name: {"bytes": body.stat().st_size, "sha256": sha256_file(body)}
+             for name, body in outputs.items() if isinstance(body, Path)}
+
+    def retain(name, body):
+        if reserve is not None:
+            reserve(files[name]["bytes"] if isinstance(body, Path) else len(body))
+        if isinstance(body, Path):
+            write_immutable_file(storage, (f"{prefix}/{name}" if prefix else name), body, files[name],
+                                 recheck_snapshot=file_snapshot_check == "stable")
+        else:
+            write(storage, (f"{prefix}/{name}" if prefix else name), body)
+
+    def admit(name: str, body: bytes | Path) -> None:
+        expected = files[name] if isinstance(body, Path) else {"bytes": len(body), "sha256": _sha(body)}
+        if snapshot_check == "none":
+            descriptors[name] = expected
+        else:
+            descriptors[name] = _readback_candidate_output(
+                storage, prefix, name, None if snapshot_check == "observed" else expected,
+                snapshot_check == "stable", error_prefix, error_type)
+
+    if readback_order == "after-all":
+        for name, body in outputs.items():
+            retain(name, body)
+        for name, body in outputs.items():
+            admit(name, body)
+    else:
+        for name, body in outputs.items():
+            retain(name, body)
+            admit(name, body)
+    return descriptors
+
+
+def _readback_candidate_output(storage, prefix, name, expected, stable, error_prefix, error_type, error_name=None):
+    key = (f"{prefix}/{name}" if prefix else name)
+    snapshot = storage.object_snapshot(key)
+    if snapshot is None:
+        raise error_type(error_prefix + (name if error_name is None else error_name))
+    if expected is None:
+        return {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+    if (snapshot.size != expected["bytes"] or storage.sha256_key(key) != expected["sha256"]
+            or (stable and storage.object_snapshot(key) != snapshot)):
+        raise error_type(error_prefix + (name if error_name is None else error_name))
+    return dict(expected)
+
+
+def verify_candidate_outputs(
+    storage: StagingStorageResource, prefix: str,
+    descriptors: Mapping[str, Mapping[str, object]], *,
+    error_prefix: str = "candidate_output_physical_readback_failed:", error_suffix: str = "relative",
+) -> None:
+    """Admit a prepared inventory after every streamed output has been written."""
+    for name, expected in descriptors.items():
+        _readback_candidate_output(storage, prefix, name, expected, True, error_prefix, ValueError,
+                                   None if error_suffix == "relative" else "")
+
+
+def write_candidate_capture_files(
+    storage: StagingStorageResource, prefix: str, root: Path,
+    receipts: Mapping[str, Mapping[str, object]], read_body: Callable, *,
+    order: str = "sorted", receipt_encoding: str = "canonical",
+) -> None:
+    """Write raw evidence one blob at a time before a separate inventory readback."""
+    items = sorted(receipts.items()) if order == "sorted" else receipts.items()
+    for name, receipt in items:
+        write_immutable(storage, f"{prefix}/raw/{name}.body", read_body(root, name))
+        write_immutable(storage, f"{prefix}/raw/{name}.wire", (root / f"{name}.wire").read_bytes())
+        if receipt_encoding == "canonical":
+            write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
+
+
+def write_candidate_captures(
+    storage: StagingStorageResource, prefix: str, root: Path, names: Iterable[str],
+    read_capture: Callable, *, snapshot_check: str = "content",
+) -> dict[str, dict[str, object]]:
+    """Admit retained body/wire/receipt triples without buffering the population."""
+    inventory = {}
+    for name in names:
+        body, wire, receipt = read_capture(root, name)
+        outputs = {f"raw/{name}.body": body, f"raw/{name}.wire": wire,
+                   f"raw/{name}.receipt.json": _canonical(receipt) + b"\n"}
+        inventory.update(write_candidate_outputs(storage, prefix, outputs,
+                                                 snapshot_check=snapshot_check))
+    return inventory
+
+
+def upload_candidate_local_file(
+    storage: StagingStorageResource, prefix: str, relative: str, path: Path,
+    expected: Mapping[str, object],
+) -> dict[str, object]:
+    """Upload a streamed native file and admit its observed size and digest."""
+    key = f"{prefix}/{relative}"
+    storage.upload_local_file(path, key)
+    snapshot = storage.object_snapshot(key)
+    if snapshot is None:
+        raise ValueError("candidate_object_readback_failed:" + relative)
+    actual = {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+    if actual != expected:
+        raise ValueError("candidate_object_readback_failed:" + relative)
+    return actual
+
+
+def write_candidate_file_by_sha(
+    storage: StagingStorageResource, prefix: str, relative: str, path: Path,
+    expected_sha256: str,
+) -> None:
+    """Preserve an existing file's bytes or upload a new file, then prove its SHA."""
+    key = f"{prefix}/{relative}"
+    if storage.object_exists(key):
+        if storage.sha256_key(key) != expected_sha256:
+            raise ValueError("immutable_staged_object_changed:" + key)
+    else:
+        storage.upload_local_file(path, key)
+    if storage.sha256_key(key) != expected_sha256:
+        raise ValueError("candidate_object_readback_failed:" + relative)
+
+
+def write_candidate_blobs(storage, prefix, blobs, *, writer=None, reserve=None):
+    """Admit a lazy, ordered native artifact stream through ordinary custody."""
+    for name, body in blobs:
+        write_candidate_outputs(storage, prefix, {name: body}, snapshot_check="none",
+                                writer=writer, reserve=reserve)
+
+
+def write_candidate_transport_evidence(
+    storage: StagingStorageResource, prefix: str, root: Path,
+    descriptors: Mapping[str, Mapping[str, object]], captures: Mapping,
+    receipt_body: Callable[[str], bytes], reserve: Callable[[int], None],
+) -> None:
+    """Retain exact wire/receipt evidence, then release verified decoded copies."""
+    for name in descriptors:
+        raw_name = name.removeprefix("raw/").removesuffix(".receipt.json")
+        body = ((root / name.removeprefix("raw/")).read_bytes()
+                if name.endswith(".wire") else receipt_body(raw_name))
+        reserve(len(body))
+        write_immutable(storage, f"{prefix}/{name}", body)
+        if name.endswith(".receipt.json"):
+            body_path = root / f"{raw_name}.body"
+            if body_path.exists():
+                decoded = body_path.read_bytes()
+                receipt = captures[raw_name][1]
+                if len(decoded) != receipt["bytes"] or _sha(decoded) != receipt["sha256"]:
+                    raise ValueError("capture_decoded_body_changed:" + raw_name)
+                body_path.unlink()
+
+
+def write_candidate_ready_state(storage: StagingStorageResource, key: str, body: bytes,
+                                error_type: type[Exception]) -> None:
+    """Preserve ready-state admission for private transactional source candidates."""
+    if storage.object_snapshot(key) is None:
+        storage.write_key_if_unchanged(key, body, None)
+    elif storage.read_key(key) != body:
+        raise error_type("candidate_ready_state_changed")
+
+
+def stage_candidate_object(storage: StagingStorageResource, key: str, *,
+                           body: bytes | None = None, path: Path | None = None) -> dict[str, object]:
+    """Admit one bytes-or-file NFHL object with its full-key error contract."""
+    return write_candidate_outputs(
+        storage, "", {key: path if path is not None else body},
+        error_prefix="candidate_output_physical_readback_failed:")[key]
+
+
+def reuse_sealed_candidate(storage: StagingStorageResource, state_key: str,
+                           verify: Callable[[], dict[str, object]]) -> dict[str, object] | None:
+    """Dispatch reuse only after a seal exists; the adapter verifies its source contract.
+
+    A failed verification must propagate. Never fall through to reconstruction
+    of a candidate whose immutable construction state already exists.
+    """
+    if storage.object_snapshot(state_key) is not None:
+        return verify()
+    return None
+
+
+def load_candidate_checkpoint(
+    storage: StagingStorageResource, state_key: str, version: str,
+    identity: Mapping[str, object], source_record_sha256: str,
+    source_schema_sha256: str, error_type: type[ValueError],
+) -> tuple[str, dict[str, object]]:
+    """Load a sealed construction checkpoint bound to the current source and code.
+
+    Keep the caller's error type while sharing the envelope contract. The
+    returned original receipts and inventory feed verify_cached_candidate;
+    source-native parquet and dataset result checks remain in the adapter.
+    """
+    fingerprint = _sha(_canonical(identity))
+    bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
+    payload = bundle.get("payload")
+    if (not isinstance(payload, dict) or set(payload) != {"processing_identity",
+            "source_record_sha256", "source_schema_sha256", "capture_receipts", "objects"}
+            or payload["processing_identity"] != identity
+            or payload["source_record_sha256"] != source_record_sha256
+            or payload["source_schema_sha256"] != source_schema_sha256):
+        raise error_type("cached_first_candidate_identity_or_source_changed")
+    return fingerprint, payload
+
+
+def upload_candidate_objects(
+    storage: StagingStorageResource, prefix: str, outputs: Mapping[str, bytes],
+    capture_root: Path, capture_names: Iterable[str],
+    read_capture: Callable[[Path, str], tuple[bytes, Mapping[str, object]]],
+    *, descriptors: Mapping[str, Mapping[str, object]] | None = None,
+) -> dict[str, dict[str, object]]:
+    """Upload prepared outputs and validated raw evidence one capture at a time.
+
+    The reader preserves each family's receipt/checkpoint validation. Existing
+    descriptors represent large files already streamed to staging.
+    """
+    result = {name: dict(value) for name, value in (descriptors or {}).items()}
+
+    def retain(relative: str, blob: bytes) -> None:
+        write_immutable(storage, f"{prefix}/{relative}", blob)
+        result[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
+
+    for relative, body in outputs.items():
+        retain(relative, body)
+    for name in sorted(capture_names):
+        body, receipt = read_capture(capture_root, name)
+        wire = (capture_root / f"{name}.wire").read_bytes()
+        for suffix, blob in (("body", body), ("wire", wire),
+                             ("receipt.json", _canonical(dict(receipt)) + b"\n")):
+            retain(f"raw/{name}.{suffix}", blob)
+    return result
+
+
+def write_immutable_file(storage: StagingStorageResource, key: str, source: Path,
+                          descriptor: Mapping[str, object], *, recheck_snapshot: bool = False) -> None:
+    """write_immutable for a local file too large to buffer as bytes."""
+    snapshot = storage.object_snapshot(key)
+    if snapshot is None:
+        if recheck_snapshot:
+            local = StagingStorageResource(use_local=True, local_dir=str(source.parent))
+            source_snapshot = local.object_snapshot(source.name)
+            if (source_snapshot is None or source_snapshot.size != descriptor["bytes"]
+                    or source_snapshot.sha256 != descriptor["sha256"]):
+                raise ValueError("immutable_staged_object_changed:" + key)
+            local.copy_key_to_if_unchanged(
+                storage, source.name, key, source_snapshot=source_snapshot, destination_snapshot=None)
+        else:
+            storage.upload_local_file(source, key)
+        return
+    if (snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]
+            or (recheck_snapshot and storage.object_snapshot(key) != snapshot)):
+        raise ValueError("immutable_staged_object_changed:" + key)
+
+
+def upload_candidate_file(
+    storage: StagingStorageResource, key: str, path: Path,
+    readback_descriptor: Callable[[StagingStorageResource, str], Mapping[str, object]],
+    error_type: type[ValueError],
+) -> dict[str, object]:
+    """Stream a new candidate file and verify its stored bytes before sealing."""
+    storage.upload_local_file(path, key)
+    expected = {"bytes": path.stat().st_size, "sha256": sha256_file(path)}
+    actual = dict(readback_descriptor(storage, key))
+    if actual != expected:
+        raise error_type("candidate_parquet_readback_mismatch")
+    return actual
+
+
+def upload_refused_candidate_evidence(
+    storage: StagingStorageResource, prefix: str, capture_root: Path,
+    receipts: Mapping[str, object], descriptors: dict[str, dict[str, object]],
+    validate_transport: Callable, error_type: type[ValueError],
+) -> None:
+    """Retain refused attempts with transport validation and mutation detection."""
+    evidence = {path.name.removesuffix(suffix) for path in capture_root.iterdir()
+                for suffix in (".body", ".wire", ".receipt.json") if path.name.endswith(suffix)} - set(receipts)
+    for name in sorted(evidence):
+        paths = [capture_root / f"{name}.{suffix}" for suffix in ("body", "wire", "receipt.json")]
+        before = [path.stat() for path in paths]
+        validate_transport(capture_root, names=(name,))
+        blobs = [path.read_bytes() for path in paths]
+        after = [path.stat() for path in paths]
+        if any((a.st_dev, a.st_ino, a.st_size, a.st_mtime_ns, a.st_ctime_ns)
+               != (b.st_dev, b.st_ino, b.st_size, b.st_mtime_ns, b.st_ctime_ns)
+               for a, b in zip(before, after)):
+            raise error_type("retained_capture_changed_during_admission:" + name)
+        for suffix, blob in zip(("body", "wire", "receipt.json"), blobs):
+            relative = f"evidence/refused/{name}.{suffix}"
+            write_immutable(storage, f"{prefix}/{relative}", blob)
+            descriptors[relative] = {"bytes": len(blob), "sha256": _sha(blob)}
+
+
+def seal_candidate_objects(
+    storage: StagingStorageResource, state_key: str, version: str,
+    identity: Mapping[str, object], receipts: Mapping[str, object],
+    descriptors: Mapping[str, Mapping[str, object]], *,
+    source_record_sha256: str, source_schema_sha256: str,
+    fingerprint: str | None = None,
+) -> None:
+    """CAS-seal the exact uploaded inventory and checkpoint receipt map."""
+    payload = {"processing_identity": identity,
+               "source_record_sha256": source_record_sha256,
+               "source_schema_sha256": source_schema_sha256,
+               "capture_receipts": receipts, "objects": descriptors}
+    seal_ready_candidate(storage, state_key, version,
+                         _sha(_canonical(identity)) if fingerprint is None else fingerprint, payload)
+
+
+def stage_candidate_objects(
+    storage: StagingStorageResource, prefix: str, state_key: str, version: str,
+    identity: Mapping[str, object], outputs: Mapping[str, bytes],
+    capture_root: Path, receipts: Mapping[str, object], read_capture: Callable,
+    *, source_record_sha256: str, source_schema_sha256: str,
+    capture_names: Iterable[str] | None = None,
+    descriptors: Mapping[str, Mapping[str, object]] | None = None,
+    retain_extra: Callable[[dict[str, dict[str, object]]], None] | None = None,
+) -> None:
+    """Own the upload-to-seal transition for a prepared native candidate.
+
+    Upload failures leave the candidate unsealed. Source-specific preparation
+    and reuse verification happen before entry; this boundary records exactly
+    the accepted outputs, retained responses and optional failed evidence.
+    """
+    inventory = upload_candidate_objects(
+        storage, prefix, outputs, capture_root,
+        receipts if capture_names is None else capture_names, read_capture,
+        descriptors=descriptors)
+    if retain_extra is not None:
+        retain_extra(inventory)
+    seal_candidate_objects(
+        storage, state_key, version, identity, receipts, inventory,
+        source_record_sha256=source_record_sha256,
+        source_schema_sha256=source_schema_sha256)
+
+
 STAGED_RELEASE_DERIVATIVE_NAMES = frozenset({"collection.json", "README.md", "AGENTS.md"})
 _MAX_STAGED_RELEASE_DOCUMENT_BYTES = 2 * 1024 * 1024
 
@@ -432,6 +794,81 @@ def _validate_cached_catalog_sidecars(storage: StagingStorageResource, prefix: s
             raise ValueError("cached_catalog_source_snapshot_changed")
 
 
+def verify_cached_objects(storage, prefix, objects, *,
+                          error_prefix="cached_candidate_object_integrity_failed:",
+                          descriptor_check="equality", error_type=ValueError):
+    """Check exact stored descriptors and stable object identities for reuse."""
+    for name, descriptor in objects.items():
+        key = f"{prefix}/{name}"
+        snapshot = storage.object_snapshot(key)
+        if ((descriptor_check in {"dict", "fields"} and not isinstance(descriptor, dict))
+                or snapshot is None):
+            raise error_type(error_prefix + str(name))
+        if descriptor_check == "fields":
+            changed = (snapshot.size != descriptor.get("bytes")
+                       or storage.sha256_key(key) != descriptor.get("sha256")
+                       or storage.object_snapshot(key) != snapshot)
+        else:
+            changed = (descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+                       or storage.object_snapshot(key) != snapshot)
+        if changed:
+            raise error_type(error_prefix + str(name))
+
+
+def verify_cached_capture_receipts(storage, prefix, capture_receipts):
+    """Bind cached raw body/wire objects to their original complete receipts."""
+    for name, receipt in capture_receipts.items():
+        body = storage.read_key(f"{prefix}/raw/{name}.body")
+        wire = storage.read_key(f"{prefix}/raw/{name}.wire")
+        receipt_body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
+        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
+                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
+                or receipt_body != _canonical(dict(receipt)) + b"\n"):
+            raise ValueError("cached_original_capture_changed:" + name)
+
+
+def verify_cached_transport_receipts(storage, prefix, receipts, verify_wire, *, receipt_encoding="canonical"):
+    """Validate wire-only retained habitat evidence under its native receipt policy."""
+    for name, receipt in receipts.items():
+        if not isinstance(receipt, dict):
+            raise ValueError("cached_receipt_invalid:" + name)
+        wire = storage.read_key(f"{prefix}/raw/{name}.wire")
+        verify_wire(wire, receipt, name)
+        body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
+        valid = (_sha(body) == receipt.get("raw_receipt_sha256") if receipt_encoding == "sha256"
+                 else body == _canonical(receipt) + b"\n")
+        if not valid:
+            raise ValueError("cached_original_capture_changed:" + name)
+
+
+def verify_cached_source_snapshots(storage, prefix, names, source_manifest, *, error_prefix):
+    """Validate catalog source snapshots against native primary metadata, in order."""
+    for name in names:
+        key = f"{prefix}/{name}"
+        snapshot = storage.object_snapshot(key)
+        if name.endswith("source_manifest.json"):
+            expected = source_manifest
+        else:
+            primary_key = f"{prefix}/metadata/{name.removeprefix('metadata/source/')}"
+            primary = storage.object_snapshot(primary_key)
+            expected = ({"bytes": primary.size, "sha256": storage.sha256_key(primary_key)}
+                        if primary is not None else None)
+        if (snapshot is None or expected != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+                or storage.object_snapshot(key) != snapshot):
+            raise ValueError(error_prefix + name)
+
+
+def verify_cached_raw_bodies(storage, prefix, receipts, *, skip_names=(), error_prefix):
+    """Bind body-only native FileGDB metadata evidence to original receipt hashes."""
+    for name, receipt in receipts.items():
+        if name in skip_names:
+            continue
+        body = storage.read_key(f"{prefix}/raw/{name}.body")
+        if receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body):
+            raise ValueError(error_prefix + name)
+
+
 def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, state_key: str,
                             prefix: str, version: str, fingerprint: str, identity: Mapping[str, object],
                             source_record_sha256: str, source_schema_sha256: str,
@@ -472,30 +909,10 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
     if not expected_keys <= actual_keys or actual_keys - allowed_keys:
         raise ValueError("cached_candidate_storage_roster_changed")
     validate_staged_release_derivatives(storage, prefix, actual_keys)
-    for name in snapshot_names:
-        key = f"{prefix}/{name}"
-        if key not in actual_keys:
-            continue
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or manifest_descriptor != {
-                "bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_catalog_source_snapshot_changed:" + name)
-    for name, descriptor in expected_objects.items():
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_candidate_object_integrity_failed:" + name)
-    for name, receipt in capture_receipts.items():
-        body = storage.read_key(f"{prefix}/raw/{name}.body")
-        wire = storage.read_key(f"{prefix}/raw/{name}.wire")
-        receipt_body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
-        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt_body != _canonical(dict(receipt)) + b"\n"):
-            raise ValueError("cached_original_capture_changed:" + name)
+    verify_cached_objects(storage, prefix, {name: manifest_descriptor for name in snapshot_names
+        if f"{prefix}/{name}" in actual_keys}, error_prefix="cached_catalog_source_snapshot_changed:")
+    verify_cached_objects(storage, prefix, expected_objects)
+    verify_cached_capture_receipts(storage, prefix, capture_receipts)
     # Page evidence whose receipts are not duplicated into the construction
     # state is still bound to the first construction through the state's own
     # object descriptors above; here the staged receipt must self-canonicalize
@@ -527,3 +944,9 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
     _validate_cached_catalog_sidecars(storage, prefix, actual_keys)
     validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"], identity=identity)
     return {"version": version, "reused": True}
+
+
+def existing_filesystem_path(path: str | Path) -> Path:
+    """Find the configured path's filesystem without creating directories."""
+    root = Path(path).absolute()
+    return next(parent for parent in (root, *root.parents) if parent.exists())

@@ -32,6 +32,7 @@ from dagster_hifld.sources.land_surface_areas_usace_ienc import (
 from dagster_hifld.assets.publish import _copy_version_files
 from dagster_hifld.release_approval import ReleaseApprovalError
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources import arcgis_layer as shared_fetch
 from dagster_hifld.sources import land_surface_areas_usace_ienc as source
 
 
@@ -428,7 +429,7 @@ class BudgetFailureIsNotRetried(unittest.TestCase):
             raise_limited()
 
         with tempfile.TemporaryDirectory() as directory, patch.object(
-                source, "capture_get", failing_capture_get):
+                shared_fetch, "capture_get", failing_capture_get):
             with self.assertRaisesRegex(ValueError, "source_response_limit_exceeded:wire_limit_exceeded"):
                 source._fetch_retry(object(), "https://example.test/layer", Path(directory),
                                     "page", [0], schedule=(0.0, 0.0))

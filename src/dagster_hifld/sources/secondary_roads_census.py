@@ -12,11 +12,11 @@ lineage context and never fetched as a pipeline input.
 """
 from __future__ import annotations
 
+
 import json
 import math
 import re
 import shutil
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -26,6 +26,7 @@ import httpx
 from pyproj import CRS
 from shapely import from_wkb
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -33,12 +34,16 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import (
+    capture_with_retry,
     PAGE_MAX_BYTES, _canonical, _capture_identity, _esri_polyline_wkb,
     _load_capture, _sha, capture_witness, layer_capture_roster,
     retained_capture_ids,
@@ -107,25 +112,11 @@ def _query(params: dict[str, object]) -> str:
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire") for path in root.glob(suffix)
-                   if path.is_file())
-    if retained + 2 * PAGE_MAX_BYTES > MAX_CAPTURE_BYTES:
-        raise ValueError("source_capture_budget_exceeded_before_request")
-    for attempt, extra_delay in enumerate((0.0, *_TRANSIENT_RETRY_DELAYS)):
-        if attempt:
-            for suffix in (".body", ".wire", ".receipt.json"):
-                path = root / f"{name}{suffix}"
-                if path.exists():
-                    path.unlink()
-            if extra_delay:
-                time.sleep(extra_delay)
-        try:
-            return capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
-        except ValueError as exc:
-            if (attempt == len(_TRANSIENT_RETRY_DELAYS)
-                    or not str(exc).startswith(f"incomplete_source_capture:{name}")):
-                raise
-    raise ValueError(f"incomplete_source_capture:{name}")
+    return capture_with_retry(client, url, root, name, max_bytes=PAGE_MAX_BYTES,
+                              max_total_bytes=MAX_CAPTURE_BYTES,
+                              attempts=len(_TRANSIENT_RETRY_DELAYS) + 1,
+                              base_delay=0, schedule=_TRANSIENT_RETRY_DELAYS,
+                              error_document=None)
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     return layer_capture_roster(
@@ -152,16 +143,10 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     validate_capture_roster(root, set(roster) | {"capture_manifest.json"})
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
-    captures = {}
-    for name in sorted(names):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        captures[name] = (body, receipt)
     expected_urls = dict(_capture_roster(ids))
-    for name in sorted(captures):
-        validate_capture_request_identity(name, captures[name][1], expected_urls[name])
-    return captures
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=expected_urls, load_capture=_load_capture,
+        validate_request_identity=validate_capture_request_identity)
 
 def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     # Completeness is the producer's own count and ID roster captured before
@@ -172,7 +157,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
         raise ValueError("source_population_empty")
     if set(captures) != _capture_names(ids):
         raise ValueError("source_capture_name_roster_drift")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     folder = docs["folder"]
     if not any(service.get("name") == "TIGERweb/Transportation" and service.get("type") == "MapServer"
                for service in folder.get("services", [])):
@@ -382,14 +367,15 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/census-tigerweb-draft"}) as client:
-                ids_body, ids_receipt = _capture(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
-                captures["ids_before"] = (ids_body, ids_receipt)
-                ids = retained_capture_ids(root)
-                roster = _capture_roster(ids)
-                for name, url in roster:
-                    if name == "ids_before":
-                        continue
-                    captures[name] = _capture(client, url, root, name)
+                def validate_seed(ids_body):
+                    ids = retained_capture_ids(root)
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_before', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _capture(client, url, root, name),
+                    on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}
@@ -407,7 +393,7 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
         (root / "capture_manifest.json").write_bytes(_canonical({"complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(), "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         captures = _read_replay(root)
 
@@ -416,7 +402,7 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": _capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False, "baseline_accepted": False})
@@ -426,7 +412,7 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
         "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     # capture_get fails closed unless final_url == url (no redirects are
     # followed) and every receipt retains final_url, so the manifest records
     # observed_final_url only when it actually differs (bounded manifest size).
@@ -480,7 +466,7 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
                   "source_population_complete": True})
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         _body, wire, _receipt = _load_capture(root, name)
         outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
@@ -521,18 +507,13 @@ def capture_secondary_roads_census(storage: StagingStorageResource, *, version: 
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
             "mapping_approved": False, "release_accepted": False, "capture_directory": str(root)}
-    descriptors = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
-        "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "capture_receipts": receipts, "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content")
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["source_feature_count"],

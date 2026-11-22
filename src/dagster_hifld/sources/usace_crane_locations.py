@@ -5,12 +5,13 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import json
-import hashlib
 import math
 import shutil
 import struct
-import time
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -22,13 +23,16 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
-from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources import arcgis_layer as capture_shared
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -83,7 +87,7 @@ def _query(params: dict[str, object]) -> str:
     return LAYER_URL + "/query?" + urlencode(params)
 
 
-def _capture_started_at(captures: dict[str, tuple[bytes, dict]]) -> str:
+def _capture_started_at(captures: Mapping[str, tuple[bytes, dict]]) -> str:
     """Use the first request receipt as capture time, including on replay."""
     receipt = captures.get("ids_seed", (b"", {}))[1]
     observed_at = receipt.get("observed_at")
@@ -93,83 +97,16 @@ def _capture_started_at(captures: dict[str, tuple[bytes, dict]]) -> str:
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    root.mkdir(parents=True, exist_ok=True)
-    body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
-    for path in (body_path, wire_path):
-        path.unlink(missing_ok=True)
-    hashes = {"body": hashlib.sha256(), "wire": hashlib.sha256()}
-    sizes = {"body": 0, "wire": 0}
-    budget_start = budget[0]
-    observed = datetime.now(timezone.utc).isoformat()
-
-    def retain(path, kind):
-        def write(chunk):
-            with path.open("ab") as stream:
-                stream.write(chunk)
-            hashes[kind].update(chunk)
-            sizes[kind] += len(chunk)
-            budget[0] = budget_start + sizes["wire"] + sizes["body"]
-        return write
-
-    def reserve(progress):
-        if budget_start + progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-
-    response = None
-    captured = None
-    transport_error = None
-    final_url = url
-    try:
-        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-            final_url = str(response.url)
-            captured = capture_http_response(
-                response, max_wire_bytes=MAX_RESPONSE_BYTES, max_decoded_bytes=MAX_RESPONSE_BYTES,
-                reserve=reserve, retain_wire=retain(wire_path, "wire"),
-                retain_decoded=retain(body_path, "body"),
-            )
-    except Exception as exc:
-        transport_error = type(exc).__name__
-    receipt = {
-        "method": "GET", "url": url, "final_url": final_url, "observed_at": observed,
-        "status": captured.status_code if captured is not None else (response.status_code if response is not None else None),
-        "complete_body": bool(captured is not None and captured.complete and transport_error is None),
-        "wire_bytes": sizes["wire"], "wire_sha256": hashes["wire"].hexdigest(),
-        "bytes": sizes["body"], "sha256": hashes["body"].hexdigest(),
-        "content_encoding": captured.content_encoding if captured is not None else None,
-        "content_length": captured.content_length if captured is not None else None,
-        "error_code": captured.error_code if captured is not None else ("transport_error" if transport_error else "capture_result_missing"),
-        "error_type": captured.error_type if captured is not None else transport_error,
-    }
-    (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-    if transport_error:
-        raise httpx.TransportError("capture_transport_error:" + transport_error)
-    if captured is None:
-        raise ValueError("capture_result_missing")
-    body, wire = body_path.read_bytes(), wire_path.read_bytes()
-    if (not captured.complete or captured.status_code != 200 or final_url != url
-            or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]
-            or len(wire) != receipt["wire_bytes"] or _sha(wire) != receipt["wire_sha256"]):
-        raise ValueError("incomplete_source_capture:" + name)
-    return body, receipt
+    return capture_shared.fetch_capture(client, url, root, name, budget,
+                         max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_RESPONSE_BYTES)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
                  *, schedule: tuple[float, ...] = (0.0, 2.0, 8.0)):
-    last = None
-    for attempt, wait in enumerate(schedule):
-        if wait:
-            time.sleep(wait)
-        attempt_name = f"{name}.attempt{attempt + 1}"
-        try:
-            body, receipt = _fetch(client, url, root, attempt_name, budget)
-            for suffix in ("body", "wire", "receipt.json"):
-                (root / f"{attempt_name}.{suffix}").replace(root / f"{name}.{suffix}")
-            return body, receipt
-        except (httpx.TransportError, ValueError) as exc:
-            last = exc
-            if isinstance(exc, ValueError) and not str(exc).startswith("incomplete_source_capture:"):
-                raise
-    raise last
+    return capture_shared.fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_RESPONSE_BYTES,
+                               attempts=len(schedule), schedule=schedule,
+                               fetch=_fetch)
 
 
 def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
@@ -183,9 +120,9 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
     )
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     layer = docs["layer_before"]
     fields = layer.get("fields")
     projected=[{key:f[key] for key in ("name","type","alias","length","domain","nullable") if key in f}
@@ -347,7 +284,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
     if ".." in root.parts or any(p.is_symlink() for p in (root,*root.parents)):
         raise ValueError("unsafe_capture_directory")
     root.mkdir(parents=True,exist_ok=True)
-    captures={}
+    captures=RetainedCaptureView(root)
     try:
         if replay:
             retained_manifest=json.loads((root/"capture_manifest.json").read_bytes())
@@ -365,9 +302,12 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             names=["ids_seed","bts_item","service_directory","service_before","layer_before","count_before","ids_before",*[f"page_{i:03d}" for i in range((len(ids)+PAGE_SIZE-1)//PAGE_SIZE)],"layer_after","count_after","ids_after","service_after"]
             if set(retained_manifest["receipts"])!=set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures={name:_load_replay(root,name) for name in names}
-            if any(receipt!=retained_manifest["receipts"][name] for name,(_body,receipt) in captures.items()):
-                raise ValueError("retained_capture_manifest_receipt_mismatch")
+            captures=validated_capture_view(root,
+                receipts={name: retained_manifest["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_manifest_receipt_mismatch")
             attempt_map=retained_manifest.get("attempts",{})
             if not isinstance(attempt_map,dict): raise ValueError("retained_capture_attempt_manifest_invalid")
             for name,receipt in attempt_map.items():
@@ -395,7 +335,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             actual_names = {path.name.removesuffix(".receipt.json") for path in root.glob("*.receipt.json")}
             if actual_names != expected_names:
                 raise ValueError("retained_unsealed_capture_roster_mismatch")
-            captures = {}
+            captures = RetainedCaptureView(root)
             for name, expected_url in names_urls:
                 body, receipt = _load_replay(root, name)
                 if receipt.get("url") != expected_url or receipt.get("final_url") != expected_url:
@@ -412,15 +352,20 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
             if existing_bytes>MAX_CAPTURE_BYTES:
                 raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usace-ienc-draft"}) as client:
-                seed_body,seed_receipt=_fetch_retry(client,_query({"where":"1=1","returnIdsOnly":"true","f":"json"}),root,"ids_seed",capture_budget)
-                ids=json.loads(seed_body).get("objectIds")
-                if (not isinstance(ids,list) or not ids
-                        or any(type(value) is not int or value <= 0 for value in ids)
-                        or len(set(ids))!=len(ids)):
-                    raise ValueError("source_seed_id_roster_drift")
-                ids=sorted(ids)
-                captures["ids_seed"]=(seed_body,seed_receipt)
-                for name,url in _capture_roster(ids): captures[name]=_fetch_retry(client,url,root,name,capture_budget)
+                def validate_seed(seed_body):
+                    ids=json.loads(seed_body).get("objectIds")
+                    if (not isinstance(ids,list) or not ids
+                            or any(type(value) is not int or value <= 0 for value in ids)
+                            or len(set(ids))!=len(ids)):
+                        raise ValueError("source_seed_id_roster_drift")
+                    ids=sorted(ids)
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_seed', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, capture_budget),
+                    on_validation_error=_validate)
         fields,features,audit=_validate(captures)
     except Exception as exc:
         retained={}
@@ -434,13 +379,13 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
     parquet=_parquet_bytes(fields,features,wkid)
-    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in sorted(captures.items())}))
+    capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"]=capture_sha
     version="v"+_sha(_canonical({"source_record_sha256":audit["source_record_sha256"],
         "source_geometry_sha256":audit["source_geometry_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"official_distributor" if name=="bts_item" else "producer_publication","delegation_evidence":{"distributor":"USDOT BTS","item_id":BTS_ITEM_ID,"item_url":BTS_ITEM_URL,"service_directory_url":SERVICE_DIRECTORY_URL,"basis":"Captured USDOT BTS item identifies the IENC dataset as a USACE/AGC product and links the official IENC Feature Classes service; this supports distribution provenance only, not edition, freshness, rights, or release acceptance."} if name=="bts_item" else None,"canonical_url":BTS_ITEM_URL if name=="bts_item" else SERVICE_DIRECTORY_URL if name=="service_directory" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"BTS describes bi-monthly IENC updates but does not identify this layer snapshot's edition date."} for name,(_body,receipt) in sorted(captures.items())]
+    inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"official_distributor" if name=="bts_item" else "producer_publication","delegation_evidence":{"distributor":"USDOT BTS","item_id":BTS_ITEM_ID,"item_url":BTS_ITEM_URL,"service_directory_url":SERVICE_DIRECTORY_URL,"basis":"Captured USDOT BTS item identifies the IENC dataset as a USACE/AGC product and links the official IENC Feature Classes service; this supports distribution provenance only, not edition, freshness, rights, or release acceptance."} if name=="bts_item" else None,"canonical_url":BTS_ITEM_URL if name=="bts_item" else SERVICE_DIRECTORY_URL if name=="service_directory" else LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"BTS describes bi-monthly IENC updates but does not identify this layer snapshot's edition date."} for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest={"schema_version":1,"approved":False,"title":"Crane Locations (USACE IENC)","description":"Complete observed CRANES_POINT feature class from the official USACE IENC service; unapproved faithful candidate. The inland IENC chart extent is not a nationwide crane inventory. Historical HIFLD equivalence, source edition/freshness, schema/ID contract, rights, baseline and release decisions remain pending.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Native point x/y retained in captured raw Esri JSON and WKB at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":{"distribution_attestation":{"item_id":BTS_ITEM_ID,"owner":"USDOT_BTS","url":BTS_ITEM_URL,"description":"BTS item describes bi-monthly USACE/AGC IENC updates and links the official service."},"official_service_directory":SERVICE_DIRECTORY_URL,"official_service":SERVICE_URL,"layer":LAYER_URL,"scope":"This candidate represents only the complete observed CRANES_POINT layer, not every USACE crane or a nationwide inventory."},"prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Only native fields, IDs and point coordinates are represented in the candidate; output mapping, source rights and release decisions remain pending.","objects":[{"path":"geoparquet/crane-locations-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":UNSUPPORTED_OUTPUT_FORMATS}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"source_fields":fields,"official_layer_name":"CRANES_POINT","official_source_item":f"USDOT_BTS {BTS_ITEM_ID}","source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
@@ -448,7 +393,7 @@ def capture_usace_crane_locations(storage: StagingStorageResource, *, version: s
     for receipt_path in sorted(root.glob("*.attempt*.receipt.json")):
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
-    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":_capture_started_at(captures),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in sorted(captures.items())},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
+    (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":_capture_started_at(captures),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     outputs={"geoparquet/crane-locations-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"

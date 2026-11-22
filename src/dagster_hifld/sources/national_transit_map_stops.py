@@ -5,6 +5,7 @@ HIFLD/DataLumos snapshot. Source and release approvals remain false.
 """
 from __future__ import annotations
 
+
 import json
 import math
 import os
@@ -22,16 +23,23 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 
+from dagster_hifld.http_capture import validated_capture_view
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.sources.arcgis_capture_sequence import (
+    ExactIdCapturePlan, capture_request_steps, retry_capture_request, quarantine_retry_response,
+)
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.http_capture import validate_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -201,8 +209,8 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
     if total != manifest["retained_bytes"] or total > manifest["capture_budget_bytes"] or receipt_total > MAX_CAPTURE_RECEIPT_TOTAL_BYTES:
         raise ValueError("retained_capture_budget_invalid")
     validate_capture_roster(root, expected)
-    captures = {}
-    for name, desc in manifest["captures"].items():
+    def load(root, name):
+        desc = manifest["captures"][name]
         response_cap = MAX_ID_ROSTER_RESPONSE_BYTES if name in {"ids_before", "ids_after"} else MAX_RESPONSE_BYTES
         contents = {}
         for kind in ("body", "wire", "receipt"):
@@ -220,7 +228,12 @@ def _load_retained_capture(root: Path) -> tuple[dict, dict[str, tuple[bytes, dic
                 or receipt.get("sha256") != _sha(body) or receipt.get("wire_bytes") != len(wire)
                 or receipt.get("wire_sha256") != _sha(wire) or receipt.get("error_code") is not None):
             raise ValueError("retained_capture_receipt_invalid:" + name)
-        captures[name] = (body, receipt)
+        return body, receipt
+    receipts = {name: load(root, name)[1] for name in manifest["captures"]}
+    captures = validated_capture_view(root, receipts=receipts,
+        expected_urls={name: desc["request_url"] for name, desc in manifest["captures"].items()},
+        load_capture=load, capture_value=lambda value: value, preserve_order=True,
+        validate_request_identity=lambda name, receipt, url: None)
     return manifest, captures, _sha(encoded)
 
 
@@ -277,8 +290,8 @@ def _retryable_request_failure(exc: Exception, name: str, attempt_no: int, root:
     transfer mid-stream; both were observed on the pinned layer (2026-11-11,
     resultOffset 498000). Only those transport/response classes are retried.
     Deterministic drift, contract, size-cap and budget failures stay terminal,
-    so a retry can never mask a real source change. Each retried attempt
-    replaces the previous attempt's retained body/wire/receipt files; the
+    so a retry can never mask a real source change. Each refused response is retained in private quarantine before
+    the next attempt replaces its active body/wire/receipt filenames. The
     candidate audit records the attempt count per request.
     """
     if not isinstance(exc, ValueError) or attempt_no >= MAX_REQUEST_ATTEMPTS:
@@ -333,11 +346,12 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
         raise ValueError("disk_floor_before_capture")
 
     offline = None
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures = RetainedCaptureView(root)
     request_attempts: dict[str, int] = {}
     retained = 0
     if retained_capture_directory:
-        offline, captures, manifest_sha = _load_retained_capture(root)
+        offline, retained_captures, manifest_sha = _load_retained_capture(root)
+        captures = retained_captures
         if manifest_sha != retained_capture_manifest_sha256:
             raise ValueError("retained_capture_manifest_digest_mismatch")
         if (offline["capture_budget_bytes"] != max_capture_bytes
@@ -355,7 +369,9 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
             if not isinstance(result, dict) or "error" in result:
                 raise ValueError("source_response_error:" + name)
             return result
-        for attempt_no in range(1, MAX_REQUEST_ATTEMPTS + 1):
+        attempt_retained = 0
+        def capture_attempt(attempt_no):
+            nonlocal attempt_retained
             response_used = [0]
             attempt_retained = 0
             def reserve(progress):
@@ -378,91 +394,105 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
                 result = json.loads(body)
                 if not isinstance(result, dict) or "error" in result:
                     raise ValueError("source_response_error:" + name)
-            except Exception as exc:
-                if not _retryable_request_failure(exc, name, attempt_no, root):
-                    receipt_path = root / f"{name}.receipt.json"
-                    body_path = root / f"{name}.body"
-                    if receipt_path.is_file() and body_path.is_file():
-                        try:
-                            partial_receipt = json.loads(_bounded_read(receipt_path, MAX_CAPTURE_RECEIPT_BYTES))
-                            partial_body = _bounded_read(body_path, response_cap)
-                            if isinstance(partial_receipt, dict):
-                                captures[name] = (partial_body, partial_receipt)
-                        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-                            pass
-                    raise
-                retained -= attempt_retained
-                request_attempts[name] = attempt_no + 1
-                time.sleep(RETRY_BACKOFF_SECONDS[attempt_no - 1])
-                continue
+            except Exception:
+                receipt_path = root / f"{name}.receipt.json"
+                body_path = root / f"{name}.body"
+                if receipt_path.is_file() and body_path.is_file():
+                    try:
+                        partial_receipt = json.loads(_bounded_read(receipt_path, MAX_CAPTURE_RECEIPT_BYTES))
+                        partial_body = _bounded_read(body_path, response_cap)
+                        if isinstance(partial_receipt, dict):
+                            captures[name] = (partial_body, partial_receipt)
+                    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                        pass
+                raise
             captures[name] = (body, receipt)
             return result
-        raise ValueError("source_capture_attempts_exhausted:" + name)
+        def preserve_retry(exc, attempt_no):
+            nonlocal retained
+            quarantine_retry_response(storage, root, DATASET_SLUG, version, name, type(exc).__name__)
+            retained -= attempt_retained
+            request_attempts[name] = attempt_no + 1
+        return retry_capture_request(capture_attempt, attempts=MAX_REQUEST_ATTEMPTS,
+            schedule=RETRY_BACKOFF_SECONDS,
+            retryable=lambda exc, attempt_no: _retryable_request_failure(exc, name, attempt_no, root),
+            preserve_failed=preserve_retry)
 
     try:
         client_context = nullcontext(None) if offline is not None else httpx.Client(
             follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/national-transit-map-stops-draft"})
         with client_context as client:
-            portal = get(client,"portal_item",_metadata_url("portal_item"))
-            if (portal.get("id") != ITEM_ID or portal.get("owner") != "USDOT_BTS"
-                    or portal.get("orgId") != "xOi1kZaI0eWDREZv" or portal.get("title") != LAYER_NAME
-                    or portal.get("type") != "Feature Service" or portal.get("url") != SERVICE_URL
-                    or portal.get("access") != "public" or portal.get("description") != DESCRIPTION):
-                raise ValueError("official_BTS_item_identity_or_description_drift")
-            service = get(client,"service_before",_metadata_url("service_before"))
-            layer = get(client,"layer_before",_metadata_url("layer_before"))
-            if (service.get("serviceItemId") != ITEM_ID or service.get("description") != DESCRIPTION
-                    or not any(isinstance(x,dict) and x.get("id")==LAYER_ID and x.get("name")==LAYER_NAME
-                               for x in service.get("layers",[]))):
-                raise ValueError("BTS_service_identity_drift")
-            fields = _field_contract(layer)
-            has_z, has_m = layer.get("hasZ"), layer.get("hasM")
-            if has_z is not True or has_m is not False:
-                raise ValueError("source_geometry_dimensions_unpinned")
-            sr = layer.get("spatialReference", layer.get("extent",{}).get("spatialReference",{}))
-            if sr.get("latestWkid",sr.get("wkid")) != 4326:
-                raise ValueError("source_native_crs_drift")
-            count_doc = get(client,"count_before",_metadata_url("count_before"))
-            ids_doc = get(client,"ids_before",_metadata_url("ids_before"))
-            count, ids = count_doc.get("count"), ids_doc.get("objectIds")
-            if ids_doc.get("objectIdFieldName") != "OBJECTID":
-                raise ValueError("source_initial_count_or_id_roster_invalid")
-            seed = validate_capture_witness(count, ids, count, ids)
-            if (not isinstance(layer.get("advancedQueryCapabilities"), dict)
-                    or layer["advancedQueryCapabilities"].get("supportsPagination") is not True
-                    or layer["advancedQueryCapabilities"].get("supportsOrderBy") is not True):
-                raise ValueError("source_ordered_pagination_not_supported")
-            if layer.get("maxRecordCount") != PAGE_SIZE:
-                raise ValueError("source_page_size_contract_drift")
-            if 10 + math.ceil(count/PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
-                raise ValueError("source_request_count_exceeded")
-            features=[]
-            for page_no, offset in enumerate(range(0,count,PAGE_SIZE)):
-                expected = seed[offset:offset+PAGE_SIZE]
-                page = get(client,f"page_{page_no:03d}",_page_url(offset,len(expected),has_z,has_m))
-                rows = page.get("features")
-                if not isinstance(rows,list) or len(rows)!=len(expected):
-                    raise ValueError("source_page_incomplete")
-                # The BTS layer sets exceededTransferLimit on a full ordered
-                # offset page while additional rows remain; the independently
-                # pinned ID roster slice proves that page is complete. A
-                # flagged final page means the server holds rows beyond the
-                # pinned population and still fails closed.
-                if page.get("exceededTransferLimit") is True and offset+len(expected)>=count:
-                    raise ValueError("source_final_page_exceeded_transfer_limit")
-                page_sr=page.get("spatialReference",{})
-                if not isinstance(page_sr,dict) or page_sr.get("latestWkid",page_sr.get("wkid"))!=4326:
-                    raise ValueError("source_page_crs_drift")
-                page_ids=[row.get("attributes",{}).get("OBJECTID") for row in rows if isinstance(row,dict)]
-                if (len(page_ids) != len(rows) or any(type(value) is not int for value in page_ids)
-                        or sorted(page_ids) != expected or len(set(page_ids)) != len(expected)):
-                    raise ValueError("source_page_id_slice_mismatch")
-                features.extend(rows)
-            layer_after=get(client,"layer_after",_metadata_url("layer_after"))
-            service_after=get(client,"service_after",_metadata_url("service_after"))
-            count_after=get(client,"count_after",_metadata_url("count_after")).get("count")
-            ids_after_doc=get(client,"ids_after",_metadata_url("ids_after"))
-            ids_after=ids_after_doc.get("objectIds")
+            def acquisition_steps():
+                portal = (yield ('portal_item', _metadata_url('portal_item')))
+                if (portal.get("id") != ITEM_ID or portal.get("owner") != "USDOT_BTS"
+                        or portal.get("orgId") != "xOi1kZaI0eWDREZv" or portal.get("title") != LAYER_NAME
+                        or portal.get("type") != "Feature Service" or portal.get("url") != SERVICE_URL
+                        or portal.get("access") != "public" or portal.get("description") != DESCRIPTION):
+                    raise ValueError("official_BTS_item_identity_or_description_drift")
+                service = (yield ('service_before', _metadata_url('service_before')))
+                layer = (yield ('layer_before', _metadata_url('layer_before')))
+                if (service.get("serviceItemId") != ITEM_ID or service.get("description") != DESCRIPTION
+                        or not any(isinstance(x,dict) and x.get("id")==LAYER_ID and x.get("name")==LAYER_NAME
+                                   for x in service.get("layers",[]))):
+                    raise ValueError("BTS_service_identity_drift")
+                fields = _field_contract(layer)
+                has_z, has_m = layer.get("hasZ"), layer.get("hasM")
+                if has_z is not True or has_m is not False:
+                    raise ValueError("source_geometry_dimensions_unpinned")
+                sr = layer.get("spatialReference", layer.get("extent",{}).get("spatialReference",{}))
+                if sr.get("latestWkid",sr.get("wkid")) != 4326:
+                    raise ValueError("source_native_crs_drift")
+                count_doc = (yield ('count_before', _metadata_url('count_before')))
+                ids_doc = (yield ('ids_before', _metadata_url('ids_before')))
+                count, ids = count_doc.get("count"), ids_doc.get("objectIds")
+                if ids_doc.get("objectIdFieldName") != "OBJECTID":
+                    raise ValueError("source_initial_count_or_id_roster_invalid")
+                seed = validate_capture_witness(count, ids, count, ids)
+                if (not isinstance(layer.get("advancedQueryCapabilities"), dict)
+                        or layer["advancedQueryCapabilities"].get("supportsPagination") is not True
+                        or layer["advancedQueryCapabilities"].get("supportsOrderBy") is not True):
+                    raise ValueError("source_ordered_pagination_not_supported")
+                if layer.get("maxRecordCount") != PAGE_SIZE:
+                    raise ValueError("source_page_size_contract_drift")
+                if 10 + math.ceil(count/PAGE_SIZE) > MAX_CAPTURE_REQUESTS:
+                    raise ValueError("source_request_count_exceeded")
+                def validate_page(offset, expected, page):
+                    rows = page.get("features")
+                    if not isinstance(rows,list) or len(rows)!=len(expected):
+                        raise ValueError("source_page_incomplete")
+                    # The BTS layer sets exceededTransferLimit on a full ordered
+                    # offset page while additional rows remain; the independently
+                    # pinned ID roster slice proves that page is complete. A
+                    # flagged final page means the server holds rows beyond the
+                    # pinned population and still fails closed.
+                    if page.get("exceededTransferLimit") is True and offset+len(expected)>=count:
+                        raise ValueError("source_final_page_exceeded_transfer_limit")
+                    page_sr=page.get("spatialReference",{})
+                    if not isinstance(page_sr,dict) or page_sr.get("latestWkid",page_sr.get("wkid"))!=4326:
+                        raise ValueError("source_page_crs_drift")
+                    page_ids=[row.get("attributes",{}).get("OBJECTID") for row in rows if isinstance(row,dict)]
+                    if (len(page_ids) != len(rows) or any(type(value) is not int for value in page_ids)
+                            or sorted(page_ids) != expected or len(set(page_ids)) != len(expected)):
+                        raise ValueError("source_page_id_slice_mismatch")
+                    return rows
+
+                features, _pages, closed = yield ExactIdCapturePlan(
+                    ids=seed, page_size=PAGE_SIZE,
+                    page_request=lambda offset, expected: (
+                        f'page_{offset // PAGE_SIZE:03d}',
+                        _page_url(offset, len(expected), has_z, has_m)),
+                    validate_page=validate_page,
+                    read_page=lambda offset: captures[f'page_{offset // PAGE_SIZE:03d}'][0],
+                    closing_requests=tuple((name, _metadata_url(name)) for name in
+                        ('layer_after', 'service_after', 'count_after', 'ids_after')))
+                layer_after = closed['layer_after']
+                service_after = closed['service_after']
+                count_after = closed['count_after'].get('count')
+                ids_after_doc = closed['ids_after']
+                ids_after = ids_after_doc.get('objectIds')
+                return (fields, features, count, count_after, ids, ids_after, ids_after_doc, layer, layer_after, service, service_after, has_z, has_m, seed, portal)
+            (fields, features, count, count_after, ids, ids_after, ids_after_doc, layer, layer_after, service, service_after, has_z, has_m, seed, portal) = capture_request_steps(acquisition_steps(), lambda name, url, *params: get(client, name, url, *params),
+                capture_root=root, byte_budget=max_capture_bytes)
         if layer_after != layer or service_after != service or ids_after_doc.get("objectIdFieldName") != "OBJECTID":
             raise ValueError("source_changed_during_capture")
         validate_capture_witness(count, ids, count_after, ids_after)
@@ -490,7 +520,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
         if (len(features)!=count or any(type(value) is not int for value in got)
                 or sorted(got)!=seed or len(set(got))!=count):
             raise ValueError("source_population_incomplete")
-        features.sort(key=lambda x:x["attributes"]["OBJECTID"])
+        features = sorted(features, key=lambda x:x["attributes"]["OBJECTID"])
         if offline is not None and set(captures) != set(offline["captures"]):
             raise ValueError("retained_capture_request_roster_mismatch")
     except Exception as exc:
@@ -501,7 +531,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
     if offline is None:
         descriptors={}
         receipts_total=0
-        for name,(body,receipt) in sorted(captures.items()):
+        for name,(body,receipt) in ((name, captures[name]) for name in sorted(captures)):
             response_cap = MAX_ID_ROSTER_RESPONSE_BYTES if name in {"ids_before", "ids_after"} else MAX_RESPONSE_BYTES
             body_file=_bounded_read(root/f"{name}.body",response_cap)
             wire_file=_bounded_read(root/f"{name}.wire",response_cap)
@@ -562,7 +592,7 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
             "http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],
             "wire_bytes":r["wire_bytes"],"wire_sha256":r["wire_sha256"],"release_date":None,
             "release_date_unknown_reason":"The ArcGIS item modified time is not an agency release record."}
-            for n,(_body,r) in sorted(captures.items())],
+            for n,(_body,r) in ((name, captures[name]) for name in sorted(captures))],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
             "feature_layer_id":LAYER_ID,"source_fields":"all 20 declared source attributes including OBJECTID retained in source order",
             "geometry":"native point XY/Z/M ordinates encoded as WKB in EPSG:4326 without reprojection or repair",
@@ -598,14 +628,14 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
             "source_release_accepted":False,"release_accepted":False,"capture_directory":str(root)}
     if shutil.disk_usage(base).free < MIN_FREE_BYTES + sum(map(len,outputs.values())) + STAGING_OVERHEAD_BYTES:
         raise ValueError("candidate_staging_disk_reserve_exceeded")
-    for name,body in outputs.items():
-        key=f"{prefix}/{name}"; write_immutable(storage,key,body); snapshot=storage.object_snapshot(key)
-        if snapshot is None or snapshot.size!=len(body) or storage.sha256_key(key)!=_sha(body) or storage.object_snapshot(key)!=snapshot:
-            raise ValueError("candidate_output_readback_failed:"+name)
+    write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_output_readback_failed:')
     descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    seal_ready_candidate(storage,state_key,version_id,fingerprint,{"processing_identity":identity,
-        "source_record_sha256":record_sha,"source_schema_sha256":schema_sha,
-        "capture_receipts":{name:receipt for name,(_body,receipt) in captures.items()},"objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version_id,
+        identity, {name: receipt for name, (_body, receipt) in captures.items()}, descriptors,
+        source_record_sha256=record_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version_id,"feature_count":count,
         "source_reported_count":count,"source_population_complete":True,"source_id_sha256":_sha(_canonical(seed)),

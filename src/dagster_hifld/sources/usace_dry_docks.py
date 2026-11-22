@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+
+from collections.abc import Mapping
+
 import io
 import json
 import math
 import shutil
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -17,12 +21,14 @@ import pyarrow.parquet as pq
 from pyproj import CRS
 from shapely import from_wkb
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
@@ -31,6 +37,8 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -133,7 +141,7 @@ def _validate_request_identity(name: str, receipt: dict, expected_url: str) -> N
         raise ValueError("retained_capture_request_identity_mismatch:" + name)
 
 
-def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+def _read_replay(root: Path) -> Mapping[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
@@ -155,14 +163,9 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
     if roster != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
     expected_urls = dict(_capture_urls(replay_ids))
-    captures = {}
-    for name in sorted(names):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != receipts[name]:
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        _validate_request_identity(name, receipt, expected_urls[name])
-        captures[name] = body, receipt
-    return captures
+    return validated_capture_view(root, receipts=receipts,
+        expected_urls=expected_urls, load_capture=_load_capture,
+        validate_request_identity=_validate_request_identity)
 
 
 def _validate_crs(value: object, label: str, *, required: bool = True) -> bool:
@@ -266,8 +269,8 @@ def _parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
     return sink.getvalue()
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+    docs = CaptureDocuments(captures)
     directory_services = docs["service_directory"].get("services", [])
     if not any(service.get("name") == "IENC_Feature_Classes/DRY_DOCK_AREA"
                and service.get("type") == "MapServer" for service in directory_services):
@@ -381,22 +384,23 @@ def _read_capture(root: Path, storage: StagingStorageResource,
     if any(root.glob("*.body")) or any(root.glob("*.wire")) or any(root.glob("*.receipt.json")):
         raise ValueError("explicit_capture_directory_contains_unsealed_attempt")
     root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: Mapping[str, tuple[bytes, dict]] = {}
     try:
         with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                           headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
-            ids_body, ids_receipt = _capture(
-                client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), root, "ids_before")
-            ids = json.loads(ids_body).get("objectIds")
-            if (not isinstance(ids, list) or not ids
-                    or any(type(oid) is not int or oid <= 0 for oid in ids)
-                    or len(set(ids)) != len(ids)):
-                raise ValueError("source_seed_id_roster_drift")
-            captures["ids_before"] = (ids_body, ids_receipt)
-            for name, url in _capture_urls(ids):
-                if name == "ids_before":
-                    continue
-                captures[name] = _capture(client, url, root, name)
+            def validate_seed(ids_body):
+                ids = json.loads(ids_body).get("objectIds")
+                if (not isinstance(ids, list) or not ids
+                        or any(type(oid) is not int or oid <= 0 for oid in ids)
+                        or len(set(ids)) != len(ids)):
+                    raise ValueError("source_seed_id_roster_drift")
+                return ids
+            captures = RetainedCaptureView(root, captures)
+            capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_before', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                validate_seed=validate_seed, roster=_capture_urls,
+                fetch=lambda client, url, root, name: _capture(client, url, root, name),
+                on_validation_error=_validate)
             _validate(captures)
     except Exception as exc:
         retained = {}
@@ -420,7 +424,7 @@ def _read_capture(root: Path, storage: StagingStorageResource,
         raise
     (root / "capture_manifest.json").write_bytes(_canonical({
         "captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,
-        "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"}),
     }) + b"\n")
     return _read_replay(root)
@@ -428,16 +432,7 @@ def _read_capture(root: Path, storage: StagingStorageResource,
 
 def _write_outputs(storage: StagingStorageResource, prefix: str,
                    outputs: dict[str, bytes]) -> dict[str, dict[str, object]]:
-    descriptors = {}
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        snapshot = storage.object_snapshot(f"{prefix}/{name}")
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if (snapshot is None or snapshot.size != descriptor["bytes"]
-                or storage.sha256_key(f"{prefix}/{name}") != descriptor["sha256"]
-                or storage.object_snapshot(f"{prefix}/{name}") != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 
@@ -472,7 +467,7 @@ def capture_usace_dry_docks(storage: StagingStorageResource, *, version: str,
     capture_sha = _sha(_canonical(capture_evidence))
     audit.update({
         "source_capture_evidence_sha256": capture_sha, "source_capture_evidence": capture_evidence,
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,
         "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
@@ -490,7 +485,7 @@ def capture_usace_dry_docks(storage: StagingStorageResource, *, version: str,
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, candidate_version)
     parquet = _parquet_bytes(fields, features)
     inputs = []
-    for name, (_body, receipt) in sorted(captures.items()):
+    for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         inputs.append({
             "input_id": name,
             "producer": PUBLISHER,
@@ -578,12 +573,12 @@ def capture_usace_dry_docks(storage: StagingStorageResource, *, version: str,
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "release_accepted": False, "capture_directory": str(root)}
     descriptors = _write_outputs(storage, prefix, outputs)
-    seal_ready_candidate(storage, state_key, candidate_version, identity_sha, {
-        "processing_identity": identity, "source_record_sha256": record_sha,
-        "source_schema_sha256": schema_sha,
-        "capture_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
-        "objects": descriptors,
-    })
+    seal_candidate_objects(
+        storage, state_key, candidate_version,
+        identity, {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}, descriptors,
+        source_record_sha256=record_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=identity_sha)
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
     )

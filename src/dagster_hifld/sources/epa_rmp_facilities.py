@@ -6,6 +6,7 @@ DataLumos export. Candidate creation is local-only and never grants release.
 """
 from __future__ import annotations
 
+
 import json
 import shutil
 from collections import Counter
@@ -22,14 +23,18 @@ import pyproj
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import canonical_construction_bundle, load_first_construction, seal_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import offset_layer_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -98,8 +103,7 @@ def validate_source_captures(captures: Mapping[str, tuple[bytes, Mapping[str, ob
     expected_field_count = SOURCE_FIELD_COUNT if expected_field_count is None else expected_field_count
     if expected_schema_sha256 is _DEFAULT_SCHEMA_PIN:
         expected_schema_sha256 = SOURCE_SCHEMA_SHA256
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()
-            if name != "epa_frs_sources_page"}
+    docs = CaptureDocuments(captures, (name for name in captures if name != 'epa_frs_sources_page'))
     item0 = _plain_object(docs.get("portal_item_before"), "portal_item_before")
     item1 = _plain_object(docs.get("portal_item_after"), "portal_item_after")
     service0 = _plain_object(docs.get("service_before"), "service_before")
@@ -372,18 +376,17 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
             captures["epa_frs_sources_page"] = (body, receipt)
         with httpx.Client(follow_redirects=False, timeout=60,
                           headers={"User-Agent": "hifld-next-datasets/epa-rmp-facilities-draft"}) as client:
-            seed_body, seed_receipt = capture_get(client,
-                _query_url({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), capture_root,
-                "ids_seed", max_bytes=MAX_BODY_BYTES)
-            seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or len(seed) != SOURCE_COUNT:
-                raise ValueError("source_seed_id_count_drift")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _source_urls(sorted(seed)):
-                if name == "epa_frs_sources_page" and replayed_document is not None:
-                    continue
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
+            def validate_seed(seed_body):
+                seed = json.loads(seed_body).get("objectIds")
+                if not isinstance(seed, list) or len(seed) != SOURCE_COUNT:
+                    raise ValueError("source_seed_id_count_drift")
+                return sorted(seed)
+            captures = RetainedCaptureView(capture_root, captures)
+            capture_layer(LAYER_URL, capture_root, 192_000_000, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=_query_url({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                validate_seed=validate_seed, roster=_source_urls,
+                fetch=lambda client, url, root, name: capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES),
+                on_validation_error=validate_source_captures)
         extracted = validate_source_captures(captures)
     except Exception as exc:
         receipts = {}
@@ -414,7 +417,7 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
                                          audit["source_schema_sha256"], identity)
     prefix = f"{DATASET_SLUG}/{FILE_SLUG}/{version_id}"
     objects = {f"geoparquet/{DATASET_SLUG}.parquet": {"bytes": len(parquet), "sha256": _sha(parquet)}}
-    receipts = {name: receipt for name, (_, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{"input_id": name, "producer": "U.S. Environmental Protection Agency, FRS Support Team; RMP national program",
                "host": urlsplit(str(receipt["url"])).hostname,
                "role": "producer_publication",
@@ -512,18 +515,17 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
                         "source_record_sha256": audit["source_record_sha256"],
                         "source_geometry_sha256": audit["source_geometry_sha256"], "receipts": receipts}
     (capture_root / "capture_manifest.json").write_bytes(_canonical(capture_manifest) + b"\n")
-    for name, body in outputs.items():
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        if snapshot is None or snapshot.size != len(body) or storage.sha256_key(key) != _sha(body) or storage.object_snapshot(key) != snapshot:
-            raise ValueError("candidate_physical_readback_failed:" + name)
+    write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_physical_readback_failed:')
     descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
     payload = {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"], "capture_receipts": receipts,
                "objects": descriptors}
-    seal_first_construction(storage, f"_construction-state/{DATASET_SLUG}/{version_id}.json", version_id,
-                            fingerprint, canonical_construction_bundle(version_id, fingerprint, payload))
+    seal_candidate_objects(
+        storage, f'_construction-state/{DATASET_SLUG}/{version_id}.json', version_id,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(root, identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version_id,
             "feature_count": len(extracted["features"]), "source_null_geometry_count": audit["null_geometry_count"],

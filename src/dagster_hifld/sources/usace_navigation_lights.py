@@ -5,11 +5,15 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+
+from collections.abc import Mapping
+
 import io
 import json
 import math
 import shutil
 import struct
+
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -21,6 +25,8 @@ import pyarrow.parquet as pq
 from pyproj import CRS
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments, validated_capture_view
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
@@ -28,10 +34,18 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources import arcgis_layer as capture_shared
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
-    seal_ready_candidate, verify_cached_candidate, write_immutable,
+    candidate_prefix,
+    processing_identity,
+    quarantine_incomplete_capture,
+    seal_ready_candidate,
+    verify_cached_candidate,
+    write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import capture_witness, ienc_layer_capture_roster
@@ -93,30 +107,7 @@ def _capture_names(ids: list[int]) -> set[str]:
         f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
 
 
-def _validate_spatial_reference(value: object, label: str, *, required: bool = True) -> bool:
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    found = False
-    for key in ("wkid", "latestWkid"):
-        if key in value:
-            if type(value[key]) is not int or value[key] != 4326:
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                crs = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not crs.equals(SOURCE_CRS, ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-            found = True
-    if required and not found:
-        raise ValueError(f"{label}_crs_drift")
-    return found
+_validate_spatial_reference = crs_validation.validate_spatial_reference
 
 
 def _query(params: dict[str, object]) -> str:
@@ -135,28 +126,15 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire")
-                   for path in root.glob(suffix) if path.is_file())
-    if retained + 2 * PAGE_MAX_BYTES > CAPTURE_MAX_BYTES:
-        raise ValueError("source_capture_budget_exceeded_before_request")
-    return capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
+    return capture_shared.capture_with_retry(client, url, root, name, attempts=1, base_delay=0,
+                              max_bytes=PAGE_MAX_BYTES, max_total_bytes=CAPTURE_MAX_BYTES, error_document=None)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    """Retry one transient transport/incomplete read, retaining every attempt."""
-    last = None
-    for attempt in range(2):
-        attempt_name = f"{name}.attempt{attempt + 1}"
-        try:
-            body, receipt = _fetch(client, url, root, attempt_name)
-            for suffix in ("body", "wire", "receipt.json"):
-                (root / f"{attempt_name}.{suffix}").replace(root / f"{name}.{suffix}")
-            return body, receipt
-        except (httpx.TransportError, ValueError) as exc:
-            last = exc
-            if isinstance(exc, ValueError) and not str(exc).startswith("incomplete_source_capture:"):
-                raise
-    raise last
+    return capture_shared.fetch_capture_retry(client, url, root, name, [0],
+                               max_capture_bytes=CAPTURE_MAX_BYTES, max_body_bytes=PAGE_MAX_BYTES,
+                               attempts=2, schedule=(),
+                               fetch=lambda c, u, r, n, _budget: _fetch(c, u, r, n))
 
 
 def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
@@ -172,7 +150,7 @@ def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
     return body, wire, receipt
 
 
-def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
+def _read_replay(root: Path) -> Mapping[str, tuple[bytes, dict]]:
     manifest_path = root / "capture_manifest.json"
     if manifest_path.is_symlink():
         raise ValueError("retained_capture_manifest_symlink_rejected")
@@ -210,21 +188,16 @@ def _read_replay(root: Path) -> dict[str, tuple[bytes, dict]]:
                 or attempt_receipt.get("wire_sha256") != _sha(attempt_wire)):
             raise ValueError("retained_failed_attempt_bytes_changed:" + attempt_name)
     expected_urls = dict(_capture_roster(replay_ids))
-    captures = {}
-    for name in sorted(_capture_names(replay_ids)):
-        body, _wire, receipt = _load_capture(root, name)
-        if receipt != manifest["receipts"].get(name):
-            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
-        validate_capture_request_identity(name, receipt, expected_urls[name])
-        captures[name] = (body, receipt)
-    return captures
+    return validated_capture_view(root, receipts=manifest["receipts"],
+        expected_urls=expected_urls, load_capture=_load_capture,
+        validate_request_identity=validate_capture_request_identity)
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
+def _validate(captures: Mapping[str, tuple[bytes, dict]]) -> tuple[list[dict], list[dict], dict]:
     ids_before = capture_witness(captures)
     if set(captures) != _capture_names(ids_before):
         raise ValueError("source_capture_name_roster_drift")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if (item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS"
             or item.get("type") != "PDF" or item.get("access") != "public"):
@@ -343,7 +316,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], list
     return layer["fields"], features, audit
 
 
-def _capture_identity(captures: dict[str, tuple[bytes, dict]], root: Path) -> dict:
+def _capture_identity(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> dict:
     # Candidate identity binds every decoded and wire artifact. Receipt JSON is
     # retained as provenance but its observation time does not change content identity.
     digests = {}
@@ -354,7 +327,7 @@ def _capture_identity(captures: dict[str, tuple[bytes, dict]], root: Path) -> di
     return digests
 
 
-def _capture_identity_hash(captures: dict[str, tuple[bytes, dict]], root: Path) -> str:
+def _capture_identity_hash(captures: Mapping[str, tuple[bytes, dict]], root: Path) -> str:
     return _sha(_canonical(_capture_identity(captures, root)))
 
 
@@ -411,20 +384,19 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
-                ids_body, ids_receipt = _fetch_retry(
-                    client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                    root, "ids_before")
-                ids = json.loads(ids_body).get("objectIds")
-                if (not isinstance(ids, list) or not ids
-                        or any(type(oid) is not int or oid <= 0 for oid in ids)
-                        or len(set(ids)) != len(ids)):
-                    raise ValueError("source_seed_id_population_drift")
-                captures["ids_before"] = (ids_body, ids_receipt)
-                for name, url in _capture_roster(ids):
-                    if name == "ids_before":
-                        continue
-                    body, receipt = _fetch_retry(client, url, root, name)
-                    captures[name] = (body, receipt)
+                def validate_seed(ids_body):
+                    ids = json.loads(ids_body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids
+                            or any(type(oid) is not int or oid <= 0 for oid in ids)
+                            or len(set(ids)) != len(ids)):
+                        raise ValueError("source_seed_id_population_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_before', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name),
+                    on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}
@@ -444,7 +416,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
             "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+            "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
             "attempts": {path.name.removesuffix(".receipt.json"): json.loads(path.read_bytes())
                          for path in sorted(root.glob("*.attempt*.receipt.json"))},
             "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
@@ -455,7 +427,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
     capture_hash = _capture_identity_hash(captures, root)
     audit.update({"source_capture_evidence_sha256": capture_hash,
         "source_capture_evidence": _capture_identity(captures, root),
-        "source_receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+        "source_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
@@ -466,7 +438,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
         "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
     output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     inputs = [{"input_id": name, "producer": ("USDOT BTS IENC NTAD item" if name == "bts_item" else PUBLISHER),
         "host": urlsplit(receipt["url"]).hostname, "role": "official_distributor" if name == "bts_item" else "producer_publication",
         "canonical_url": BTS_ITEM_URL if name == "bts_item" else LAYER_URL, "retrieval_url": receipt["url"],
@@ -515,7 +487,7 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
     outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n",
         "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, receipt) in sorted(captures.items()):
+    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
         _body, wire, _receipt = _load_capture(root, name)
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = wire
@@ -558,18 +530,13 @@ def capture_usace_navigation_lights(storage: StagingStorageResource, *, version:
             "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
             "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
             "capture_directory": str(root)}
-    descriptors = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
-        "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "capture_receipts": receipts, "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content")
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"],
                                         identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

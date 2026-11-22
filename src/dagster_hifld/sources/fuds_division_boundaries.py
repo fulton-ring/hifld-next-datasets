@@ -1,6 +1,7 @@
 """Unapproved native capture of the USACE FUDS Program Division polygons."""
 from __future__ import annotations
 
+
 import json
 import math
 from pathlib import Path
@@ -12,6 +13,7 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import MultiPolygon, Polygon
 
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups, ring_is_ccw
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -23,8 +25,11 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps
 
 DATASET_SLUG = "formerly-used-defense-sites-division-boundaries"
 FILE_SLUG = DATASET_SLUG
@@ -111,7 +116,7 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
         raise ValueError("explicit_local_staging_resource_required")
     root = Path(capture_directory or str(default_capture_dir("hifld-native-reconstruction", "95", "captures"))) / version
     root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures: dict[str, tuple[bytes, dict]] = RetainedCaptureView(root)
     def get(client, name, url, params=None):
         target = url + ("?" + urlencode(params) if params else "")
         body, receipt = capture_get(client, target, root, name, max_bytes=MAX_RESPONSE_BYTES)
@@ -121,43 +126,55 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
         return value
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/fuds-divisions"}) as client:
-            service = get(client, "service_before", SERVICE_URL, {"f":"pjson"})
-            layer = get(client, "layer_before", LAYER_URL, {"f":"pjson"})
-            if (layer.get("name") != LAYER_NAME or layer.get("id") != LAYER_ID
-                    or layer.get("geometryType") != "esriGeometryPolygon"):
-                raise ValueError("source_layer_identity_drift")
-            fields = layer["fields"]
-            schema = _schema(layer)
-            sr = layer.get("extent", {}).get("spatialReference", {})
-            if sr.get("latestWkid", sr.get("wkid")) != 4326: raise ValueError("source_crs_drift")
-            caps = layer.get("advancedQueryCapabilities", {})
-            if caps.get("supportsPagination") is not True or caps.get("supportsOrderBy") is not True:
-                raise ValueError("source_ordered_pagination_not_supported")
-            count = get(client, "count_before", LAYER_URL+"/query", {"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
-            ids = get(client, "ids_before", LAYER_URL+"/query", {"where":"1=1","returnIdsOnly":"true","f":"json"}).get("objectIds")
-            if type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count:
-                raise ValueError("source_initial_id_roster_invalid")
-            seed = sorted(ids); features=[]
-            for page_no, offset in enumerate(range(0, count, PAGE_SIZE)):
-                page = get(client, f"page_{page_no:03d}", LAYER_URL+"/query", {
-                    "where":"1=1", "outFields":"*", "returnGeometry":"true", "returnZ":"true", "returnM":"true",
-                    "outSR":"4326", "orderByFields":"OBJECTID ASC", "resultOffset":offset,
-                    "resultRecordCount":PAGE_SIZE, "f":"json"})
-                rows = page.get("features"); expected = min(PAGE_SIZE, count-offset)
-                if not isinstance(rows,list) or len(rows)!=expected: raise ValueError("source_page_incomplete")
-                exceeded=page.get("exceededTransferLimit",False)
-                if type(exceeded) is not bool: raise ValueError("source_page_transfer_limit_flag_invalid")
-                if exceeded and (len(rows)!=PAGE_SIZE or offset+expected>=count):
-                    raise ValueError("source_page_exceeded_transfer_limit")
-                if page.get("spatialReference",{}).get("latestWkid",page.get("spatialReference",{}).get("wkid")) != 4326:
-                    raise ValueError("source_page_crs_drift")
-                if [r.get("attributes",{}).get("OBJECTID") for r in rows] != seed[offset:offset+expected]:
-                    raise ValueError("source_page_id_slice_mismatch")
-                features.extend(rows)
-            after = get(client, "layer_after", LAYER_URL, {"f":"pjson"})
-            service_after = get(client, "service_after", SERVICE_URL, {"f":"pjson"})
-            count_after = get(client,"count_after",LAYER_URL+"/query",{"where":"1=1","returnCountOnly":"true","f":"json"}).get("count")
-            ids_after = get(client,"ids_after",LAYER_URL+"/query",{"where":"1=1","returnIdsOnly":"true","f":"json"}).get("objectIds")
+            def request_steps():
+                service = (yield ('service_before', SERVICE_URL, {'f': 'pjson'},))
+                layer = (yield ('layer_before', LAYER_URL, {'f': 'pjson'},))
+                if (layer.get("name") != LAYER_NAME or layer.get("id") != LAYER_ID
+                        or layer.get("geometryType") != "esriGeometryPolygon"):
+                    raise ValueError("source_layer_identity_drift")
+                fields = layer["fields"]
+                schema = _schema(layer)
+                sr = layer.get("extent", {}).get("spatialReference", {})
+                if sr.get("latestWkid", sr.get("wkid")) != 4326: raise ValueError("source_crs_drift")
+                caps = layer.get("advancedQueryCapabilities", {})
+                if caps.get("supportsPagination") is not True or caps.get("supportsOrderBy") is not True:
+                    raise ValueError("source_ordered_pagination_not_supported")
+                count = (yield ('count_before', LAYER_URL + '/query', {'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'},)).get("count")
+                ids = (yield ('ids_before', LAYER_URL + '/query', {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'},)).get("objectIds")
+                if type(count) is not int or count < 1 or not isinstance(ids,list) or len(ids)!=count or any(type(i) is not int for i in ids) or len(set(ids))!=count:
+                    raise ValueError("source_initial_id_roster_invalid")
+                seed = sorted(ids)
+
+                def validate_page(offset, requested, page):
+                    rows = page.get("features")
+                    if not isinstance(rows, list) or len(rows) != len(requested):
+                        raise ValueError("source_page_incomplete")
+                    exceeded = page.get("exceededTransferLimit", False)
+                    if type(exceeded) is not bool:
+                        raise ValueError("source_page_transfer_limit_flag_invalid")
+                    if exceeded and (len(rows) != PAGE_SIZE or offset + len(requested) >= count):
+                        raise ValueError("source_page_exceeded_transfer_limit")
+                    if page.get("spatialReference", {}).get("latestWkid", page.get("spatialReference", {}).get("wkid")) != 4326:
+                        raise ValueError("source_page_crs_drift")
+                    if [row.get("attributes", {}).get("OBJECTID") for row in rows] != requested:
+                        raise ValueError("source_page_id_slice_mismatch")
+                    return rows
+
+                features, _pages, closed = yield ExactIdCapturePlan(seed, PAGE_SIZE,
+                    page_request=lambda offset, requested: (f"page_{offset // PAGE_SIZE:03d}", LAYER_URL + "/query", {
+                        "where": "1=1", "outFields": "*", "returnGeometry": "true", "returnZ": "true", "returnM": "true",
+                        "outSR": "4326", "orderByFields": "OBJECTID ASC", "resultOffset": offset,
+                        "resultRecordCount": PAGE_SIZE, "f": "json"}),
+                    validate_page=validate_page, read_page=lambda offset: captures[f"page_{offset // PAGE_SIZE:03d}"][0],
+                    closing_requests=(("layer_after", LAYER_URL, {"f": "pjson"}),
+                        ("service_after", SERVICE_URL, {"f": "pjson"}),
+                        ("count_after", LAYER_URL + "/query", {"where": "1=1", "returnCountOnly": "true", "f": "json"}),
+                        ("ids_after", LAYER_URL + "/query", {"where": "1=1", "returnIdsOnly": "true", "f": "json"})))
+                after, service_after = closed["layer_after"], closed["service_after"]
+                count_after, ids_after = closed["count_after"].get("count"), closed["ids_after"].get("objectIds")
+
+                return service, layer, fields, schema, count, seed, list(features), after, service_after, count_after, ids_after
+            service, layer, fields, schema, count, seed, features, after, service_after, count_after, ids_after = capture_request_steps(request_steps(), lambda name, url, params=None: get(client, name, url, params))
         if layer != after or service != service_after or count_after != count or sorted(ids_after or []) != seed:
             raise ValueError("source_changed_during_capture")
         field_names=[f["name"] for f in fields if f["type"] != "esriFieldTypeGeometry"]
@@ -188,7 +205,7 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
                  "http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Unreviewed; no license claim made.",
                  "attribution":"USACE layer copyright/attribution has not been reviewed.","release_date":None,
                  "release_date_unknown_reason":"USACE service responses do not provide a producer release date."}
-                for n,(_b,r) in sorted(captures.items())],
+                for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))],
             "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
                 "layer_id":LAYER_ID,"attributes":"all query-returned source attributes retained in source order/types/values",
                 "geometry":"Esri rings interpreted as Polygon/MultiPolygon WKB in EPSG:4326; no repair or simplification",
@@ -214,14 +231,14 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
             if set(payload["objects"]) != set(outputs): raise ValueError("cached_candidate_roster_changed")
             return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":count,
                 "candidate_ready":f"{prefix}/metadata/candidate_ready.json","release_accepted":False,"reused":True}
-        for name,body in outputs.items():
-            key=f"{prefix}/{name}"; write_immutable(storage,key,body); snap=storage.object_snapshot(key)
-            if snap is None or snap.size != len(body) or storage.sha256_key(key) != _sha(body) or storage.object_snapshot(key) != snap:
-                raise ValueError("candidate_output_physical_readback_failed:"+name)
+        write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_output_physical_readback_failed:')
         descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-        seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-            "source_record_sha256":record_digest,"source_schema_sha256":schema_digest,
-            "capture_receipts":{n:r for n,(_b,r) in captures.items()},"objects":descriptors})
+        seal_candidate_objects(
+            storage, state_key, version,
+            identity, {n: r for n, (_b, r) in captures.items()}, descriptors,
+            source_record_sha256=record_digest,
+            source_schema_sha256=schema_digest,
+            fingerprint=fingerprint)
         validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":count,
             "candidate_ready":f"{prefix}/metadata/candidate_ready.json","release_accepted":False,"reused":False}

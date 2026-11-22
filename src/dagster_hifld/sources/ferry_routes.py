@@ -5,11 +5,11 @@ No baseline/source/contract or changed published mapping is approved.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources import candidate_transaction
 import collections
 import math
 import urllib.parse
 import shutil
-import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -20,6 +20,8 @@ import stat
 import subprocess
 import tempfile
 from datetime import datetime, timezone
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
@@ -29,6 +31,7 @@ import pyarrow.parquet as pq
 import pyogrio
 import pyproj
 import shapely
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.gdal import with_geopackage_creation_time
 from dagster_hifld.release_approval import validate_release_provenance, verifier_implementation_sha256
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -37,6 +40,8 @@ from dagster_hifld.source_manifest import load_resolved_source_manifest
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.capture_common import _validate_cached_catalog_sidecars
 from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources.capture_common import existing_filesystem_path
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, retry_capture_request
 
 SLUG = 'ferry-routes-1'
 LAYER = 'BTS_NCFO_Ferry_Routes'
@@ -85,12 +90,13 @@ def strict_json(body):
 
 
 def local_only(storage):
-    if shutil.disk_usage(Path(storage.local_dir) if storage.local_dir and Path(storage.local_dir).exists() else Path('/workspace')).free<300_000_000: raise FerryRouteQuarantineError('local_space_guard')
     if isinstance(storage,PublishedStorageResource) or storage.bucket or not storage.use_local or not storage.local_dir:
         raise FerryRouteQuarantineError('draft_requires_explicit_isolated_local_staging')
     root=Path(storage.local_dir).absolute()
     if any(path.is_symlink() for path in [root,*root.parents]):
         raise FerryRouteQuarantineError('staging_path_symlink_refused')
+    if shutil.disk_usage(existing_filesystem_path(root)).free < 300_000_000:
+        raise FerryRouteQuarantineError('local_space_guard')
     if root.exists():
         for path in root.rglob('*'):
             info=path.lstat()
@@ -98,11 +104,8 @@ def local_only(storage):
             if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise FerryRouteQuarantineError('staging_alias_or_special_file_refused')
 
 
-def immutable(storage,key,body):
-    snapshot=storage.object_snapshot(key)
-    if snapshot is None: storage.write_key_if_unchanged(key,body,None)
-    elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:
-        raise FerryRouteQuarantineError('immutable_capture_changed:'+key)
+immutable = partial(write_immutable, error_type=FerryRouteQuarantineError,
+                    error_prefix='immutable_capture_changed:')
 
 
 def quarantine(storage,captures,reason):
@@ -191,7 +194,7 @@ def candidate_roster(root):
 def acquire(storage,capture_dir=None):
     local_only(storage);captures={}
     try:
-        for name in URLS:
+        def fetch_one(name, url):
             if capture_dir is not None:
                 body=bounded_input(Path(capture_dir)/(name+'.body'),15_000_000)
                 # Retain attempted bytes before any receipt decoding. A malformed
@@ -212,7 +215,11 @@ def acquire(storage,capture_dir=None):
             else:
                 url=URLS[name]
                 limit=15_000_000 if name.startswith('source_page_') else 2_000_000
-                for attempt in range(3):
+                # Retry only a refusal whose evidence was retained successfully.
+                retained_refusal = [None]
+                def capture_attempt(attempt_number):
+                    retained_refusal[0] = None
+                    attempt = attempt_number - 1
                     body=bytearray();receipt={'url':url,'observed_at':datetime.now(timezone.utc).isoformat(),'attempt':attempt+1}
                     try:
                         with httpx.Client(follow_redirects=False,timeout=90,headers={'Accept-Encoding':'identity'}) as client,client.stream('GET',url) as response:
@@ -231,11 +238,18 @@ def acquire(storage,capture_dir=None):
                             # when the server ignores our identity request.
                             if response.status_code!=200 or (receipt['content_length'] is not None and int(receipt['content_length'])!=receipt['wire_bytes_downloaded']):
                                 raise FerryRouteQuarantineError('non200_or_incomplete_http_response')
-                        captures[name]=(bytes(body),receipt);break
+                        captures[name]=(bytes(body),receipt);return body, receipt
                     except (httpx.HTTPError,OSError,ValueError) as exc:
                         receipt.update(bytes=len(body),sha256=digest(body),complete_body=False)
                         quarantine(storage,{name:(bytes(body),receipt)},str(exc))
+                        retained_refusal[0] = exc
                         if attempt==2: raise FerryRouteQuarantineError('bounded_fetch_exhausted:'+str(exc)) from exc
+                        raise
+                body, receipt = retry_capture_request(
+                    capture_attempt, attempts=3, schedule=(),
+                    retryable=lambda exc, attempt: exc is retained_refusal[0],
+                    preserve_failed=lambda exc, attempt: None)
+        capture_request_steps(((name, url) for name, url in URLS.items()), fetch_one)
         return captures
     except (OSError,ValueError,TypeError) as exc:
         where=quarantine(storage,captures,str(exc))
@@ -244,7 +258,7 @@ def acquire(storage,capture_dir=None):
 
 def inspect_originals(captures):
     if set(captures)!=set(URLS):raise FerryRouteQuarantineError('missing_extra_source_publication_roster')
-    docs={name:strict_json(body)for name,(body,_)in captures.items()if name not in ('bts_ntad','official_landing')}
+    docs=CaptureDocuments(captures, (name for name in captures if name not in ('bts_ntad', 'official_landing')), decode=strict_json)
     before=docs['source_layer_before'];after=docs['source_layer_after']
     for layer in [before,after]:
         if (encode(layer.get('fields'))!=encode(FIELD_DECLARATIONS) or layer.get('objectIdField')!='OBJECTID' or layer.get('geometryType')!='esriGeometryPolyline'
@@ -458,8 +472,7 @@ def stage_ferry_routes(storage,*,capture_dir=None):
             immutable(storage,key,body);immutable(storage,key+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt));depot[name]=base/key
         table,audit=inspect_originals(captures)
         locks=base/'_locks';locks.mkdir(exist_ok=True);lockpath=locks/(SLUG+'.lock')
-        with lockpath.open('a+b') as lock:
-            fcntl.flock(lock,fcntl.LOCK_EX)
+        with candidate_transaction.append_lock_path(lockpath):
             binding=base/f'_source-provenance/{SLUG}/{fingerprint}'
             if root.exists():
                 invalid_bundle=False
@@ -503,14 +516,17 @@ def stage_ferry_routes(storage,*,capture_dir=None):
                 write_native_gpkg(table,temp/'geopackage'/f'{SLUG}.gpkg')
                 pq.write_table(expected_parquet_table(table),temp/'geoparquet/ferry-routes-1.parquet',compression='zstd')
                 reconcile_outputs(temp,table)
-                for name,value in source_payloads(captures,identity,table,audit,manifest).items():
-                    (temp/name).parent.mkdir(parents=True,exist_ok=True);(temp/name).write_bytes(value)
-                ready={'version':version,'approved':False,'processing_fingerprint':fingerprint,'objects':{str(p.relative_to(temp)):sha256_file(p) for p in temp.rglob('*') if p.is_file()}}
-                (temp/READY).write_bytes(encode(ready))
-                # Only a fully verified private construction can establish a
-                # first anchor. Existing caches can never recreate a lost one.
-                original_provenance_bundle(storage,fingerprint,captures,identity,manifest,create=True)
-                root.parent.mkdir(parents=True,exist_ok=True);os.rename(temp,root)
+                def ready_marker(private):
+                    ready = {'version': version, 'approved': False, 'processing_fingerprint': fingerprint,
+                             'objects': candidate_transaction.private_inventory(private)}
+                    return READY, encode(ready)
+                candidate_transaction.install_private_candidate(
+                    temp, root, source_payloads(captures, identity, table, audit, manifest).items(),
+                    write_one=candidate_transaction.write_private_bytes, ready=ready_marker,
+                    write_ready=lambda root, name, body: candidate_transaction.write_private_bytes(
+                        root, name, body, create_parents=False),
+                    anchor=lambda: original_provenance_bundle(
+                        storage, fingerprint, captures, identity, manifest, create=True))
             return {'dataset_slug':SLUG,'file_slug':SLUG,'version':version,'feature_count':964,'reused':False}
     except (ValueError,TypeError,KeyError,OSError,RuntimeError,sqlite3.Error,shapely.errors.GEOSException) as exc:
         where=quarantine(storage,captures,str(exc))

@@ -7,6 +7,13 @@ shared candidate-construction module is not part of this branch.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import (
+    write_immutable, quarantine_incomplete_capture, seal_ready_candidate,
+    verify_cached_objects, verify_cached_capture_receipts,
+)
+
+from collections.abc import Mapping
+
 import hashlib
 import json
 import math
@@ -15,6 +22,7 @@ import shutil
 import stat
 import subprocess
 import time
+
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -27,6 +35,8 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import (
     canonical_construction_bundle,
@@ -37,6 +47,7 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
     capture_witness,
@@ -178,11 +189,11 @@ def _validate_extent_bounds(extent: object, label: str) -> dict[str, float]:
     return bounds
 
 
-def _validate(captures: dict[str, tuple[bytes, dict]]):
+def _validate(captures: Mapping[str, tuple[bytes, dict]]):
     before = capture_witness(captures)
     if not {"ids_seed", *[name for name, _url in _capture_roster(before)]} <= set(captures):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["bts_item"]
     if item.get("id") != BTS_ITEM_ID or item.get("owner") != "USDOT_BTS":
         raise ValueError("bts_ienc_item_identity_drift")
@@ -314,12 +325,6 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         "drift_guard": "BTS " + BTS_ITEM_ID + " delegation identity (item id, owner USDOT_BTS, official service-directory and master-geodatabase links; the bi-monthly update wording is recorded as audit evidence, not gated; the prior BTS item " + PRIOR_BTS_ITEM_ID + " returned anonymous-access denial during 2026-10-21 extraction and is recorded in docs, not validated here), official service-directory membership, service/layer identity, field names/types, CRS, observed layer extent recorded with drift from the previously accepted extent flagged non-blockingly, page errors, and before/after exact ID roster are checked; duplicate Feature_ID values are preserved."}
 
 
-def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
-    snapshot = storage.object_snapshot(key)
-    if snapshot is None:
-        storage.write_key_if_unchanged(key, body, None)
-    elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-        raise ValueError("immutable_staged_object_changed:" + key)
 
 
 def _processing_files(root: Path) -> dict[str, str]:
@@ -408,30 +413,8 @@ def validate_processing_identity(repo_root: Path, identity: Mapping[str, object]
         raise ValueError("installed_processing_code_identity_changed")
 
 
-def quarantine_incomplete_capture(storage: StagingStorageResource, capture_root: Path,
-                                  dataset_slug: str, version: str,
-                                  captures: Mapping[str, tuple[bytes, Mapping[str, object]]],
-                                  reason_code: str) -> str:
-    """Retain all completed acquisition evidence under a unique quarantine key."""
-    if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource):
-        raise ValueError("explicit_staging_resource_required")
-    token = f"{version}-{uuid4().hex}"
-    base = f"_quarantine/{dataset_slug}/{token}"
-    for name, (body, receipt) in captures.items():
-        wire = (Path(capture_root) / f"{name}.wire").read_bytes()
-        write_immutable(storage, f"{base}/raw/{name}.body", body)
-        write_immutable(storage, f"{base}/raw/{name}.wire", wire)
-        write_immutable(storage, f"{base}/raw/{name}.receipt.json", _canonical(dict(receipt)) + b"\n")
-    write_immutable(storage, f"{base}/metadata/failure.json",
-                    _canonical({"reason_code": reason_code, "captured_names": sorted(captures)}) + b"\n")
-    return base
 
 
-def seal_ready_candidate(storage: StagingStorageResource, state_key: str, version: str,
-                         fingerprint: str, payload: Mapping[str, object]) -> None:
-    """CAS-seal the READY candidate using the shared construction registry."""
-    seal_first_construction(storage, state_key, version, fingerprint,
-                            canonical_construction_bundle(version, fingerprint, dict(payload)))
 
 
 def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, state_key: str,
@@ -470,30 +453,10 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
     if not expected_keys <= actual_keys or actual_keys - allowed_keys:
         raise ValueError("cached_candidate_storage_roster_changed")
     validate_staged_release_derivatives(storage, prefix, actual_keys)
-    for name in snapshot_names:
-        key = f"{prefix}/{name}"
-        if key not in actual_keys:
-            continue
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or manifest_descriptor != {
-                "bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_catalog_source_snapshot_changed:" + name)
-    for name, descriptor in expected_objects.items():
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_candidate_object_integrity_failed:" + name)
-    for name, receipt in capture_receipts.items():
-        body = storage.read_key(f"{prefix}/raw/{name}.body")
-        wire = storage.read_key(f"{prefix}/raw/{name}.wire")
-        receipt_body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
-        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt_body != _canonical(dict(receipt)) + b"\n"):
-            raise ValueError("cached_original_capture_changed:" + name)
+    verify_cached_objects(storage, prefix, {name: manifest_descriptor for name in snapshot_names
+        if f"{prefix}/{name}" in actual_keys}, error_prefix="cached_catalog_source_snapshot_changed:")
+    verify_cached_objects(storage, prefix, expected_objects)
+    verify_cached_capture_receipts(storage, prefix, capture_receipts)
     validate_processing_identity(repo_root, identity)
     return {"version": version, "reused": True}
 
@@ -543,9 +506,12 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
             names = ["ids_seed", *[name for name, _url in _capture_roster(sorted(ids))]]
             if set(retained_manifest["receipts"]) != set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures = {name: _load_replay(root, name) for name in names}
-            if any(receipt != retained_manifest["receipts"][name] for name, (_body, receipt) in captures.items()):
-                raise ValueError("retained_capture_manifest_receipt_mismatch")
+            captures = validated_capture_view(root,
+                receipts={name: retained_manifest["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_manifest_receipt_mismatch")
             expected_urls = dict(_capture_roster(sorted(ids)))
             expected_urls["ids_seed"] = _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
             for name, (_body, receipt) in captures.items():
@@ -575,19 +541,21 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
                 raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usace-ienc-draft"}) as client:
-                seed_body, seed_receipt = _fetch_retry(
-                    client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                    root, "ids_seed", capture_budget)
-                ids = json.loads(seed_body).get("objectIds")
-                if (not isinstance(ids, list) or not ids
-                        or any(type(oid) is not int or oid <= 0 for oid in ids)
-                        or len(set(ids)) != len(ids)):
-                    raise ValueError("source_seed_id_count_or_roster_drift")
-                ids = sorted(ids)
-                captures["ids_seed"] = (seed_body, seed_receipt)
-                for name, url in _capture_roster(ids):
-                    time.sleep(0.5)
-                    captures[name] = _fetch_retry(client, url, root, name, capture_budget)
+                def validate_seed(seed_body):
+                    ids = json.loads(seed_body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids
+                            or any(type(oid) is not int or oid <= 0 for oid in ids)
+                            or len(set(ids)) != len(ids)):
+                        raise ValueError("source_seed_id_count_or_roster_drift")
+                    ids = sorted(ids)
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name='ids_seed', seed_url=_query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
+                    validate_seed=validate_seed, roster=_capture_roster,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, capture_budget),
+                    on_validation_error=_validate,
+                    before_fetch=lambda name: time.sleep(0.5))
         fields, features, audit = _validate(captures)
     except Exception as exc:
         retained = {}
@@ -609,7 +577,7 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
     identity = processing_identity(Path(__file__).parents[3])
     wkid = 4326
     parquet = _parquet_bytes(fields, features, wkid)
-    capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in sorted(captures.items())}))
+    capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"] = capture_sha
     fingerprint = _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
         "source_geometry_sha256": audit["source_geometry_sha256"],
@@ -636,7 +604,7 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
                    "official_service_directory": SERVICE_DIRECTORY_URL,
                    "linked_feature_classes_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes"}}
                   if name == "bts_item" else {})}
-              for name, (_body, receipt) in sorted(captures.items())]
+              for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version": 1, "approved": False, "title": "Pylon Areas (USACE IENC)",
         "description": "Complete official USACE IENC PYLONS_AREA feature class; unapproved faithful candidate. Inland chart coverage only; HIFLD historical equivalence and nationwide pylon completeness are not asserted.",
         "publisher": PUBLISHER, "agency": "US Army Corps of Engineers, Army Geospatial Center",
@@ -674,7 +642,7 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
             "source_feature_count": audit["source_feature_count"],
             "source_record_sha256": audit["source_record_sha256"],
             "source_schema_sha256": audit["source_schema_sha256"],
-            "receipts": {n: r for n, (_b, r) in sorted(captures.items())},
+            "receipts": {n: r for n, (_b, r) in ((name, captures[name]) for name in sorted(captures))},
             "attempts": attempts,
             "artifact_roster": _capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
     outputs = {"geoparquet/pylon-areas-usace-ienc.parquet": parquet,

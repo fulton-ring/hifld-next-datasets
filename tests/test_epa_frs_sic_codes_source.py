@@ -90,6 +90,7 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
                        "error_code": None}
             (capture_root / f"{name}.wire").write_bytes(body)
             (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(sic._canonical(receipt) + b"\n")
             return body, receipt
         return fake_get
 
@@ -152,12 +153,13 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
                            "error_code": None}
                 (capture_root / f"{name}.wire").write_bytes(body)
                 (capture_root / f"{name}.body").write_bytes(body)
+                (capture_root / f"{name}.receipt.json").write_bytes(sic._canonical(receipt) + b"\n")
                 return body, receipt
             return self._fake_get(docs)(_client, url, capture_root, name, max_bytes=max_bytes)
 
-        with tempfile.TemporaryDirectory() as tmp, \
-                self.assertRaisesRegex(Exception, "source_page_row_count_incomplete"):
-            self._run_capture(tmp, docs, get=broken_get)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(Exception, "source_page_row_count_incomplete"):
+                self._run_capture(tmp, docs, get=broken_get)
             quarantined = list((Path(tmp) / "_quarantine" / sic.DATASET_SLUG).iterdir())
             self.assertEqual(len(quarantined), 1)
             failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())

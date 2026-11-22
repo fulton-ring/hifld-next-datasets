@@ -7,6 +7,7 @@ accepted by this draft.
 """
 from __future__ import annotations
 
+
 import json
 import shutil
 from datetime import datetime, timezone
@@ -22,16 +23,20 @@ import pyproj
 import shapely
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import (
     capture_page, capture_witness, offset_layer_capture_roster,
@@ -71,7 +76,7 @@ def _feature_urls(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     page_count = (len(docs["ids_before"].get("objectIds") or []) + PAGE_SIZE - 1) // PAGE_SIZE
     expected_names = {"service_before", "layer_before", "count_before", "ids_before", "ids_seed", "layer_after", "service_after", "count_after", "ids_after", *(f"page_{i:03d}" for i in range(page_count))}
     if set(captures) != expected_names:
@@ -225,18 +230,19 @@ def capture_fuds_projects_points(storage: StagingStorageResource, *, version: st
     try:
         with httpx.Client(follow_redirects=False, timeout=60, headers={"User-Agent":"hifld-next-datasets/fuds-projects-draft"}) as client:
             seed_url = LAYER_URL + "/query?" + urlencode({"where":"1=1", "returnIdsOnly":"true", "f":"json"})
-            seed_body, seed_receipt = capture_page(client, seed_url, capture_root, "ids_seed",
-                                                   page_max_bytes=MAX_CAPTURE_BYTES)
-            seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or not seed
-                    or any(type(value) is not int or value <= 0 for value in seed)
-                    or len(set(seed)) != len(seed)):
-                raise ValueError("source_seed_id_population_drift")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            for name, url in _feature_urls(sorted(seed)):
-                body, receipt = capture_page(client, url, capture_root, name,
-                                              page_max_bytes=MAX_CAPTURE_BYTES)
-                captures[name] = (body, receipt)
+            def validate_seed(seed_body):
+                seed = json.loads(seed_body).get("objectIds")
+                if (not isinstance(seed, list) or not seed
+                        or any(type(value) is not int or value <= 0 for value in seed)
+                        or len(set(seed)) != len(seed)):
+                    raise ValueError("source_seed_id_population_drift")
+                return sorted(seed)
+            captures = RetainedCaptureView(capture_root, captures)
+            capture_layer(LAYER_URL, capture_root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                captures=captures, seed_name='ids_seed', seed_url=seed_url,
+                validate_seed=validate_seed, roster=_feature_urls,
+                fetch=lambda client, url, root, name: capture_page(client, url, capture_root, name, page_max_bytes=MAX_CAPTURE_BYTES),
+                on_validation_error=_validate_captures)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}
@@ -244,7 +250,7 @@ def capture_fuds_projects_points(storage: StagingStorageResource, *, version: st
             try: receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
             except (ValueError, OSError): receipts[path.name] = {"receipt_readback_failed":True}
         (capture_root / "capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__,"receipts":receipts})+b"\n")
-        retained = dict(captures)
+        retained = RetainedCaptureView(capture_root, captures)
         for receipt_path in capture_root.glob("*.receipt.json"):
             name = receipt_path.name.removesuffix(".receipt.json")
             if name in retained:
@@ -265,7 +271,7 @@ def capture_fuds_projects_points(storage: StagingStorageResource, *, version: st
         "description":"USACE-maintained Formerly Used Defense Sites (FUDS) project point layer (MapServer layer 2). The service groups it under FUDS FY24; this is a compilation context, not a publication date. Complete source attributes and point geometry are represented in the candidate. Source release date, freshness, public schema contract, and rights/attribution review remain unresolved.",
         "publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,
         "license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-        "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Not stated by the source; rights review pending.","attribution":"USACE service copyright text; formal license and attribution terms require maintainer review.","release_date":None,"release_date_unknown_reason":"Layer release date is not stated by the service."} for name,(_,receipt) in sorted(captures.items())],
+        "inputs":[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Not stated by the source; rights review pending.","attribution":"USACE service copyright text; formal license and attribution terms require maintainer review.","release_date":None,"release_date_unknown_reason":"Layer release date is not stated by the service."} for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"layer_id":LAYER_ID,"source_fields":"all producer fields retained in producer order and physical types; SHAPE is the original geometry field represented as WKB","source_ids":"Preserve producer OBJECTID and all project identifiers/values; no substitute IDs, casts, trimming, or joins","geometry":"Source point x/y retained as WKB in EPSG:4326; null source geometry retained as null","candidate_status":"unapproved; publication blocked pending freshness, schema/ID contract, attribution and release acceptance"}}],
         "lineage":"USACE Military/FUDS_Data MapServer layer 2 FUDS Project Point. Layer 1 is FUDS Property Points, layer 3 is FUDS Munitions Response Site, layers 6–8 are IRM products, and layers 9–10 are FUDS district/division boundaries. The DataLumos HIFLD archive and existing HIFLD candidate are historical comparison artifacts, not this maintained source publication.",
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Complete native source fields, IDs, values, physical nulls, and geometry retained; all release and compatibility approvals remain pending.","objects":[{"path":rel,**source_objects[rel]}]}}},
@@ -275,7 +281,7 @@ def capture_fuds_projects_points(storage: StagingStorageResource, *, version: st
     audit={**extracted["audit"],"source_fields":[_plain_field(f) for f in source_fields],"official_layer_name":LAYER_NAME,"layer_id":LAYER_ID,"service_url":SERVICE_URL,"release_date_unknown":True,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     version=content_derived_version(audit["source_record_sha256"],audit["source_geometry_sha256"],audit["source_schema_sha256"],identity)
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":len(extracted["features"]),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+    (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":len(extracted["features"]),"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],"receipts":{name:receipt for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs={rel:parquet_body,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
@@ -290,13 +296,14 @@ def capture_fuds_projects_points(storage: StagingStorageResource, *, version: st
         objects=payload.get("objects",{})
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],objects,payload.get("capture_receipts",{}))
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(extracted["features"]),"capture_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_null_geometry_count":audit["null_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    for relative,body in outputs.items():write_immutable(storage,f"{prefix}/{relative}",body)
-    descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    for name,descriptor in descriptors.items():
-        key=f"{prefix}/{name}";snap=storage.object_snapshot(key)
-        if snap is None or snap.size!=descriptor["bytes"] or storage.sha256_key(key)!=descriptor["sha256"] or storage.object_snapshot(key)!=snap:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_physical_readback_failed:')
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fingerprint,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(extracted["features"]),"capture_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_null_geometry_count":audit["null_geometry_count"],"source_invalid_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}

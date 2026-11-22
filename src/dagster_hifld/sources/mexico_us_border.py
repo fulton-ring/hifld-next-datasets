@@ -7,7 +7,7 @@ REST service; no mirror, archive or third-party host is ever fetched.
 """
 from __future__ import annotations
 
-import hashlib
+
 import json
 import math
 import shutil
@@ -24,19 +24,28 @@ import shapely
 from pyproj import CRS
 from shapely.geometry import LineString, MultiLineString
 
+from dagster_hifld.http_capture import validated_capture_view
+from dagster_hifld.http_capture import CaptureDocuments
+from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import (
+    capture_roster_digests,
+    validate_capture_roster,
+)
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources import arcgis_layer as capture_shared
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import (
-    capture_layer_roster, capture_witness, layer_capture_roster, load_replay as _load_replay,
+    capture_layer, RetainedCaptureView, capture_witness, layer_capture_roster, load_replay as _load_replay,
     retained_capture_ids,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -107,102 +116,19 @@ COVERAGE_TOLERANCE = 1e-9
 SOURCE_CRS = CRS.from_epsg(4326)
 
 
-def _validate_spatial_reference(value: object, label: str, expected: dict[str, int]) -> None:
-    """Require every advertised ArcGIS CRS representation to agree with the pinned EPSG pair."""
-    if not isinstance(value, dict):
-        raise ValueError(f"{label}_crs_drift")
-    for key, code in expected.items():
-        if key in value:
-            wkid = value[key]
-            if type(wkid) is not int or wkid != code:
-                raise ValueError(f"{label}_crs_drift")
-    for key in ("wkt", "wkt2"):
-        if key in value:
-            wkt = value[key]
-            if not isinstance(wkt, str) or not wkt.strip():
-                raise ValueError(f"{label}_crs_drift")
-            try:
-                parsed = CRS.from_wkt(wkt)
-            except Exception as exc:
-                raise ValueError(f"{label}_crs_drift") from exc
-            if not parsed.equals(CRS.from_epsg(expected["latestWkid"]), ignore_axis_order=True):
-                raise ValueError(f"{label}_crs_drift")
-    if not {"wkid", "latestWkid"} & set(value):
-        raise ValueError(f"{label}_crs_drift")
+_validate_spatial_reference = crs_validation.validate_pinned_spatial_reference
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    root.mkdir(parents=True, exist_ok=True)
-    body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
-    for path in (body_path, wire_path):
-        path.unlink(missing_ok=True)
-        path.touch()
-    hashes = {"body": hashlib.sha256(), "wire": hashlib.sha256()}
-    sizes = {"body": 0, "wire": 0}
-    budget_start = budget[0]
-    observed = datetime.now(timezone.utc).isoformat()
-
-    def retain(path, kind):
-        def write(chunk):
-            with path.open("ab") as stream:
-                stream.write(chunk)
-            hashes[kind].update(chunk); sizes[kind] += len(chunk)
-            budget[0] = budget_start + sizes["wire"] + sizes["body"]
-        return write
-
-    def reserve(progress):
-        if budget_start + progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-
-    response = None
-    result = None
-    final_url = url
-    transport_error = None
-    try:
-        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-            final_url = str(response.url)
-            result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
-                max_decoded_bytes=MAX_BODY_BYTES, reserve=reserve,
-                retain_wire=retain(wire_path, "wire"), retain_decoded=retain(body_path, "body"))
-    except Exception as exc:
-        transport_error = type(exc).__name__
-    receipt = {"method": "GET", "url": url, "final_url": final_url, "observed_at": observed,
-        "status": result.status_code if result is not None else (response.status_code if response is not None else None),
-        "complete_body": bool(result is not None and result.complete and transport_error is None),
-        "wire_bytes": sizes["wire"], "wire_sha256": hashes["wire"].hexdigest(),
-        "bytes": sizes["body"], "sha256": hashes["body"].hexdigest(),
-        "content_encoding": result.content_encoding if result is not None else None,
-        "content_length": result.content_length if result is not None else None,
-        "error_code": result.error_code if result is not None else ("transport_error" if transport_error else "capture_result_missing"),
-        "error_type": result.error_type if result is not None else transport_error}
-    (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-    if transport_error:
-        raise httpx.TransportError("capture_transport_error:" + transport_error)
-    if result is None:
-        raise ValueError("capture_result_missing")
-    body, wire = body_path.read_bytes(), wire_path.read_bytes()
-    if (not result.complete or result.status_code != 200 or final_url != url
-        or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]
-        or len(wire) != receipt["wire_bytes"] or _sha(wire) != receipt["wire_sha256"]):
-        raise ValueError("incomplete_source_capture:" + name)
-    return body, receipt
+    return capture_shared.fetch_capture(client, url, root, name, budget,
+                         max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    """Retry one transient transport/incomplete read, retaining every attempt."""
-    last = None
-    for attempt in range(2):
-        attempt_name = f"{name}.attempt{attempt+1}"
-        try:
-            body, receipt = _fetch(client, url, root, attempt_name, budget)
-            for suffix in ("body", "wire", "receipt.json"):
-                (root / f"{attempt_name}.{suffix}").replace(root / f"{name}.{suffix}")
-            return body, receipt
-        except (httpx.TransportError, ValueError) as exc:
-            last = exc
-            if isinstance(exc, ValueError) and not str(exc).startswith("incomplete_source_capture:"):
-                raise
-    raise last
+    return capture_shared.fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                               attempts=2, schedule=(),
+                               fetch=_fetch)
 
 
 def _esri_polyline(geometry: dict) -> bytes:
@@ -294,7 +220,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
         raise ValueError("source_population_empty")
     if {"ids_seed", *[name for name, _url in _capture_roster(before)]} != set(captures):
         raise ValueError("source_capture_roster_incomplete")
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()}
+    docs = CaptureDocuments(captures)
     item = docs["portal_item"]
     item_url = f"https://gisportal.ibwc.gov/agsportal/home/item.html?id={PORTAL_ITEM_ID}"
     if (item.get("id") != PORTAL_ITEM_ID or item.get("owner") != EXPECTED_ITEM["owner"]
@@ -460,16 +386,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]):
 
 
 def _write_outputs(storage, prefix: str, outputs: dict[str, bytes]) -> dict[str, dict[str, object]]:
-    descriptors = {}
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        snapshot = storage.object_snapshot(f"{prefix}/{name}")
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if (snapshot is None or snapshot.size != descriptor["bytes"]
-                or storage.sha256_key(f"{prefix}/{name}") != descriptor["sha256"]
-                or storage.object_snapshot(f"{prefix}/{name}") != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 
@@ -514,9 +431,12 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
             names = ["ids_seed", *[name for name, _url in _capture_roster(ids)]]
             if set(retained_manifest["receipts"]) != set(names):
                 raise ValueError("retained_capture_roster_changed")
-            captures = {name: _load_replay(root, name) for name in names}
-            if any(receipt != retained_manifest["receipts"][name] for name, (_body, receipt) in captures.items()):
-                raise ValueError("retained_capture_manifest_receipt_mismatch")
+            captures = validated_capture_view(root,
+                receipts={name: retained_manifest["receipts"][name] for name in names},
+                expected_urls=dict.fromkeys(names, ""), load_capture=_load_replay,
+                capture_value=lambda value: value, preserve_order=True,
+                validate_request_identity=lambda name, receipt, url: None,
+                receipt_error=lambda name: "retained_capture_manifest_receipt_mismatch")
             expected_urls = dict(_capture_roster(ids))
             expected_urls["ids_seed"] = _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
             for name, (_body, receipt) in captures.items():
@@ -545,21 +465,18 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
                 raise ValueError("source_capture_budget_exceeded_before_request")
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/ibwc-us-mexico-draft"}) as client:
-                seed_body, seed_receipt = _fetch_retry(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}),
-                                                       root, "ids_seed", capture_budget)
-                ids = json.loads(seed_body).get("objectIds")
-                captures["ids_seed"] = (seed_body, seed_receipt)
-                if (not isinstance(ids, list) or not ids
-                        or any(type(oid) is not int or oid <= 0 for oid in ids)
-                        or len(set(ids)) != len(ids)):
-                    raise ValueError("source_seed_id_count_or_roster_drift")
-                ids = sorted(ids)
-
-                def fetch(client, url, root, name):
-                    captures[name] = _fetch_retry(client, url, root, name, capture_budget)
-                    return captures[name]
-
-                capture_layer_roster(client, root, _capture_roster(ids), fetch)
+                def validate_seed(seed_body):
+                    ids = json.loads(seed_body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids
+                            or any(type(oid) is not int or oid <= 0 for oid in ids)
+                            or len(set(ids)) != len(ids)):
+                        raise ValueError("source_seed_id_count_or_roster_drift")
+                    return sorted(ids)
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, seed_name="ids_seed", validate_seed=validate_seed,
+                    roster=_capture_roster, on_validation_error=_validate,
+                    fetch=lambda client, url, root, name: _fetch_retry(client, url, root, name, capture_budget))
         fields, features, audit = _validate(captures)
     except Exception as exc:
         retained = {}
@@ -581,7 +498,7 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
     identity = processing_identity(Path(__file__).parents[3])
     wkid = EXPECTED_PAGE_SR["latestWkid"]
     parquet = _parquet_bytes(fields, features, wkid)
-    capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in sorted(captures.items())}))
+    capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"] = capture_sha
     version = "v" + _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
         "source_geometry_sha256": audit["source_geometry_sha256"],
@@ -605,7 +522,7 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
             "delegation_evidence": {"portal_item_url": PORTAL_ITEM_URL, "portal_item_id": PORTAL_ITEM_ID,
             "portal_item_owner": "ibwcgis", "crosswalk_doi": "10.3886/E241367V1"}}
            if name == "portal_item" else {})}
-        for name, (_body, receipt) in sorted(captures.items())]
+        for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))]
     manifest = {"schema_version": 1, "approved": False, "title": "Mexico and US Border (IBWC US_MexicoIB)",
         "description": "Complete observed current official IBWC US–Mexico international boundary feature layer; "
         "unapproved faithful candidate. Observed polyline segments (land, river and maritime) per the 1970 Treaty boundary. "
@@ -652,7 +569,7 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
              "source_feature_count": audit["source_feature_count"],
              "source_record_sha256": audit["source_record_sha256"],
              "source_schema_sha256": audit["source_schema_sha256"],
-             "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())},
+             "receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
              "attempts": attempts,
              "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
     outputs = {f"geoparquet/{DATASET_SLUG}.parquet": parquet,
@@ -674,7 +591,7 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
     outputs["metadata/candidate_ready.json"] = _canonical(ready) + b"\n"
     fingerprint = _sha(_canonical(identity))
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    receipts = {name: receipt for name, (_body, receipt) in sorted(captures.items())}
+    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
     if storage.object_snapshot(state_key) is not None:
         bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
         payload = bundle.get("payload")
@@ -702,10 +619,12 @@ def capture_mexico_us_border(storage: StagingStorageResource, *, version: str,
             "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
             "release_accepted": False, "capture_directory": str(root)}
     descriptors = _write_outputs(storage, prefix, outputs)
-    seal_ready_candidate(storage, state_key, version, fingerprint,
-        {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
-         "source_schema_sha256": audit["source_schema_sha256"], "capture_receipts": receipts,
-         "objects": descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

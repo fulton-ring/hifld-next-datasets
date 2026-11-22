@@ -26,12 +26,12 @@ blocked pending the schema/ID contract, coverage, rights and release decisions.
 """
 from __future__ import annotations
 
+
 import hashlib
 import json
 import shutil
 import tempfile
 import time
-from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping
@@ -44,6 +44,11 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+from dagster_hifld.validation import sha256_file
+from dagster_hifld.sources import nhd_capture, nhd_transport
+from dagster_hifld.sources.nhd_transport import failed_receipt_error_code as _failed_receipt_error_code
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -51,10 +56,14 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_geometry import to_wkb
+from dagster_hifld.sources.arcgis_layer import (
+    producer_error_doc as _producer_error_doc, preserve_failed_attempt as _preserve_failed_attempt,
+)
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
-    write_immutable,
+    write_immutable, write_immutable_file,
+    seal_candidate_objects, write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -184,78 +193,24 @@ def _validate_page_spatial_reference(value: object, label: str) -> None:
         raise ValueError(label + "_crs_missing")
 
 
-def _producer_error_doc(body: bytes) -> bool:
-    if not body.lstrip().startswith(b"{") or len(body) > 65536:
-        return False
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return False
-    return isinstance(doc, dict) and "error" in doc
-
-
 _ATTEMPT_SUFFIXES = (".body", ".wire", ".receipt.json")
-
-
-def _preserve_failed_attempt(capture_root: Path, name: str, attempt: int) -> None:
-    """Preserve one failed attempt's body/wire/receipt under a collision-free name.
-
-    Bisection reuses the first-OBJECTID page name for a parent window and its
-    first child, and every window restarts attempt numbering, so a fixed
-    ``attempt-NN`` target would let a child's ``Path.rename`` replace the
-    parent's retained response (POSIX rename overwrites existing files). The
-    preserved index is therefore the next index, starting at this attempt
-    number, for which no evidence file exists yet, so every distinct producer
-    request keeps its response on disk.
-    """
-    paths = [capture_root / f"{name}{suffix}" for suffix in _ATTEMPT_SUFFIXES]
-    if not any(path.exists() for path in paths):
-        return
-    index = attempt
-    while any((capture_root / f"{name}.attempt-{index:02d}{suffix}").exists()
-              for suffix in _ATTEMPT_SUFFIXES):
-        index += 1
-    for path, suffix in zip(paths, _ATTEMPT_SUFFIXES):
-        if path.exists():
-            path.rename(capture_root / f"{name}.attempt-{index:02d}{suffix}")
-
-
-def _failed_receipt_error_code(capture_root: Path, name: str) -> str | None:
-    try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, ValueError):
-        return None
-    code = receipt.get("error_code")
-    return code if isinstance(code, str) else None
 
 
 def _capture_doc(client: httpx.Client, url: str, capture_root: Path, name: str,
                  budget: list[int]) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer document, retrying bounded times on transient failures."""
-    for attempt in range(1, DOC_CAPTURE_ATTEMPTS + 1):
-        _budget_check(budget)
-        try:
-            return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES,
-                               before_retain=_budget_guard(budget))
-        except ValueError as exc:
-            if attempt >= DOC_CAPTURE_ATTEMPTS or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(DOC_CAPTURE_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
-    raise AssertionError("unreachable_retry_state")
+    return nhd_transport.capture_document(
+        client, url, capture_root, name, budget, attempts=DOC_CAPTURE_ATTEMPTS,
+        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS, max_body_bytes=MAX_BODY_BYTES,
+        check_budget=_budget_check, retain_budget=_budget_guard, fetch=capture_get,
+        sleep=time.sleep, retry_http_errors=False, preserve_attempt=_preserve_failed_attempt)
 
 
 def _budget_guard(budget: list[int]) -> Callable[[str, bytes], None]:
-    def before_retain(kind: str, data: bytes) -> None:
-        budget[0] += len(data)
-        if budget[0] > MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-    return before_retain
+    return nhd_transport.budget_guard(budget, MAX_CAPTURE_BYTES, ValueError)
 
 
 def _budget_check(budget: list[int]) -> None:
-    if budget[0] > MAX_CAPTURE_BYTES:
-        raise ValueError("source_capture_budget_exceeded")
+    nhd_transport.budget_check(budget, MAX_CAPTURE_BYTES, ValueError)
 
 
 def _validate_attrs_types(attrs: Mapping[str, object], fields: list[dict[str, object]]) -> None:
@@ -286,87 +241,14 @@ def _validate_attrs_types(attrs: Mapping[str, object], fields: list[dict[str, ob
 def _capture_windows(client: httpx.Client, roster: list[int], capture_root: Path,
                      budget: list[int]) -> tuple[dict[str, tuple[bytes, dict[str, object]]],
                                                  dict[str, list[int]]]:
-    """Capture every roster window, bisecting oversized or persistently failing windows.
-
-    Each accepted window is one exact ``objectIds`` request over a contiguous
-    roster slice. A window that answers with an Esri error document, exceeds the
-    response byte cap or reports a truncated result set is bisected into two
-    smaller windows over the same roster slice: those producer answers are
-    deterministic for the requested window (observed: oversized windows persistently
-    refuse with the same HTTP 200 error document), so retrying the same window
-    only burns bounded backoff time — bisection is completeness-neutral and only
-    changes page boundaries. Transport faults (connection/reset/truncation) are
-    still retried a bounded number of times with backoff for transient producer
-    faults, and failed attempts are preserved on disk as ``.attempt-NN`` evidence
-    that never enters the capture roster. Bisection continues down to
-    single-OBJECTID windows: a single id that still answers with the error
-    document after the bounded retries is recorded as refused (its attempt
-    evidence stays on disk and its id is read from the capture state) instead
-    of aborting the whole capture, because the producer is known to persistently
-    refuse serving the geometry of specific records (dated evidence on the
-    capture manifest). The before/after count and ID witnesses plus per-page
-    slice equality make bisection completeness-neutral: it can only change page
-    boundaries, never population.
-    """
-    pages: dict[str, tuple[bytes, dict[str, object]]] = {}
-    refused: dict[str, list[int]] = {}
-    plan: deque[tuple[int, int]] = deque((start, PAGE_IDS) for start in range(0, len(roster), PAGE_IDS))
-    while plan:
-        start, size = plan.popleft()
-        window_ids = roster[start:start + size]
-        size = len(window_ids)
-        name = f"page_{window_ids[0]:07d}"
-        url = _window_url(window_ids)
-        accepted = False
-        last_error: Exception | None = None
-        for attempt in range(1, PAGE_CAPTURE_ATTEMPTS + 1):
-            _budget_check(budget)
-            try:
-                body, receipt = capture_get(client, url, capture_root, name,
-                                            max_bytes=MAX_BODY_BYTES,
-                                            before_retain=_budget_guard(budget))
-            except ValueError as exc:
-                if "source_capture_budget_exceeded" in str(exc):
-                    raise
-                last_error = exc
-                error_code = _failed_receipt_error_code(capture_root, name)
-                # Every failed attempt — including the terminal one before a
-                # bisection — is preserved under its collision-free evidence
-                # name first, so the next child capture cannot overwrite the
-                # producer's actual response at the shared base paths.
-                _preserve_failed_attempt(capture_root, name, attempt)
-                if error_code in ("wire_limit_exceeded", "decoded_limit_exceeded"):
-                    break
-                if attempt < PAGE_CAPTURE_ATTEMPTS:
-                    time.sleep(PAGE_CAPTURE_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
-                    continue
-                break
-            if _producer_error_doc(body):
-                last_error = ValueError("source_window_error_document")
-                _preserve_failed_attempt(capture_root, name, attempt)
-                if size > 1:
-                    break
-                if attempt < PAGE_CAPTURE_ATTEMPTS:
-                    time.sleep(PAGE_CAPTURE_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
-                    continue
-                break
-            doc = json.loads(body)
-            if doc.get("exceededTransferLimit"):
-                last_error = ValueError("source_window_transfer_truncated")
-                _preserve_failed_attempt(capture_root, name, attempt)
-                break
-            pages[name] = (body, receipt)
-            accepted = True
-            break
-        if accepted:
-            continue
-        if size > 1:
-            mid = size // 2
-            plan.appendleft((start + mid, size - mid))
-            plan.appendleft((start, mid))
-            continue
-        refused[name] = window_ids
-    return pages, refused
+    return nhd_capture.capture_id_windows(
+        client, roster, capture_root, budget, page_size=PAGE_IDS,
+        attempts=PAGE_CAPTURE_ATTEMPTS, base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS,
+        max_body_bytes=MAX_BODY_BYTES, window_url=_window_url,
+        budget_check=_budget_check, budget_guard=_budget_guard,
+        failed_receipt_error_code=_failed_receipt_error_code,
+        preserve_failed_attempt=_preserve_failed_attempt,
+        producer_error_doc=_producer_error_doc, fetch=capture_get, sleep=time.sleep)
 
 
 def _validate_polygon_geometry(geometry: object) -> None:
@@ -473,8 +355,7 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
     unexpected = doc_names - required - set(page_names) - refused_attr_names
     if unexpected:
         raise ValueError("source_capture_roster_incomplete_or_unexpected")
-    docs = {name: json.loads(body) for name, (body, _r) in captures.items()
-            if name != "service_doc"}
+    docs = CaptureDocuments(captures, (name for name in captures if name != "service_doc"))
     if SERVICE_HOST.encode("utf-8") not in captures["service_doc"][0]:
         raise ValueError("usgs_service_documentation_link_drift")
     service, layer = docs["service_before"], docs["layer_before"]
@@ -720,33 +601,13 @@ def _validate_captures(captures: dict[str, tuple[bytes, dict[str, object]]]):
 
 
 def _capture_refused_attrs(client: httpx.Client, capture_root: Path, budget: list[int],
-                           captures: dict[str, tuple[bytes, dict[str, object]]],
-                           refused: Mapping[str, list[int]]) -> None:
-    """Capture producer-refused records' attributes through the attributes-only channel.
-
-    The producer refuses to serve some records' geometry (persistent Esri 500
-    error document on both of its own hosts, dated on the capture manifest) but
-    serves the same records' attributes with ``returnGeometry=false``. Each
-    refused id gets one attributes-only capture named ``refused_attrs_<OID>``
-    validated to exactly that record. Completeness is enforced by the before/after
-    count and ID witnesses, so no refused-ID roster is pinned.
-    """
-    for name in sorted(refused):
-        for oid in refused[name]:
-            attrs_name = f"refused_attrs_{oid:07d}"
-            body, receipt = _capture_doc(
-                client,
-                _query({"objectIds": str(oid), "outFields": "*", "returnGeometry": "false",
-                        "f": "json"}),
-                capture_root, attrs_name, budget)
-            doc = json.loads(body)
-            rows = doc.get("features") if isinstance(doc, dict) else None
-            if (not isinstance(rows, list) or len(rows) != 1
-                    or not isinstance(rows[0], dict) or not isinstance(rows[0].get("attributes"), dict)
-                    or rows[0].get("geometry") is not None
-                    or rows[0]["attributes"].get("OBJECTID") != oid):
-                raise ValueError("source_refused_attrs_record_drift:" + attrs_name)
-            captures[attrs_name] = (body, receipt)
+                           captures, refused: Mapping[str, list[int]]) -> None:
+    nhd_transport.capture_refused_attributes(
+        client, capture_root, budget, captures, refused, capture_doc=_capture_doc,
+        name_for_id=lambda oid: f"refused_attrs_{oid:07d}",
+        attributes_url=lambda oid: _query({"objectIds": str(oid), "outFields": "*",
+                                           "returnGeometry": "false", "f": "json"}),
+        error_type=ValueError)
 
 
 def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: str,
@@ -769,7 +630,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures = RetainedCaptureView(capture_root)
     budget = [0]
     try:
         with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(300, connect=30),
@@ -782,26 +643,11 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                 ("count_before", _query({"where": POPULATION_WHERE, "returnCountOnly": "true", "f": "json"})),
                 ("ids_before", _query({"where": POPULATION_WHERE, "returnIdsOnly": "true", "f": "json"})),
             ]
-            for name, url in doc_urls:
-                captures[name] = _capture_doc(client, url, capture_root, name, budget)
-            seed_body, seed_receipt = _capture_doc(
-                client, _query({"where": POPULATION_WHERE, "returnIdsOnly": "true", "f": "json"}),
-                capture_root, "ids_seed", budget)
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            count_before = json.loads(captures["count_before"][0]).get("count")
-            if type(count_before) is not int or count_before <= 0:
-                raise ValueError("source_count_drift")
-            seed = json.loads(seed_body).get("objectIds")
-            if (not isinstance(seed, list) or len(seed) != count_before
-                    or any(type(value) is not int or value <= 0 for value in seed)
-                    or len(set(seed)) != count_before):
-                raise ValueError("source_seed_id_population_drift")
-            pages, refused = _capture_windows(client, sorted(seed), capture_root, budget)
-            captures.update(pages)
-            _capture_refused_attrs(client, capture_root, budget, captures, refused)
-            for name, url in doc_urls[2:]:
-                after_name = name.replace("_before", "_after")
-                captures[after_name] = _capture_doc(client, url, capture_root, after_name, budget)
+            nhd_capture.capture_id_window_layer(
+                client, capture_root, budget, captures, document_urls=doc_urls,
+                ids_url=_query({"where": POPULATION_WHERE, "returnIdsOnly": "true", "f": "json"}),
+                capture_doc=_capture_doc, capture_windows=_capture_windows,
+                capture_refused_attrs=_capture_refused_attrs, error_type=ValueError)
         fields, extracted = _validate_captures(captures)
     except Exception as exc:
         receipts = {}
@@ -813,14 +659,20 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
         (capture_root / "capture_manifest.json").write_bytes(
             _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                         "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        retained = dict(captures)
+        retained = RetainedCaptureView(capture_root)
+        for name, receipt in captures.receipts.items():
+            path = capture_root / f"{name}.body"
+            if path.is_file():
+                retained[name] = (path, receipt)
         for receipt_path in capture_root.glob("*.receipt.json"):
             name = receipt_path.name.removesuffix(".receipt.json")
             if name in retained:
                 continue
             try:
-                retained[name] = ((capture_root / f"{name}.body").read_bytes(),
-                                  json.loads(receipt_path.read_bytes()))
+                body_path = capture_root / f"{name}.body"
+                with body_path.open("rb") as stream:
+                    stream.read(0)
+                retained[name] = (body_path, json.loads(receipt_path.read_bytes()))
             except (OSError, ValueError):
                 continue
         if retained:
@@ -835,7 +687,7 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
     # producer's actual refusal responses. Attempt receipts are
     # listed in the capture manifest but stay out of the bounded
     # source-manifest input roster.
-    attempt_evidence: dict[str, bytes] = {}
+    attempt_evidence: dict[str, Path] = {}
     attempt_receipts: dict[str, dict[str, object]] = {}
     attempt_names = sorted({path.name.removesuffix(suffix) for suffix in _ATTEMPT_SUFFIXES
                             for path in capture_root.glob(f"*.attempt-*{suffix}")})
@@ -844,11 +696,10 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
             path = capture_root / f"{name}{suffix}"
             if not path.is_file():
                 raise ValueError("source_attempt_evidence_incomplete:" + name)
-            body = path.read_bytes()
-            attempt_evidence[f"raw/{name}{suffix}"] = body
+            attempt_evidence[f"raw/{name}{suffix}"] = path
             if suffix == ".receipt.json":
                 try:
-                    receipt = json.loads(body)
+                    receipt = json.loads(path.read_bytes())
                 except ValueError as exc:
                     raise ValueError("source_attempt_evidence_incomplete:" + name) from exc
                 if not isinstance(receipt, dict) or not isinstance(receipt.get("url"), str):
@@ -887,8 +738,8 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                 "release_date_unknown_reason": _unknown_release_reason,
                 "license": _input_license, "attribution": _input_attribution}
 
-    doc_captures = [(n, r) for n, (_, r) in sorted(captures.items()) if not n.startswith("page_")]
-    page_captures = [(n, r) for n, (_, r) in sorted(captures.items()) if n.startswith("page_")]
+    doc_captures = [(n, r) for n, (_, r) in ((name, captures[name]) for name in sorted(captures)) if not n.startswith("page_")]
+    page_captures = [(n, r) for n, (_, r) in ((name, captures[name]) for name in sorted(captures)) if n.startswith("page_")]
     if not page_captures:
         raise ValueError("paged_capture_inputs_missing")
     if {r["status"] for _, r in page_captures} != {200}:
@@ -1030,14 +881,14 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                     "source_geometry_sha256": audit["source_geometry_sha256"],
                     "failed_attempt_count": len(attempt_receipts),
                     "failed_attempt_receipts": attempt_receipts,
-                    "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}) + b"\n")
+                    "receipts": {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))}}) + b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {rel: parquet_body, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
                "metadata/source_audit.json": _canonical(full_audit) + b"\n",
                "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in captures.items():
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (capture_root / f"{name}.wire").read_bytes()
+        outputs[f"raw/{name}.body"] = capture_root / f"{name}.body"
+        outputs[f"raw/{name}.wire"] = capture_root / f"{name}.wire"
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     outputs.update(attempt_evidence)
     outputs["metadata/candidate_ready.json"] = _canonical(
@@ -1069,21 +920,20 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                 "schema_contract_accepted": False, "id_contract_accepted": False,
                 "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
                 "release_accepted": False}
-    for relative, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{relative}", body)
-    descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
-    for name, descriptor in descriptors.items():
-        key = f"{prefix}/{name}"
-        snap = storage.object_snapshot(key)
-        if snap is None or snap.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"] \
-                or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_output_physical_readback_failed:" + name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all",
+        error_prefix="candidate_output_physical_readback_failed:")
     payload = {"processing_identity": identity,
                "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
                "capture_receipts": {name: receipt for name, (_, receipt) in captures.items()},
                "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

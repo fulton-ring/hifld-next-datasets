@@ -1,6 +1,7 @@
 """Draft native capture for the BTS NTAD pipeline terminals layer."""
 from __future__ import annotations
 
+
 import json
 import shutil
 from datetime import datetime, timezone
@@ -15,15 +16,20 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Point
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
+from dagster_hifld.sources.arcgis_capture_sequence import LayerCaptureFetch
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -148,7 +154,7 @@ def _page_plan(ids: list[int], layer: Mapping[str, object]) -> tuple[str, list[t
 
 
 def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict, list[dict], list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _) in captures.items()}
+    docs = CaptureDocuments(captures)
     fields = docs["layer_before"].get("fields")
     if not isinstance(fields, list) or not fields or any(not isinstance(f, dict) for f in fields):
         raise ValueError("source_field_roster_missing")
@@ -338,53 +344,29 @@ def capture_bts_pipeline_terminals(storage: StagingStorageResource, *,
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures = RetainedCaptureView(capture_root)
 
-    def capture(client: httpx.Client, name: str, url: str) -> tuple[bytes, dict]:
-        def reserve(progress) -> None:
-            retained_prior = sum(
-                path.stat().st_size
-                for path in capture_root.iterdir()
-                if path.is_file() and path.name.endswith((".body", ".wire"))
-                and path.name not in {f"{name}.body", f"{name}.wire"}
-            )
-            if retained_prior + progress.wire_bytes_retained + progress.decoded_bytes_retained + progress.reserve_bytes > MAX_CAPTURE_TOTAL_BYTES:
-                raise ValueError("source_capture_exceeds_scratch_budget")
-        return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES, reserve=reserve)
 
-    current_capture_name = "ids_seed"
-    current_capture_url = _query_url(where="1=1", returnIdsOnly="true", f="json")
+    cursor = LayerCaptureFetch(max_body_bytes=MAX_BODY_BYTES, max_capture_bytes=MAX_CAPTURE_TOTAL_BYTES)
+    cursor.current_name = "ids_seed"
+    cursor.current_url = _query_url(where="1=1", returnIdsOnly="true", f="json")
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/bts-pipeline-terminals-draft"}) as client:
-            seed_body, seed_receipt = capture(client, current_capture_name, current_capture_url)
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
-                raise ValueError("source_seed_id_roster_missing_or_invalid")
-            total_captured_bytes = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
-            for name, url in _source_metadata_urls():
-                current_capture_name, current_capture_url = name, url
-                body, receipt = capture(client, name, url)
-                captures[name] = (body, receipt)
-                total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
-                if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
-            layer_before = json.loads(captures["layer_before"][0])
-            _pagination_mode, page_plan = _page_plan(seed, layer_before)
-            for name, url, _page_ids in page_plan:
-                current_capture_name, current_capture_url = name, url
-                body, receipt = capture(client, name, url)
-                captures[name] = (body, receipt)
-                total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
-                if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
-            for name, url in _source_after_urls():
-                current_capture_name, current_capture_url = name, url
-                body, receipt = capture(client, name, url)
-                captures[name] = (body, receipt)
-                total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
-                if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
+            def validate_seed(body):
+                seed = json.loads(body).get("objectIds")
+                if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
+                    raise ValueError("source_seed_id_roster_missing_or_invalid")
+                return seed
+
+            def roster(seed):
+                layer_before = json.loads(captures["layer_before"][0])
+                _pagination_mode, page_plan = _page_plan(seed, layer_before)
+                return [(name, url) for name, url, _page_ids in page_plan] + _source_after_urls()
+
+            capture_layer(LAYER_URL, capture_root, MAX_CAPTURE_TOTAL_BYTES, PAGE_SIZE,
+                client=client, captures=captures, seed_name="ids_seed", seed_url=cursor.current_url,
+                validate_seed=validate_seed, after_seed_documents=_source_metadata_urls(),
+                roster=roster, fetch=cursor.fetch, on_validation_error=_validate)
         layer, fields, features, audit = _validate(captures)
     except Exception as exc:
         error_code = str(exc) if isinstance(exc, ValueError) and str(exc).replace("_", "").isalnum() else type(exc).__name__
@@ -403,7 +385,7 @@ def capture_bts_pipeline_terminals(storage: StagingStorageResource, *,
             wire = wire_path.read_bytes() if wire_path.exists() else b""
             receipt = receipts.get(name)
             if not isinstance(receipt, dict):
-                receipt = {"method":"GET","url":current_capture_url if name == current_capture_name else None,
+                receipt = {"method":"GET","url":cursor.current_url if name == cursor.current_name else None,
                     "final_url":None,"observed_at":datetime.now(timezone.utc).isoformat(),"status":None,
                     "complete_body":False,"wire_bytes":len(wire),"wire_sha256":_sha(wire),
                     "bytes":len(body),"sha256":_sha(body),"content_encoding":None,
@@ -430,7 +412,7 @@ def capture_bts_pipeline_terminals(storage: StagingStorageResource, *,
             "http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],
             "license":"https://www.usa.gov/publicdomain/label/1.0/","attribution":"BTS NTAD; producer metadata states U.S. public domain; rights review remains pending.",
             "release_date":None,"release_date_unknown_reason":"ArcGIS modified timestamp is not a source release date."}
-            for name,(_,receipt) in sorted(captures.items())],
+            for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))],
         "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
             "feature_layer_id":LAYER_ID,"source_fields":"all thirty-three source fields retained with declared source types",
             "source_ids":"OBJECTID preserved unchanged; source ID roster is pinned before and after capture","geometry":"source point x/y encoded as WKB at EPSG:4326 without reprojection or repair",
@@ -447,7 +429,7 @@ def capture_bts_pipeline_terminals(storage: StagingStorageResource, *,
     prefix = candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,
         "source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_geometry_sha256":audit["source_geometry_sha256"],
-        "receipts":{name:receipt for name,(_,receipt) in sorted(captures.items())}})+b"\n")
+        "receipts":{name:receipt for name,(_,receipt) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
     outputs = {native_path:parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
         "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
@@ -461,15 +443,16 @@ def capture_bts_pipeline_terminals(storage: StagingStorageResource, *,
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
         return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs))
-    for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
-    descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    for name,d in descriptors.items():
-        key=f"{prefix}/{name}"; snap=storage.object_snapshot(key)
-        if snap is None or snap.size != d["bytes"] or storage.sha256_key(key) != d["sha256"] or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_physical_readback_failed:')
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fingerprint,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,
         "source_null_geometry_count":audit["source_null_geometry_count"],

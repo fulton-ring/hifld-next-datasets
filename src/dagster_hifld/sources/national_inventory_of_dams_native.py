@@ -8,6 +8,7 @@ historical DataLumos equivalence or accept rights, schema, ID, or release.
 """
 from __future__ import annotations
 
+
 import hashlib
 import json
 import math
@@ -41,6 +42,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -1104,16 +1107,9 @@ def capture_national_inventory_of_dams_native(
                                 payload.get("objects", {}), payload.get("capture_receipts", {}))
         result = legacy._candidate_result(version_key, audit, prefix, True)
     else:
-        for name, body in outputs.items():
-            write_immutable(storage, f"{prefix}/{name}", body)
-        descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
-        for name, descriptor in descriptors.items():
-            key = f"{prefix}/{name}"
-            snap = storage.object_snapshot(key)
-            if (snap is None or snap.size != descriptor["bytes"]
-                    or storage.sha256_key(key) != descriptor["sha256"]
-                    or storage.object_snapshot(key) != snap):
-                raise ValueError("usace_nid_native_candidate_readback_failed:" + name)
+        descriptors = write_candidate_outputs(
+            storage, prefix, outputs, readback_order="after-all",
+            error_prefix="usace_nid_native_candidate_readback_failed:")
         payload = {
             "processing_identity": identity,
             "source_record_sha256": audit["source_record_sha256"],
@@ -1126,7 +1122,12 @@ def capture_national_inventory_of_dams_native(
             "capture_receipts": {},
             "objects": descriptors,
         }
-        seal_ready_candidate(storage, state_key, version_key, fingerprint, payload)
+        seal_candidate_objects(
+            storage, state_key, version_key,
+            payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+            source_record_sha256=payload['source_record_sha256'],
+            source_schema_sha256=payload['source_schema_sha256'],
+            fingerprint=fingerprint)
         validate_construction_code_identity(repo_root, identity["code_commit"], identity["files"])
         result = legacy._candidate_result(version_key, audit, prefix, False)
     result.update({

@@ -10,16 +10,18 @@ all source/baseline/contract acceptance remain unresolved.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources import candidate_transaction
 import collections
 import hashlib
 import json
-import fcntl
 import os
 import re
 import sqlite3
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
 from pathlib import Path
 from uuid import uuid4
 
@@ -30,6 +32,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.sources.arcgis_capture_sequence import capture_request_sequence
 from dagster_hifld.sources.esri_geometry import esri_polygon_wkb
 from dagster_hifld.sources.arcgis_layer import (
     layer_capture_roster, capture_witness, fetch_capture_retry, load_replay,
@@ -130,13 +133,8 @@ def require_local(storage: StagingStorageResource) -> None:
         raise CBRSQuarantineError('draft_requires_explicit_isolated_local_staging')
 
 
-def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
-    before = storage.object_snapshot(key)
-    if before is not None:
-        if storage.read_key(key) != body or storage.object_snapshot(key) != before:
-            raise CBRSQuarantineError(f'immutable_staging_conflict:{key}')
-    else:
-        storage.write_key_if_unchanged(key, body, None)
+immutable = partial(write_immutable, error_type=CBRSQuarantineError,
+                    error_prefix='immutable_staging_conflict:')
 
 
 def quarantine(storage: StagingStorageResource, body: bytes, receipt: dict, reason: str) -> str:
@@ -175,28 +173,23 @@ def acquire(storage: StagingStorageResource, capture_dir: Path | None) -> dict:
             roster = capture_roster([])
             discovery = [(name, roster[name]) for name in (
                 'fws_data', 'official_item', 'service_before', 'layer', 'count', 'ids')]
-            pending = discovery
-            while pending:
-                for name, url in pending:
-                    if capture_dir is None:
-                        body, receipt = fetch_capture_retry(client, url, root, name, budget,
-                            max_capture_bytes=MAX_BYTES * 4, max_body_bytes=MAX_BYTES)
-                        receipt.update(requested_url=url, byte_length=len(body))
-                        (root / f'{name}.receipt.json').write_bytes(encode(receipt))
-                    else:
-                        body, receipt = load_replay(root, name)
-                        receipt = strict_json((root / f'{name}.receipt.json').read_bytes())
-                        budget[0] += len(body) + receipt['wire_bytes']
-                        if len(body) > MAX_BYTES or budget[0] > MAX_BYTES * 4:
-                            raise CBRSQuarantineError('capture_size_limit')
-                    wire = (root / f'{name}.wire').read_bytes()
-                    validate_receipt(body, receipt, url, wire)
-                    captures[name] = (body, receipt, wire)
-                if pending is discovery:
-                    roster = capture_urls(captures)
-                    pending = [(name, url) for name, url in roster.items() if name not in captures]
+            def read(name, url):
+                if capture_dir is None:
+                    body, receipt = fetch_capture_retry(client, url, root, name, budget,
+                        max_capture_bytes=MAX_BYTES * 4, max_body_bytes=MAX_BYTES)
+                    receipt.update(requested_url=url, byte_length=len(body))
+                    (root / f'{name}.receipt.json').write_bytes(encode(receipt))
                 else:
-                    pending = []
+                    body, receipt = load_replay(root, name)
+                    receipt = strict_json((root / f'{name}.receipt.json').read_bytes())
+                    budget[0] += len(body) + receipt['wire_bytes']
+                    if len(body) > MAX_BYTES or budget[0] > MAX_BYTES * 4:
+                        raise CBRSQuarantineError('capture_size_limit')
+                wire = (root / f'{name}.wire').read_bytes()
+                validate_receipt(body, receipt, url, wire)
+                return body, receipt, wire
+            capture_request_sequence(captures, discovery,
+                lambda retained: capture_urls(retained).items(), read)
             population_witness(captures)
         except (httpx.HTTPError, OSError, ValueError, TypeError, KeyError) as exc:
             location = quarantine(storage, b'', {'capture_path': str(root)}, str(exc))
@@ -477,30 +470,24 @@ def reconcile_cached_candidate(storage: StagingStorageResource,prefix: str,ready
 
 def commit_complete_candidate(storage: StagingStorageResource,prefix: str,payloads: dict,ready: dict) -> None:
     """Install one fully built local version atomically; partial builds are never discoverable."""
-    target=local_candidate_path(storage,prefix)
-    target.parent.mkdir(parents=True,exist_ok=True)
-    lock=target.parent/('.'+target.name+'.lock')
-    descriptor=os.open(lock,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1: raise CBRSQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
+    with candidate_lock(storage, prefix) as target:
         if target.exists() or target.is_symlink():
             raise CBRSQuarantineError('concurrent_or_incomplete_existing_candidate')
         with tempfile.TemporaryDirectory(prefix='.candidate-build-',dir=target.parent) as tmp:
             private=StagingStorageResource(local_dir=tmp,use_local=True)
-            for name,value in payloads.items(): immutable(private,name,value)
-            immutable(private,f'metadata/{SLUG}_candidate_ready.json',encode(ready))
-            os.rename(tmp,target)
+            candidate_transaction.install_private_candidate(
+                Path(tmp), target, payloads.items(),
+                write_one=lambda root, name, body: immutable(private, name, body),
+                ready=lambda root: (f'metadata/{SLUG}_candidate_ready.json', encode(ready)))
 
 
 @contextmanager
 def candidate_lock(storage: StagingStorageResource, prefix: str):
-    """Serialize lookup, validation and invalid-cache quarantine with installation."""
-    target=local_candidate_path(storage,prefix);target.parent.mkdir(parents=True,exist_ok=True)
-    descriptor=os.open(target.parent/('.'+target.name+'.lock'),os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
-    with os.fdopen(descriptor,'r+b') as held:
-        if os.fstat(held.fileno()).st_nlink!=1:raise CBRSQuarantineError('linked_candidate_lock')
-        fcntl.flock(held,fcntl.LOCK_EX)
+    target = local_candidate_path(storage, prefix)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with candidate_transaction.lock_path(
+            target.parent / ('.' + target.name + '.lock'), error_type=CBRSQuarantineError,
+            unsafe_code='linked_candidate_lock', require_regular=False, buffered=True):
         yield target
 
 

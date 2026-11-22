@@ -69,17 +69,17 @@ class EPAFRSArcGISTableTests(unittest.TestCase):
                 replayed, replay_manifest, replay_receipts = capture_table(
                     client, profile, Path(tmp), replay_captures=True
                 )
-        self.assertEqual(captured, rows)
-        self.assertEqual(replayed, rows)
-        self.assertEqual(replay_receipts, receipts)
-        self.assertEqual(replay_manifest["rows_captured"], 2)
-        self.assertTrue(manifest["source_ids_equal_before_after"])
-        self.assertEqual(manifest["rows_captured"], 2)
-        self.assertEqual(manifest["relationship"], [])
-        self.assertIsNone(manifest["declared_relationship_contract"])
-        self.assertEqual(manifest["portal_item"]["owner"], "EPA_GEO")
-        self.assertIn("page_001", receipts)
-        self.assertTrue(all(receipt[1]["complete_body"] for receipt in receipts.values()))
+            self.assertEqual(captured, rows)
+            self.assertEqual(replayed, rows)
+            self.assertEqual(replay_receipts, receipts)
+            self.assertEqual(replay_manifest["rows_captured"], 2)
+            self.assertTrue(manifest["source_ids_equal_before_after"])
+            self.assertEqual(manifest["rows_captured"], 2)
+            self.assertEqual(manifest["relationship"], [])
+            self.assertIsNone(manifest["declared_relationship_contract"])
+            self.assertEqual(manifest["portal_item"]["owner"], "EPA_GEO")
+            self.assertIn("page_001", receipts)
+            self.assertTrue(all(receipt[1]["complete_body"] for receipt in receipts.values()))
 
     def test_incomplete_final_page_is_rejected(self):
         profile = replace(TABLE_PROFILE, expected_rows=3, page_size=2,

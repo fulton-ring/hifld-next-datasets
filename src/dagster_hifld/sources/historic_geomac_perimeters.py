@@ -21,6 +21,10 @@ remain unapproved.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs, write_candidate_capture_files,
+)
+
 import hashlib
 import json
 import math
@@ -36,6 +40,7 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
+from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
@@ -44,7 +49,9 @@ from dagster_hifld.resources import (
     StagingStorageResource,
     default_capture_dir,
 )
-from dagster_hifld.sources.arcgis_layer import capture_page, load_receipt, load_replay
+from dagster_hifld.sources.arcgis_layer import (
+    capture_layer, capture_page, load_receipt, load_replay, RetainedCaptureView,
+)
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     content_derived_version,
@@ -248,7 +255,7 @@ def _page_body(root: Path, name: str, receipt: dict) -> bytes:
 def _population(root: Path, static: dict[str, tuple[bytes, dict]],
                 page_names: list[str], receipts: dict[str, dict],
                 page_size: int = PAGE_SIZE) -> tuple[dict, list[dict], dict]:
-    docs = {name: json.loads(body) for name, (body, _receipt) in static.items()}
+    docs = CaptureDocuments(static)
     if _canonical(docs["service_before"]) != _canonical(docs["service_after"]):
         raise ValueError("ifph_service_changed_during_capture")
     layer, layer_after = docs["layer_before"], docs["layer_after"]
@@ -494,29 +501,33 @@ def capture_historic_perimeters(storage: StagingStorageResource, *, version: str
                     ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
                     ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
                 ]
-                for name, url in documents:
-                    body, receipt = _capture(client, url, root, name)
-                    static[name] = (body, receipt)
-                    receipts[name] = receipt
-                ids = json.loads(static["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids, list) or not ids
-                        or any(type(value) is not int for value in ids)
-                        or len(ids) != len(set(ids))):
-                    raise ValueError("ifph_initial_id_population_drift")
-                for start in range(0, len(sorted(ids)), page_size):
-                    name = f"page_{start:05d}"
-                    _body, receipt = _capture(client, _scope_query(name, page_size), root, name)
-                    page_names.append(name)
-                    receipts[name] = receipt
-                for name, url in [
-                    ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                    ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                    ("layer_after", LAYER_URL + "?f=pjson"),
-                    ("service_after", SERVICE_URL + "?f=pjson"),
-                ]:
-                    body, receipt = _capture(client, url, root, name)
-                    static[name] = (body, receipt)
-                    receipts[name] = receipt
+                def fetch(client, url, root, name):
+                    value = _capture(client, url, root, name)
+                    receipts[name] = value[1]
+                    if name.startswith("page_"):
+                        page_names.append(name)
+                    else:
+                        static[name] = value
+                    return value
+
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids
+                            or any(type(value) is not int for value in ids)
+                            or len(ids) != len(set(ids))):
+                        raise ValueError("ifph_initial_id_population_drift")
+                    return sorted(ids)
+
+                def roster(ids):
+                    return [(f"page_{start:05d}", _scope_query(f"page_{start:05d}", page_size))
+                            for start in range(0, len(ids), page_size)] + [
+                        (name, _scope_query(name, page_size))
+                        for name in ("count_after", "ids_after", "layer_after", "service_after")]
+
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, page_size, client=client,
+                    captures=RetainedCaptureView(root), discovery_documents=documents,
+                    validate_seed=validate_seed, roster=roster, fetch=fetch,
+                    on_validation_error=lambda view: _population(root, static, page_names, receipts, page_size))
             manifest = {"complete": True,
                         "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         "artifact_names": sorted(receipts), "receipts": receipts}
@@ -630,14 +641,13 @@ def capture_historic_perimeters(storage: StagingStorageResource, *, version: str
     provenance_projection(manifest)
     feature_count = len(features)
     del features
-    write_immutable(storage, f"{prefix}/{parquet_path}", parquet)
-    write_immutable(storage, f"{prefix}/metadata/source_manifest.json", _canonical(manifest) + b"\n")
-    write_immutable(storage, f"{prefix}/metadata/source_audit.json", _canonical(audit) + b"\n")
-    for name, receipt in receipts.items():
-        body = static[name][0] if name in static else _page_body(root, name, receipt)
-        write_immutable(storage, f"{prefix}/raw/{name}.body", body)
-        write_immutable(storage, f"{prefix}/raw/{name}.wire", (root / f"{name}.wire").read_bytes())
-        write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
+    write_candidate_outputs(storage, prefix, {
+        parquet_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
+        "metadata/source_audit.json": _canonical(audit) + b"\n"}, snapshot_check="none")
+    write_candidate_capture_files(
+        storage, prefix, root, receipts,
+        lambda directory, name: static[name][0] if name in static else _page_body(directory, name, receipts[name]),
+        order="insertion")
     ready = {"approved": False, "version": resolved_version,
              "objects": {parquet_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
              "source_population_complete": True,
