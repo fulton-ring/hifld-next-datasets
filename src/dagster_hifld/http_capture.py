@@ -65,12 +65,13 @@ def capture_retention_budget(root: Path, limit: int):
     token = _retention_budget.set(budget)
     try:
         yield
-        if budget.exceeded:
-            raise ValueError("source_capture_budget_exceeded")
     except Exception as exc:
         if budget.exceeded:
             raise ValueError("source_capture_budget_exceeded") from exc
         raise
+    else:
+        if budget.exceeded:
+            raise ValueError("source_capture_budget_exceeded")
     finally:
         _retention_budget.reset(token)
 
@@ -256,7 +257,7 @@ def capture_http_response(
     failure = error_type = None
     phase = "response_validation"
     budget = _retention_budget.get() if apply_retention_budget else None
-    charge = budget.response_charge() if budget is not None else None
+    charge = None
 
     def reservation(kind: str, allocation: int) -> None:
         nonlocal phase
@@ -279,6 +280,7 @@ def capture_http_response(
         pending_decoded = b""
 
     try:
+        charge = budget.response_charge() if budget is not None else None
         if response.is_stream_consumed:
             failure = "wire_stream_unavailable"
         elif encoding not in {"identity", "gzip", "deflate"}:

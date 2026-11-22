@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
@@ -12,7 +13,7 @@ from dagster_hifld.sources.capture_common import capture_get
 
 
 class CaptureLayerBudgetTests(unittest.TestCase):
-    def capture(self, root, budget, *, compressed=False, retry=False, large_seed=False):
+    def capture(self, root, budget, *, compressed=False, retry=False, large_seed=False, during_fetch=None):
         seen = []
         def serve(request):
             seen.append(str(request.url))
@@ -34,6 +35,8 @@ class CaptureLayerBudgetTests(unittest.TestCase):
             headers = {'Content-Encoding': 'gzip'} if compressed else {}
             return httpx.Response(200, headers=headers, stream=httpx.ByteStream(wire))
         def fetch(client, url, root, name):
+            if during_fetch is not None and name == "ids_before":
+                during_fetch()
             if retry:
                 return arcgis_layer.capture_with_retry(client, url, root, name,
                     max_bytes=10000, attempts=2, base_delay=0)
@@ -104,3 +107,40 @@ class CaptureLayerBudgetTests(unittest.TestCase):
                 body, _receipt = capture_get(client, 'https://example.test/outside', root / 'outside',
                                              'document', max_bytes=10000)
             self.assertEqual(body, b'outside')
+
+    def test_response_snapshot_charges_prefix_and_excludes_replaced_slots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.capture(root / 'baseline', 100000)
+            size = self.retained(root / 'baseline')
+            target = root / 'resumed'
+            target.mkdir()
+            for suffix in ('body', 'wire'):
+                (target / ('ids_before.' + suffix)).write_bytes(b'old-slot' * 1000)
+                (target / ('prior-attempt.' + suffix)).write_bytes(b'p')
+            self.capture(target, size + 2)
+            self.assertEqual(self.retained(target), size + 2)
+            self.assertEqual((target / 'prior-attempt.body').read_bytes(), b'p')
+
+    def test_nested_acquisition_restores_outer_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with self.assertRaisesRegex(ValueError, 'source_capture_budget_exceeded'):
+                self.capture(root / 'outer', 1, during_fetch=lambda: self.capture(root / 'inner', 100000))
+            self.assertLessEqual(self.retained(root / 'outer'), 1)
+            self.assertTrue((root / 'inner/ids_after.body').is_file())
+
+    def test_unrelated_thread_does_not_inherit_acquisition_budget(self):
+        with tempfile.TemporaryDirectory() as tmp, ThreadPoolExecutor(max_workers=1) as executor:
+            root = Path(tmp)
+            def unrelated_capture():
+                with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(
+                        200, stream=httpx.ByteStream(b'unrelated')))) as client:
+                    return capture_get(client, 'https://example.test/other', root / 'other',
+                                       'document', max_bytes=10000)
+            def concurrent_capture():
+                body, _receipt = executor.submit(unrelated_capture).result(timeout=10)
+                self.assertEqual(body, b'unrelated')
+            with self.assertRaisesRegex(ValueError, 'source_capture_budget_exceeded'):
+                self.capture(root / 'outer', 1, during_fetch=concurrent_capture)
+            self.assertEqual((root / 'other/document.body').read_bytes(), b'unrelated')
