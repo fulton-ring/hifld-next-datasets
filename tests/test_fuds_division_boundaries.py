@@ -52,10 +52,12 @@ class FudsDivisionBoundariesTests(unittest.TestCase):
             docs=_fixtures()
             def fake_get(_client,url,root,name,max_bytes):
                 body=json.dumps(docs[name],separators=(",",":")).encode(); wire=body
+                (root/f"{name}.body").write_bytes(body)
                 (root/f"{name}.wire").write_bytes(wire)
                 receipt={"method":"GET","url":url,"final_url":url,"observed_at":"2026-01-01T00:00:00Z",
                     "status":200,"complete_body":True,"wire_bytes":len(wire),"wire_sha256":hashlib.sha256(wire).hexdigest(),
                     "bytes":len(body),"sha256":hashlib.sha256(body).hexdigest(),"content_encoding":"identity","content_length":len(body),"error_code":None}
+                (root/f"{name}.receipt.json").write_text(json.dumps(receipt,sort_keys=True,separators=(",",":"))+"\n")
                 return body,receipt
             with patch.object(source,"PAGE_SIZE",1), patch.object(source,"capture_get",side_effect=fake_get):
                 candidate=source.capture_fuds_division_boundaries(storage,version="vfixture",capture_directory=tmp+"/captures")

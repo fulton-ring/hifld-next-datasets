@@ -182,6 +182,9 @@ class CaptureDocuments(Mapping):
             raise KeyError(name)
         return self._read(name)
 
+    def __contains__(self, name):
+        return name in self._names
+
     def __iter__(self):
         return iter(self._names)
 
@@ -216,6 +219,9 @@ class RetainedReplayView(Mapping):
                              else self._receipt_error + ":" + name)
         self._validate_identity(name, receipt, self._urls[name])
         return body, receipt
+
+    def __contains__(self, name):
+        return name in self._receipts
 
     def __iter__(self):
         return iter(self._receipts)

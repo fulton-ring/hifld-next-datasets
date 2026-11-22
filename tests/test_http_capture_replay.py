@@ -91,6 +91,8 @@ class ValidateRetainedCaptureReplayTests(unittest.TestCase):
                 root, capture_names=NAMES, expected_urls=URLS,
                 load_capture=load, validate_request_identity=validate_capture_request_identity)
             self.assertEqual(reads, sorted(NAMES))
+            self.assertIn("beta", captures)
+            self.assertEqual(reads, sorted(NAMES))
             self.assertTrue(all(ref() is None for ref in bodies))
             self.assertEqual(captures["beta"][0].data, b"beta archive bytes")
             self.assertEqual(reads, ["alpha", "beta", "beta"])
