@@ -156,10 +156,10 @@ def _validate_blob_batches(root, objects, processing_files, env):
     requested = b"".join(oid.encode("ascii") + b"\n" for _path, oid in objects)
     result = _git(root, ["cat-file", "--batch-check"], env, input=requested)
     lines = result.stdout.splitlines()
-    if result.returncode or len(lines) != len(objects):
-        raise ConstructionCodeIdentityError("construction_git_read_failed")
+    metadata_failed = bool(result.returncode or len(lines) != len(objects))
     sizes = []
-    for (_path, oid), line in zip(objects, lines):
+    for index, (_path, oid) in enumerate(objects):
+        line = lines[index] if index < len(lines) else b""
         fields = line.split(b" ")
         size = -1
         if len(fields) == 3 and fields[:2] == [oid.encode("ascii"), b"blob"]:
@@ -174,8 +174,6 @@ def _validate_blob_batches(root, objects, processing_files, env):
             return
         request = b"".join(oid.encode("ascii") + b"\n" for _path, oid, _size in batch)
         result = _git(root, ["cat-file", "--batch"], env, input=request)
-        if result.returncode:
-            raise ConstructionCodeIdentityError("construction_git_read_failed")
         position = 0
         for path, oid, size in batch:
             header = f"{oid} blob {size}\n".encode("ascii")
@@ -188,7 +186,7 @@ def _validate_blob_batches(root, objects, processing_files, env):
             if hashlib.sha256(memoryview(result.stdout)[position:end]).hexdigest() != processing_files[path]:
                 raise ConstructionCodeIdentityError("construction_processing_blob_hash_mismatch")
             position = end + 1
-        if position != len(result.stdout):
+        if result.returncode or position != len(result.stdout):
             raise ConstructionCodeIdentityError("construction_git_read_failed")
 
     batch, batch_bytes, total = [], 0, 0
@@ -208,6 +206,8 @@ def _validate_blob_batches(root, objects, processing_files, env):
         batch_bytes += size
         total += size
     verify(batch)
+    if metadata_failed:
+        raise ConstructionCodeIdentityError("construction_git_read_failed")
 
 
 def _validate_packaged_identity(root: Path, code_commit: str,

@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -125,6 +126,24 @@ class ConstructionProvenanceTests(unittest.TestCase):
                 self.assert_code("construction_processing_blob_size_limit", root, sha, files)
             with patch.object(provenance, "_MAX_TOTAL_BLOB_BYTES", 18):
                 self.assert_code("construction_processing_blob_size_limit", root, sha, files)
+
+    def test_later_corrupt_git_object_cannot_hide_earlier_hash_failure(self):
+        for corruption in ("header", "footer"):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / "repo"; fixture(root)
+                (root / "a.py").write_bytes(b"a.py")
+                (root / "z.py").write_bytes(b"z.py")
+                commit(root, "ordered corrupt object")
+                sha = git(root, "rev-parse", "HEAD")
+                oid = git(root, "rev-parse", "HEAD:z.py")
+                object_path = root / ".git/objects" / oid[:2] / oid[2:]
+                object_path.chmod(0o600)
+                object_path.write_bytes(b"broken" if corruption == "header" else
+                                        zlib.compress(b"blob 4\0z.py")[:-3])
+                files = {"a.py": "0" * 64, "z.py": hashlib.sha256(b"z.py").hexdigest()}
+                self.assert_code("construction_processing_blob_hash_mismatch", root, sha, files)
+                files["a.py"] = hashlib.sha256(b"a.py").hexdigest()
+                self.assert_code("construction_git_read_failed", root, sha, files)
 
     def test_changed_source_commit_cannot_claim_the_recorded_old_blobs(self):
         with tempfile.TemporaryDirectory() as directory:
