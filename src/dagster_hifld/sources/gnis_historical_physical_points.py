@@ -78,6 +78,7 @@ from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _s
 from dagster_hifld.sources.arcgis_layer import (
     capture_witness, capture_with_retry, load_receipt,
     producer_error_doc, preserve_failed_attempt, read_capture, witness_aside,
+    save_state as _save_state,
 )
 
 DATASET_SLUG = "historical-physical-points-1"
@@ -492,12 +493,6 @@ def _load_state(capture_root: Path) -> dict[str, object]:
     if not isinstance(state, dict) or not isinstance(state.get("pages"), list):
         raise GnisHistoricalPhysicalPointsError("capture_state_invalid")
     return state
-
-
-def _save_state(capture_root: Path, state: Mapping[str, object]) -> None:
-    tmp = capture_root / "capture_state.json.tmp"
-    tmp.write_bytes(_canonical(dict(state)) + b"\n")
-    tmp.replace(capture_root / "capture_state.json")
 
 
 def _retained_or_fetch(client: httpx.Client, capture_root: Path, name: str,

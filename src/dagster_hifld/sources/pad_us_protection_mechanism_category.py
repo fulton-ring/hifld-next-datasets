@@ -32,7 +32,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.arcgis_layer import load_replay
+from dagster_hifld.sources.arcgis_layer import load_replay, save_state as _save_state
 from dagster_hifld.sources.esri_geometry import to_wkb
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
@@ -332,12 +332,6 @@ def _load_state(capture_root: Path) -> dict[str, object]:
             or not (state.get("tail") is None or isinstance(state.get("tail"), dict))):
         raise PadUsProtectionError("capture_state_invalid")
     return state
-
-
-def _save_state(capture_root: Path, state: Mapping[str, object]) -> None:
-    tmp = capture_root / "capture_state.json.tmp"
-    tmp.write_bytes(_canonical(dict(state)) + b"\n")
-    tmp.replace(capture_root / "capture_state.json")
 
 
 def _retained_or_fetch(client: httpx.Client | None, capture_root: Path, name: str,
