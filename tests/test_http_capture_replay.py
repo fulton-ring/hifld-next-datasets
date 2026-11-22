@@ -79,6 +79,7 @@ class ValidateRetainedCaptureReplayTests(unittest.TestCase):
             reads, bodies = [], []
 
             def load(root, name):
+                self.assertTrue(all(ref() is None for ref in bodies))
                 body, wire, receipt = _load_capture(root, name)
                 reads.append(name)
                 body = Body(body)
