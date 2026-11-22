@@ -25,6 +25,7 @@ import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
+from dagster_hifld.sources.arcgis_layer import fetch_capture_get, fetch_capture_retry
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
@@ -85,52 +86,18 @@ _RESPONSE_LIMIT_CODES = {"wire_limit_exceeded", "decoded_limit_exceeded", "wire_
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]) -> tuple[bytes, dict]:
-    """Capture one response under the shared total budget, mapping limit failures."""
-    budget_start = budget[0]
-    sizes = {"wire": 0, "body": 0}
-
-    def before_retain(kind: str, data: bytes) -> None:
-        sizes[kind] += len(data)
-        budget[0] = budget_start + sizes["wire"] + sizes["body"]
-
-    def reserve(progress) -> None:
-        if (budget_start + progress.wire_bytes_retained + progress.decoded_bytes_retained
-                + progress.reserve_bytes > MAX_CAPTURE_BYTES):
-            raise ValueError("source_capture_budget_exceeded")
-
-    try:
-        return capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES,
-                           reserve=reserve, before_retain=before_retain)
-    except ValueError as exc:
-        if not str(exc).startswith("incomplete_source_capture:"):
-            raise
-        receipt = json.loads((root / f"{name}.receipt.json").read_bytes())
-        error_code = receipt.get("error_code")
-        if error_code in _RESPONSE_LIMIT_CODES:
-            raise ValueError("source_response_limit_exceeded:" + str(error_code)) from None
-        if error_code == "reserve_error":
-            raise ValueError("source_capture_budget_exceeded") from None
-        raise
+    return fetch_capture_get(client, url, root, name, budget,
+                             max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                             response_limit_codes=_RESPONSE_LIMIT_CODES)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str,
                  budget: list[int], *, schedule: tuple[float, ...] = (0.0, 2.0)) -> tuple[bytes, dict]:
-    """Retry transient incomplete reads with backoff, retaining every attempt."""
-    last = None
-    for attempt, wait in enumerate(schedule):
-        if wait:
-            time.sleep(wait)
-        attempt_name = f"{name}.attempt{attempt + 1}"
-        try:
-            body, receipt = _fetch(client, url, root, attempt_name, budget)
-            for suffix in ("body", "wire", "receipt.json"):
-                (root / f"{attempt_name}.{suffix}").replace(root / f"{name}.{suffix}")
-            return body, receipt
-        except ValueError as exc:
-            last = exc
-            if not str(exc).startswith("incomplete_source_capture:"):
-                raise
-    raise last
+    return fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                               attempts=len(schedule), schedule=schedule,
+                               fetch=_fetch,
+                               retry_transport_errors=False)
 
 
 def _esri_polygon(geometry: dict) -> bytes:

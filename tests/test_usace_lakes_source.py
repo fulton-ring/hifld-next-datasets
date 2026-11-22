@@ -1,5 +1,6 @@
 """Focused native type and geometry tests for the official IENC lake class."""
 from __future__ import annotations
+from dagster_hifld.sources import arcgis_layer as shared_fetch
 
 import io
 import unittest
@@ -54,7 +55,7 @@ class UsaceLakesSourceTest(unittest.TestCase):
         self.assertEqual(names, ["OBJECTID", "SHAPE", "Object_Name", "Information", "Source_Date", "Source_Indication", "Scale_Minimum", "Source_Dataset", "Feature_ID"])
 
     def test_local_capture_budget_failure_is_not_retried(self) -> None:
-        with patch("dagster_hifld.sources.usace_lakes._fetch", side_effect=ValueError("source_capture_budget_exceeded")) as fetch:
+        with patch("dagster_hifld.sources.arcgis_layer.fetch_capture", side_effect=ValueError("source_capture_budget_exceeded")) as fetch:
             with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
                 _fetch_retry(None, "https://example.invalid", __import__("pathlib").Path("/tmp"), "page_000", [0])
         fetch.assert_called_once()
@@ -86,7 +87,7 @@ class UsaceLakesSourceTest(unittest.TestCase):
                                        content_encoding=None, content_length=None)
             return SimpleNamespace(error_code=None, error_type=None, status_code=200, complete=True,
                                    content_encoding=None, content_length=None)
-        with patch("dagster_hifld.sources.usace_lakes.capture_http_response", side_effect=over_budget):
+        with patch("dagster_hifld.sources.arcgis_layer.capture_http_response", side_effect=over_budget):
             with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
                 _fetch(Client(), "https://example.invalid/page", __import__("pathlib").Path("/tmp"), "configured-cap-test", [0], 12_000_000)
         self.assertEqual(response_limits, [(12_000_000, 12_000_000)])

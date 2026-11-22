@@ -25,6 +25,7 @@ from dagster_hifld.http_capture import capture_http_response, capture_roster_dig
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import fetch_capture, fetch_capture_retry
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import _validate_spatial_reference, esri_polygon_wkb
@@ -69,73 +70,15 @@ EXPECTED_LAYER_EXTENT = {
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    root.mkdir(parents=True, exist_ok=True)
-    body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
-    for path in (body_path, wire_path):
-        path.unlink(missing_ok=True)
-    hashes = {"body": hashlib.sha256(), "wire": hashlib.sha256()}
-    sizes = {"body": 0, "wire": 0}
-    budget_start=budget[0]
-    observed = datetime.now(timezone.utc).isoformat()
-    def retain(path, kind):
-        def write(chunk):
-            with path.open("ab") as stream:
-                stream.write(chunk)
-            hashes[kind].update(chunk); sizes[kind] += len(chunk)
-            budget[0]=budget_start+sizes["wire"]+sizes["body"]
-        return write
-    def reserve(progress):
-        if budget_start+progress.wire_bytes_retained+progress.decoded_bytes_retained+progress.reserve_bytes>MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-    response = None
-    result = None
-    final_url = url
-    transport_error = None
-    try:
-        with client.stream("GET", url, headers={"Accept-Encoding": "identity"}) as response:
-            final_url = str(response.url)
-            result = capture_http_response(response, max_wire_bytes=MAX_BODY_BYTES,
-                max_decoded_bytes=MAX_BODY_BYTES, reserve=reserve,
-                retain_wire=retain(wire_path, "wire"), retain_decoded=retain(body_path, "body"))
-    except Exception as exc:
-        transport_error = type(exc).__name__
-    receipt = {"method":"GET", "url":url, "final_url":final_url, "observed_at":observed,
-        "status":result.status_code if result is not None else (response.status_code if response is not None else None),
-        "complete_body":bool(result is not None and result.complete and transport_error is None),
-        "wire_bytes":sizes["wire"], "wire_sha256":hashes["wire"].hexdigest(),
-        "bytes":sizes["body"], "sha256":hashes["body"].hexdigest(),
-        "content_encoding":result.content_encoding if result is not None else None,
-        "content_length":result.content_length if result is not None else None,
-        "error_code":result.error_code if result is not None else ("transport_error" if transport_error else "capture_result_missing"),
-        "error_type":result.error_type if result is not None else transport_error}
-    (root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
-    if transport_error:
-        raise httpx.TransportError("capture_transport_error:" + transport_error)
-    if result is None:
-        raise ValueError("capture_result_missing")
-    body, wire = body_path.read_bytes(), wire_path.read_bytes()
-    if (not result.complete or result.status_code != 200 or final_url != url
-        or len(body) != receipt["bytes"] or _sha(body) != receipt["sha256"]
-        or len(wire) != receipt["wire_bytes"] or _sha(wire) != receipt["wire_sha256"]):
-        raise ValueError("incomplete_source_capture:" + name)
-    return body, receipt
+    return fetch_capture(client, url, root, name, budget,
+                         max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    """Retry one transient transport/incomplete read, retaining every attempt."""
-    last = None
-    for attempt in range(2):
-        attempt_name=f"{name}.attempt{attempt+1}"
-        try:
-            body,receipt=_fetch(client,url,root,attempt_name,budget)
-            for suffix in ("body","wire","receipt.json"):
-                (root/f"{attempt_name}.{suffix}").replace(root/f"{name}.{suffix}")
-            return body,receipt
-        except (httpx.TransportError,ValueError) as exc:
-            last=exc
-            if isinstance(exc,ValueError) and not str(exc).startswith("incomplete_source_capture:"):
-                raise
-    raise last
+    return fetch_capture_retry(client, url, root, name, budget,
+                               max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
+                               attempts=2, schedule=(),
+                               fetch=_fetch)
 
 
 def _esri_polygon(geometry: dict) -> bytes:

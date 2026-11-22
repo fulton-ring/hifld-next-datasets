@@ -59,6 +59,10 @@ false and the draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.arcgis_layer import (
+    capture_document_retry, bracket_document_complete as _document_complete,
+)
+
 import hashlib
 import json
 import math
@@ -75,7 +79,6 @@ import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import Polygon
 
-from dagster_hifld.sources.arcgis_capture_sequence import capture_validated_document
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups, ring_is_ccw
 from time import sleep, time_ns
@@ -217,38 +220,15 @@ _BRACKET_RETRY_ATTEMPTS = 4
 _BRACKET_RETRY_BASE_DELAY_SECONDS = 5.0
 
 
-def _witness_refused(root: Path, name: str) -> Path:
-    """Move a retained refused answer aside so the slot can be refetched."""
-    stamp = time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(root / f"{name}.error-{stamp}.{suffix}")
-    return root / f"{name}.error-{stamp}.body"
 
 
-def _document_complete(name: str, body: bytes) -> bool:
-    """Distinguish a well-formed capture document from a transient answer."""
-    try:
-        document = json.loads(body)
-    except ValueError:
-        return False
-    if not isinstance(document, dict) or "error" in document:
-        return False
-    if name.startswith("ids_"):
-        return isinstance(document.get("objectIds"), list) and bool(document.get("objectIds"))
-    if name.startswith("count_"):
-        return isinstance(document.get("count"), int)
-    return bool(document)
 
 
 def _acquire_document(client: httpx.Client, root: Path, name: str, url: str, *,
                       retained_path: bool = False):
-    return capture_validated_document(client, url, root, name, max_bytes=MAX_BODY_BYTES,
-        attempts=_BRACKET_RETRY_ATTEMPTS, complete=lambda body: _document_complete(name, body),
-        preserve_refusal=lambda: _witness_refused(root, name),
-        schedule=tuple(_BRACKET_RETRY_BASE_DELAY_SECONDS * i for i in range(_BRACKET_RETRY_ATTEMPTS - 1)),
-        retained_path=retained_path)
+    return capture_document_retry(client, url, root, name, max_bytes=MAX_BODY_BYTES,
+        attempts=_BRACKET_RETRY_ATTEMPTS, base_delay=_BRACKET_RETRY_BASE_DELAY_SECONDS,
+        complete=_document_complete, retained_path=retained_path)
 
 
 def _offline_wire(root: Path, name: str, body: bytes, receipt: Mapping[str, object]) -> bytes:

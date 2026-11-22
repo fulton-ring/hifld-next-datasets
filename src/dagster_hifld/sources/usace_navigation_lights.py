@@ -29,6 +29,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_with_retry, fetch_capture_retry
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
@@ -114,28 +115,15 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    retained = sum(path.stat().st_size for suffix in ("*.body", "*.wire")
-                   for path in root.glob(suffix) if path.is_file())
-    if retained + 2 * PAGE_MAX_BYTES > CAPTURE_MAX_BYTES:
-        raise ValueError("source_capture_budget_exceeded_before_request")
-    return capture_get(client, url, root, name, max_bytes=PAGE_MAX_BYTES)
+    return capture_with_retry(client, url, root, name, attempts=1, base_delay=0,
+                              max_bytes=PAGE_MAX_BYTES, max_total_bytes=CAPTURE_MAX_BYTES, error_document=None)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    """Retry one transient transport/incomplete read, retaining every attempt."""
-    last = None
-    for attempt in range(2):
-        attempt_name = f"{name}.attempt{attempt + 1}"
-        try:
-            body, receipt = _fetch(client, url, root, attempt_name)
-            for suffix in ("body", "wire", "receipt.json"):
-                (root / f"{attempt_name}.{suffix}").replace(root / f"{name}.{suffix}")
-            return body, receipt
-        except (httpx.TransportError, ValueError) as exc:
-            last = exc
-            if isinstance(exc, ValueError) and not str(exc).startswith("incomplete_source_capture:"):
-                raise
-    raise last
+    return fetch_capture_retry(client, url, root, name, [0],
+                               max_capture_bytes=CAPTURE_MAX_BYTES, max_body_bytes=PAGE_MAX_BYTES,
+                               attempts=2, schedule=(),
+                               fetch=lambda c, u, r, n, _budget: _fetch(c, u, r, n))
 
 
 def _load_capture(root: Path, name: str) -> tuple[bytes, bytes, dict]:
