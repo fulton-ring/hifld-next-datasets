@@ -922,6 +922,28 @@ def _validate_manifest_page_parts(spec: WbdHuSpec, page_parts: object,
     return page_parts
 
 
+def _read_window_attempts(spec: WbdHuSpec, root: Path, native_names):
+    if not any(".error-" in path.name for path in root.iterdir()):
+        return RetainedCaptureView(root)
+    ids = validate_roster_document(spec, json.loads(_load_capture(root, "ids_before")[0]), "attempts")
+    page_count = page_count_for(spec, ids)
+
+    def singleton(name):
+        if not is_page_part_name(spec, name, page_count=page_count):
+            return False
+        index = int(name[5:9])
+        window = ids[index * spec.page_size:(index + 1) * spec.page_size]
+        for tag in name[9:]:
+            half = (len(window) + 1) // 2
+            window = window[:half] if tag == "a" else window[half:]
+        return len(window) == 1
+
+    return wbd_capture.read_window_attempts(root, native_names,
+        enabled=spec.single_refusal_retries > 0, singleton_window=singleton,
+        window_url=lambda name: page_part_url(spec, ids, int(name[5:9]), name),
+        is_refusal=is_refusal, max_wire_bytes=spec.page_max_bytes)
+
+
 def read_replay(spec: WbdHuSpec, root: Path) -> tuple[dict[str, tuple[bytes, dict]],
                                                       dict[str, list[str]], list[str]]:
     """Re-read a completed capture directory against its sealed manifest.
@@ -960,13 +982,22 @@ def read_replay(spec: WbdHuSpec, root: Path) -> tuple[dict[str, tuple[bytes, dic
             page_slots.add(page)
     expected_names = {*METADATA_NAMES, *page_slots, *page_refusals}
     roster_files = manifest.get("artifact_roster")
-    if not isinstance(roster_files, dict) or set(manifest["receipts"]) != expected_names:
+    if not isinstance(roster_files, dict):
         raise ValueError("retained_capture_roster_or_names_invalid")
     validate_capture_roster(root, set(roster_files) | {"capture_manifest.json"})
     if roster_files != capture_roster_digests(root, exclude={"capture_manifest.json"}):
         raise ValueError("retained_capture_artifact_digest_mismatch")
+    attempts = _read_window_attempts(spec, root, expected_names)
+    all_names = expected_names | set(attempts)
+    expected_artifacts = {name + suffix for name in all_names
+                          for suffix in (".body", ".wire", ".receipt.json")}
+    if set(manifest["receipts"]) != all_names or set(roster_files) != expected_artifacts:
+        raise ValueError("retained_capture_roster_or_names_invalid")
+    for name in attempts:
+        if attempts[name][1] != manifest["receipts"][name]:
+            raise ValueError("retained_capture_manifest_receipt_mismatch:" + name)
     expected_urls = dict(capture_roster(spec, ids))
-    captures = RetainedCaptureView(root)
+    captures = RetainedCaptureView(root, attempts)
     for name in sorted(expected_names):
         body, _wire, receipt = _load_capture(root, name)
         if receipt != manifest["receipts"].get(name):
@@ -1051,6 +1082,7 @@ def capture_candidate(spec: WbdHuSpec, storage: StagingStorageResource, *, versi
                     window_capture=lambda active, ids, index, path: capture_page_window(
                         spec, active, ids, index, path, capture=capture),
                     project=wbd_capture.body_and_receipt)
+                captures.update(_read_window_attempts(spec, root, set(captures)))
         except Exception as exc:
             receipts = {}
             for path in sorted(root.glob("*.receipt.json")):
@@ -1061,6 +1093,8 @@ def capture_candidate(spec: WbdHuSpec, storage: StagingStorageResource, *, versi
             (root / "capture_manifest.json").write_bytes(_canonical({"complete": False,
                 "captured_at": datetime.now(timezone.utc).isoformat(),
                 "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
+            if any(".error-" in path.name for path in root.iterdir()):
+                captures.update(_read_window_attempts(spec, root, set(receipts)))
             if captures:
                 quarantine_incomplete_capture(storage, root, spec.dataset_slug, version,
                                               captures, type(exc).__name__)

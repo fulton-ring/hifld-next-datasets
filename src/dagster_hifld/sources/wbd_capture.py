@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,11 +46,24 @@ class _WindowCapture:
 def retain_refusal_files(root, name, *, reject_collision=True):
     """Retain the body, wire and receipt under one refused-window identity."""
     retained = name + '_refusal'
+    retain_response_files(root, name, retained, reject_collision=reject_collision)
+    return retained
+
+
+def retain_response_files(root, name, retained, *, reject_collision=True):
     for suffix in ('.body', '.wire', '.receipt.json'):
         source, target = root / (name + suffix), root / (retained + suffix)
         if reject_collision and target.exists():
             raise ValueError('source_refusal_evidence_name_collision:' + target.name)
         source.replace(target)
+
+
+def preserve_window_attempt(root, name):
+    pattern = re.compile(re.escape(name) + r"\.error-(\d+)\.(?:body|wire|receipt\.json)$")
+    ordinals = [int(match.group(1)) for path in root.iterdir()
+                if (match := pattern.fullmatch(path.name))]
+    retained = f"{name}.error-{max(ordinals, default=0) + 1}"
+    retain_response_files(root, name, retained)
     return retained
 
 
@@ -95,6 +109,7 @@ def capture_window_receipts(client, roster, index, root, *, policy: WindowPolicy
         body, receipt = context.fetch(name, url)
         if is_refusal(body) and len(ids) == 1:
             for _attempt in range(policy.single_refusal_retries):
+                preserve_window_attempt(root, name)
                 time.sleep(policy.single_refusal_retry_seconds)
                 body, receipt = context.fetch(name, url)
                 if not is_refusal(body):
@@ -267,3 +282,48 @@ def capture_segmented_layer(slices, client, root, state, *,
                               refresh=bool(ranges) or state.get('complete') is not True)
         state['complete'] = True
         checkpoints.save(root, state)
+
+
+_WINDOW_ATTEMPT_ARTIFACT = re.compile(r'(page_\d{4}[ab]*\.error-[1-9]\d*)\.(body|wire|receipt\.json)$')
+
+
+def read_window_attempts(root, native_names, *, enabled, singleton_window,
+                          window_url, is_refusal, max_wire_bytes):
+    """Validate and expose singleton retry evidence separately from page parts.
+
+    Every admitted witness has exactly three regular, hash-bound artifacts and
+    the same URL as a completed singleton geometry window. Arbitrary error-named
+    files, non-singleton windows and served-page bodies are never admitted.
+    """
+    from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+    from dagster_hifld.sources.arcgis_layer import load_replay
+    from dagster_hifld.sources.capture_common import validate_capture_request_identity
+
+    artifacts = {}
+    for path in root.iterdir():
+        if '.error-' not in path.name:
+            continue
+        match = _WINDOW_ATTEMPT_ARTIFACT.fullmatch(path.name)
+        if match is None:
+            raise ValueError('retained_capture_attempt_name_invalid:' + path.name)
+        artifacts.setdefault(match.group(1), set()).add(match.group(2))
+    attempts = RetainedCaptureView(root)
+    native_names = set(native_names)
+    for name, suffixes in sorted(artifacts.items()):
+        bound = name.rsplit('.error-', 1)[0]
+        if (not enabled or suffixes != {'body', 'wire', 'receipt.json'}
+                or not {bound, bound + '_attrs', bound + '_refusal'} & native_names
+                or not singleton_window(bound)):
+            raise ValueError('retained_capture_attempt_window_invalid:' + name)
+        for suffix, limit in (('body', 4096), ('wire', max_wire_bytes), ('receipt.json', 65536)):
+            path = root / (name + '.' + suffix)
+            if path.is_symlink() or not path.is_file():
+                raise ValueError('retained_capture_attempt_nonregular:' + path.name)
+            if path.stat().st_size > limit:
+                raise ValueError('retained_capture_attempt_size_limit:' + path.name)
+        body, receipt = load_replay(root, name)
+        validate_capture_request_identity(name, receipt, window_url(bound))
+        if not is_refusal(body):
+            raise ValueError('retained_capture_attempt_document_drift:' + name)
+        attempts[name] = (body, receipt)
+    return attempts
