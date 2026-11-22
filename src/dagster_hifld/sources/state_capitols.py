@@ -31,6 +31,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -442,16 +443,16 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usgs-structures-draft"}) as client:
-                metadata = dict(_urls([]))
-                for name in ("service_before", "layer_before", "count_before", "ids_before"):
-                    captures[name] = _capture(client, metadata[name], root, name)
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids, list) or len(ids) != COUNT
-                        or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA):
-                    raise ValueError("source_seed_id_roster_drift")
-                for name, url in _urls(ids):
-                    if name not in captures:
-                        captures[name] = _capture(client, url, root, name)
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or len(ids) != COUNT
+                            or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA):
+                        raise ValueError("source_seed_id_roster_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, BATCH_SIZE, client=client,
+                    captures=captures, discovery_documents=_urls([])[:4], roster=_urls,
+                    validate_seed=validate_seed, fetch=_capture)
             docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
             _validate_metadata(docs["service_before"], docs["layer_before"])
             _validate_metadata(docs["service_after"], docs["layer_after"])

@@ -4,7 +4,6 @@ import unittest
 from pathlib import Path
 
 from dagster_hifld.sources import arcgis_layer
-from dagster_hifld.sources.capture_common import capture_get
 import httpx
 
 
@@ -51,3 +50,51 @@ class LayerAcquisitionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'budget'):
                 self.run_capture(Path(tmp), budget=1)
             self.assertEqual(list(Path(tmp).iterdir()), [])
+
+    def test_seed_validation_failure_keeps_lazy_prefix_for_quarantine(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            view = arcgis_layer.RetainedCaptureView(root)
+            def reject(body):
+                self.assertEqual(json.loads(body), {"objectIds": [1]})
+                raise ValueError("source_seed_contract")
+            def serve(request):
+                return httpx.Response(200, stream=httpx.ByteStream(b'{"objectIds": [1]}'))
+            with httpx.Client(transport=httpx.MockTransport(serve)) as client:
+                with self.assertRaisesRegex(ValueError, "source_seed_contract"):
+                    arcgis_layer.capture_layer('https://example.test/FeatureServer/0', root,
+                        100_000, 2, client=client, captures=view, validate_seed=reject)
+            self.assertEqual(list(view), ['ids_before'])
+            self.assertTrue((root / 'ids_before.receipt.json').is_file())
+
+    def test_non_page_named_population_and_probe_are_distinguished_by_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = 'https://example.test/FeatureServer/0'
+            def roster(ids):
+                planned = arcgis_layer.layer_capture_roster(ids, layer_url=base,
+                    service_url=base.rsplit('/', 1)[0], page_size=2)
+                return [(('features' if name == 'page_000' else name), url)
+                        for name, url in planned]
+            def serve(request):
+                query = request.url.params
+                if query.get('returnIdsOnly'):
+                    doc = {'objectIds': [1]}
+                elif query.get('returnCountOnly'):
+                    doc = {'count': 1}
+                elif query.get('outFields'):
+                    doc = {'features': [{'attributes': {'OBJECTID': 1}}]}
+                else:
+                    doc = {}
+                return httpx.Response(200, stream=httpx.ByteStream(json.dumps(doc).encode()))
+            with httpx.Client(transport=httpx.MockTransport(serve)) as client:
+                view = arcgis_layer.capture_layer(base, root, 100_000, 2,
+                    client=client, roster=roster)
+            self.assertIn('features', view)
+
+    def test_changed_closing_witness_refuses_with_retained_documents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with self.assertRaises(ValueError):
+                self.run_capture(root, after_ids=(1, 3))
+            self.assertTrue((root / 'ids_after.body').is_file())

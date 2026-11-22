@@ -34,6 +34,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -467,16 +468,18 @@ def capture_fws_cmt_locations(storage: StagingStorageResource, *, version: str,
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/fws-cmt-draft"}) as client:
-                # Capture the source witness before deciding how many pages exist.
-                for name, url in _capture_roster()[:7]:
-                    captures[name] = capture_page(client, url, root, name)
-                count = json.loads(captures["count_before"][0]).get("count")
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                validate_capture_witness(count, ids, count, ids)
-                if not ids:
-                    raise ValueError("source_empty_population_requires_review")
-                for name, url in _capture_roster(count)[7:]:
-                    captures[name] = capture_page(client, url, root, name)
+                def validate_seed(body):
+                    count = json.loads(captures["count_before"][0]).get("count")
+                    ids = json.loads(body).get("objectIds")
+                    validate_capture_witness(count, ids, count, ids)
+                    if not ids:
+                        raise ValueError("source_empty_population_requires_review")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, 192_000_000, PAGE_SIZE, client=client,
+                    captures=captures, discovery_documents=_capture_roster()[:7],
+                    validate_seed=validate_seed, roster=lambda ids: _capture_roster(len(ids)),
+                    fetch=capture_page, on_validation_error=_validate)
             features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}

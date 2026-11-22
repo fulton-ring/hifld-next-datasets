@@ -25,6 +25,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -226,14 +227,16 @@ def capture_plate_boundaries(storage:StagingStorageResource,*,version:str,captur
         root.mkdir(parents=True,exist_ok=False); captures={}
         try:
             with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(45,connect=12),headers={"User-Agent":"hifld-next-datasets/usgs-plates-draft"}) as client:
-                metadata=dict(_urls([]))
-                for name in ("service_before","layer_before","count_before","ids_before"):
-                    captures[name]=_capture(client,metadata[name],root,name)
-                ids=json.loads(captures["ids_before"][0]).get("objectIds")
-                if not isinstance(ids,list) or len(ids)!=COUNT or _sha(_canonical(sorted(ids)))!=EXPECTED_ID_SHA: raise ValueError("source_seed_id_roster_drift")
-                for name,url in _urls(ids):
-                    if name not in captures:
-                        captures[name]=_capture(client,url,root,name)
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or len(ids) != COUNT
+                            or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA):
+                        raise ValueError("source_seed_id_roster_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, 192_000_000, BATCH_SIZE, client=client,
+                    captures=captures, discovery_documents=_urls([])[:4], roster=_urls,
+                    validate_seed=validate_seed, fetch=_capture, on_validation_error=_validate)
             fields,features,audit=_validate(captures)
         except Exception as exc:
             receipts={}; names=set()

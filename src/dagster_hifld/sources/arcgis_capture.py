@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import MutableMapping
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, parse_qs
 
 import httpx
 
@@ -57,7 +57,7 @@ class RetainedCaptureView(MutableMapping):
 def capture_layer(url, capture_dir, byte_budget, page_size, *, client=None,
                   fetch=None, roster=None, seed_name='ids_before', seed_url=None,
                   validate_seed=None, captures=None, before_fetch=None,
-                  after_fetch=None, oid_field='OBJECTID', validate_pages=True,
+                  after_fetch=None, oid_field='OBJECTID',
                   discovery_documents=(), on_validation_error=None):
     """Discover and capture a native ArcGIS population to retained disk evidence.
 
@@ -82,7 +82,7 @@ def capture_layer(url, capture_dir, byte_budget, page_size, *, client=None,
             return capture_layer(url, root, byte_budget, page_size, client=active,
                 fetch=fetch, roster=roster, seed_name=seed_name, seed_url=seed_url,
                 validate_seed=validate_seed, captures=view, before_fetch=before_fetch,
-                after_fetch=after_fetch, oid_field=oid_field, validate_pages=validate_pages,
+                after_fetch=after_fetch, oid_field=oid_field,
                 discovery_documents=discovery_documents, on_validation_error=on_validation_error)
 
     def acquire(name, request_url):
@@ -127,10 +127,9 @@ def capture_layer(url, capture_dir, byte_budget, page_size, *, client=None,
     for name, request_url in requests:
         acquire(name, request_url)
     try:
-        captured_ids = None
-        if validate_pages:
-            captured_ids = [feature['attributes'][oid_field]
-                        for name in view if name.startswith('page_')
+        captured_ids = [feature['attributes'][oid_field]
+                        for name, request_url in requests
+                        if parse_qs(urlsplit(request_url).query).get('outFields') == ['*']
                         for feature in json.loads(view[name][0]).get('features', [])]
         capture_witness(view, captured_ids=captured_ids)
     except (ValueError, KeyError, TypeError):

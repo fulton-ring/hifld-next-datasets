@@ -29,6 +29,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.construction_provenance import validate_construction_code_identity
+from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
 from dagster_hifld.sources.capture_common import capture_get, processing_identity, write_immutable
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -353,29 +354,25 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
         try:
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(90, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/usgs-qfaults-draft"}) as client:
-                for name, url in (("service_before", SERVICE_URL + "?f=pjson"),
-                                  ("layer_before", LAYER_URL + "?f=pjson"),
-                                  ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                                  ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}))):
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1].get("wire_bytes", 0)
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                if not isinstance(ids, list) or len(ids) != EXPECTED_COUNT or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA:
-                    raise ValueError("source_seed_id_roster_drift")
-                for index, start in enumerate(range(0, len(ids), BATCH_SIZE)):
-                    page_ids = ids[start:start + BATCH_SIZE]
-                    url = _query({"objectIds": ",".join(map(str, page_ids)), "outFields": "*",
-                                  "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-                                  "orderByFields": "OBJECTID ASC", "f": "json"})
-                    name = f"page_{index:03d}"
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1].get("wire_bytes", 0)
-                for name, url in (("layer_after", LAYER_URL + "?f=pjson"),
-                                  ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                                  ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                                  ("service_after", SERVICE_URL + "?f=pjson")):
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1].get("wire_bytes", 0)
+                def fetch(client, url, root, name):
+                    nonlocal retained
+                    value = _capture(client, url, root, name, retained)
+                    retained += value[1]["bytes"] + value[1].get("wire_bytes", 0)
+                    return value
+                def roster(ids):
+                    planned = layer_capture_roster(ids, layer_url=LAYER_URL, service_url=SERVICE_URL,
+                        page_size=BATCH_SIZE, page_params={"returnZ": "true", "returnM": "true"},
+                        after_order=("layer_after", "count_after", "ids_after", "service_after"))
+                    return planned
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if not isinstance(ids, list) or len(ids) != EXPECTED_COUNT or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA:
+                        raise ValueError("source_seed_id_roster_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, BATCH_SIZE, client=client,
+                    captures=captures, discovery_documents=(('service_before', SERVICE_URL + '?f=pjson'), ('layer_before', LAYER_URL + '?f=pjson'), ('count_before', _query({'where': '1=1', 'returnCountOnly': 'true', 'f': 'json'})), ('ids_before', _query({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}))), roster=roster,
+                    validate_seed=validate_seed, fetch=fetch)
             docs = {name: json.loads(body) for name, (body, _receipt) in captures.items()}
             _validate_metadata(docs["service_before"], docs["layer_before"])
             if docs["service_after"] != docs["service_before"] or docs["layer_after"] != docs["layer_before"]:

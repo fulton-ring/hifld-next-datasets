@@ -241,7 +241,7 @@ class MexicoUsBorderSourceTest(unittest.TestCase):
                 storage = StagingStorageResource(local_dir=str(Path(temporary) / "stage"))
                 client, responses, _calls = _client(docs, ids)
                 with patch.object(source.httpx, "Client", return_value=client), \
-                        patch.object(source, "capture_layer_roster", wraps=source.capture_layer_roster) as shared:
+                        patch.object(source, "capture_layer", wraps=source.capture_layer) as shared:
                     result = source.capture_mexico_us_border(storage, version="fixture-capture",
                         capture_directory=str(Path(temporary) / "captures"))
                 self.assertEqual(shared.call_count, 1)

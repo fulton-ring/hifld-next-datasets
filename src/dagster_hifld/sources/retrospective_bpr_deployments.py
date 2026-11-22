@@ -36,6 +36,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
@@ -499,20 +500,22 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
             urls = _expected_capture_urls()
             with httpx.Client(follow_redirects=False, timeout=httpx.Timeout(45, connect=12),
                               headers={"User-Agent": "hifld-next-datasets/ncei-retro-bpr-draft"}) as client:
-                for name in _PRE_PAGE_CAPTURE_NAMES:
-                    captures[name] = _capture(client, urls[name], root, name)
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids, list) or any(type(i) is not int for i in ids)
-                        or sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT
-                        or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256):
-                    raise ValueError("source_seed_id_roster_drift")
-                for index, start in enumerate(range(0, len(ids), PAGE_SIZE)):
-                    page_ids = ids[start:start + PAGE_SIZE]
-                    url = _query({"objectIds": ",".join(map(str, page_ids)), "outFields": "*",
-                                  "returnGeometry": "true", "orderByFields": "OBJECTID ASC", "f": "json"})
-                    captures[f"page_{index:03d}"] = _capture(client, url, root, f"page_{index:03d}")
-                for name in _POST_PAGE_CAPTURE_NAMES:
-                    captures[name] = _capture(client, urls[name], root, name)
+                def roster(ids):
+                    pages = [(f"page_{index:03d}", _query({"objectIds": ",".join(map(str, ids[start:start + PAGE_SIZE])),
+                        "outFields": "*", "returnGeometry": "true", "orderByFields": "OBJECTID ASC", "f": "json"}))
+                        for index, start in enumerate(range(0, len(ids), PAGE_SIZE))]
+                    return pages + [(name, urls[name]) for name in _POST_PAGE_CAPTURE_NAMES]
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or any(type(i) is not int for i in ids)
+                            or sorted(ids) != EXPECTED_IDS or len(set(ids)) != EXPECTED_COUNT
+                            or _sha(_canonical(sorted(ids))) != EXPECTED_ID_SHA256):
+                        raise ValueError("source_seed_id_roster_drift")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, PAGE_SIZE, client=client,
+                    captures=captures, discovery_documents=[(name, urls[name]) for name in _PRE_PAGE_CAPTURE_NAMES], roster=roster,
+                    validate_seed=validate_seed, fetch=_capture, on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
             receipts = {}

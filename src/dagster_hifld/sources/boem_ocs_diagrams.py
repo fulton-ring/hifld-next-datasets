@@ -30,6 +30,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
@@ -131,23 +132,19 @@ def _acquire(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
     try:
         with httpx.Client(follow_redirects=False, timeout=60,
                           headers={"User-Agent": "hifld-next-datasets/boem-ocs-diagrams-draft"}) as client:
-            seed, receipt = capture_get(client, _query(where="1=1", returnIdsOnly="true"), root, "ids_before", max_bytes=MAX_BODY_BYTES)
-            captures["ids_before"] = (seed, receipt)
-            ids = json.loads(seed).get("objectIds")
-            if not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids) or len(ids) != len(set(ids)):
-                raise ValueError("source_seed_id_roster_invalid")
-            # Capture the pre-count and metadata after acquiring the ID roster.
-            urls = [
-                ("portal_item", ITEM_URL), ("service_before", SERVICE_URL + "?f=pjson"),
-                ("layer_before", LAYER_URL + "?f=pjson"),
-                ("count_before", _query(where="1=1", returnCountOnly="true")),
-                *[(n, u) for n, u in _capture_names(ids) if n not in {"portal_item", "service_before", "layer_before", "count_before", "ids_before"}],
-            ]
-            for name, url in urls:
-                if name == "ids_before":
-                    continue
-                body, receipt = capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
+            def validate_seed(seed):
+                ids = json.loads(seed).get("objectIds")
+                if (not isinstance(ids, list) or not ids or any(type(i) is not int for i in ids)
+                        or len(ids) != len(set(ids))):
+                    raise ValueError("source_seed_id_roster_invalid")
+                return ids
+            captures = RetainedCaptureView(root, captures)
+            capture_layer(LAYER_URL, root, MAX_BODY_BYTES, PAGE_SIZE, client=client,
+                captures=captures, seed_url=_query(where="1=1", returnIdsOnly="true"),
+                validate_seed=validate_seed, roster=lambda ids: [("portal_item", ITEM_URL), ("service_before", SERVICE_URL + "?f=pjson"),
+                    ("layer_before", LAYER_URL + "?f=pjson"), ("count_before", _query(where="1=1", returnCountOnly="true")),
+                    *[(n, u) for n, u in _capture_names(ids) if n not in {"portal_item", "service_before", "layer_before", "count_before", "ids_before"}]], on_validation_error=_validate,
+                fetch=lambda client, url, root, name: capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES))
         return captures
     except Exception as exc:
         if captures:

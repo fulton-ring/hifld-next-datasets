@@ -26,6 +26,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
 from dagster_hifld.sources.capture_common import capture_get, processing_identity, write_immutable
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -383,30 +384,30 @@ def capture_courthouses(storage: StagingStorageResource, *, version: str,
                 requests = [("service_before", SERVICE_URL + "?f=pjson"), ("layer_before", LAYER_URL + "?f=pjson"),
                     ("count_before", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
                     ("ids_before", _query({"where":"1=1","returnIdsOnly":"true","f":"json"}))]
-                for name, url in requests:
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
-                count = json.loads(captures["count_before"][0]).get("count")
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                ids = validate_capture_witness(count, ids, count, ids)
-                if not ids:
-                    raise ValueError("courthouses_empty_population_requires_review")
-                probe_url = _query({"objectIds": str(ids[0]), "outFields": "OBJECTID", "returnGeometry": "true",
-                                    "returnZ": "true", "returnM": "true", "f": "json"})
-                captures["dimensions_probe"] = _capture(client, probe_url, root, "dimensions_probe", retained)
-                retained += captures["dimensions_probe"][1]["bytes"] + captures["dimensions_probe"][1]["wire_bytes"]
-                for start in range(0, len(ids), BATCH_SIZE):
-                    page_ids = ids[start:start + BATCH_SIZE]
-                    name = f"page_{start:05d}"
-                    url = _query({"objectIds": ",".join(map(str, page_ids)), "outFields": "*", "returnGeometry": "true",
-                                  "returnZ": "true", "returnM": "true", "orderByFields": "OBJECTID ASC", "f": "json"})
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
-                for name, url in [("count_after", _query({"where":"1=1","returnCountOnly":"true","f":"json"})),
-                    ("ids_after", _query({"where":"1=1","returnIdsOnly":"true","f":"json"})),
-                    ("layer_after", LAYER_URL + "?f=pjson"), ("service_after", SERVICE_URL + "?f=pjson")]:
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
+                def fetch(client, url, root, name):
+                    nonlocal retained
+                    value = _capture(client, url, root, name, retained)
+                    retained += value[1]["bytes"] + value[1].get("wire_bytes", 0)
+                    return value
+                def roster(ids):
+                    planned = layer_capture_roster(ids, layer_url=LAYER_URL, service_url=SERVICE_URL,
+                        page_size=BATCH_SIZE, page_params={"returnZ": "true", "returnM": "true"},
+                        after_order=("count_after", "ids_after", "layer_after", "service_after"),
+                        page_namer=lambda index, ids: f"page_{index * BATCH_SIZE:05d}")
+                    probe = ("dimensions_probe", _query({"objectIds": str(ids[0]), "outFields": "OBJECTID", "returnGeometry": "true",
+                        "returnZ": "true", "returnM": "true", "f": "json"}))
+                    return planned[:4] + [probe] + planned[4:]
+                def validate_seed(body):
+                    count = json.loads(captures["count_before"][0]).get("count")
+                    ids = json.loads(body).get("objectIds")
+                    ids = validate_capture_witness(count, ids, count, ids)
+                    if not ids:
+                        raise ValueError("courthouses_empty_population_requires_review")
+                    return ids
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, BATCH_SIZE, client=client,
+                    captures=captures, discovery_documents=requests, roster=roster,
+                    validate_seed=validate_seed, fetch=fetch, on_validation_error=_population)
             manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         "artifact_names": sorted(captures), "receipts": {n:r for n,(_b,r) in sorted(captures.items())}}
             (root / "capture_manifest.json").write_bytes(_canonical(manifest) + b"\n")

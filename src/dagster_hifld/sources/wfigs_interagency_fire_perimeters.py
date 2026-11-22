@@ -34,6 +34,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
+from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
 from dagster_hifld.sources.esri_geometry import to_wkb, zero_area_rings
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
@@ -508,27 +509,25 @@ def capture_wfigs_interagency_fire_perimeters(storage: StagingStorageResource, *
                     ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
                     ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
                 ]
-                for name, url in static:
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
-                ids = json.loads(captures["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids, list) or not ids
-                        or any(type(value) is not int for value in ids)
-                        or len(ids) != len(set(ids))):
-                    raise ValueError("wfigs_initial_id_population_drift")
-                ordered_ids = sorted(ids)
-                for start in range(0, len(ordered_ids), page_size):
-                    name = f"page_{start:05d}"
-                    captures[name] = _capture(client, _scope_query(name), root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
-                for name, url in [
-                    ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                    ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                    ("layer_after", LAYER_URL + "?f=pjson"),
-                    ("service_after", SERVICE_URL + "?f=pjson"),
-                ]:
-                    captures[name] = _capture(client, url, root, name, retained)
-                    retained += captures[name][1]["bytes"] + captures[name][1]["wire_bytes"]
+                def fetch(client, url, root, name):
+                    nonlocal retained
+                    value = _capture(client, url, root, name, retained)
+                    retained += value[1]["bytes"] + value[1].get("wire_bytes", 0)
+                    return value
+                def roster(ids):
+                    return [(f"page_{start:05d}", _scope_query(f"page_{start:05d}"))
+                            for start in range(0, len(ids), page_size)] + [
+                        (name, _scope_query(name)) for name in ("count_after", "ids_after", "layer_after", "service_after")]
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids
+                            or any(type(value) is not int for value in ids) or len(ids) != len(set(ids))):
+                        raise ValueError("wfigs_initial_id_population_drift")
+                    return sorted(ids)
+                captures = RetainedCaptureView(root, captures)
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, page_size, client=client,
+                    captures=captures, discovery_documents=static, roster=roster,
+                    validate_seed=validate_seed, fetch=fetch, on_validation_error=_population)
             manifest = {"complete": True, "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         "artifact_names": sorted(captures),
                         "receipts": {name: receipt for name, (_body, receipt) in sorted(captures.items())}}
