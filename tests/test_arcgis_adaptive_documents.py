@@ -56,3 +56,19 @@ class AdaptiveDocumentTests(unittest.TestCase):
                  patch.object(pad.shutil, "disk_usage", return_value=SimpleNamespace(free=9)):
                 with self.assertRaisesRegex(pad.PadUsProtectionError, "disk_floor_before_acquisition"):
                     pad._capture_capacity_budget(root)
+
+    def test_pad_zero_headroom_refuses_before_retaining_response_blocks(self):
+        from test_pad_us_protection_mechanism_category import (
+            fixture_mode, make_responder, _fixture_rows, _fixture_layer_fields,
+        )
+        schema_sha = pad._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with fixture_mode(schema_sha, make_responder(_fixture_rows())), \
+                 patch.object(pad.shutil, "disk_usage",
+                              return_value=SimpleNamespace(free=pad.MIN_FREE_BYTES)):
+                with self.assertRaisesRegex(ValueError, "source_capture_budget_exceeded"):
+                    pad.fetch_pad_us_protection_mechanism_category_pages(root)
+            self.assertTrue((root / "service_doc.receipt.json").exists())
+            self.assertEqual(sum(path.stat().st_size for path in root.iterdir()
+                                 if path.name.endswith((".body", ".wire"))), 0)
