@@ -69,7 +69,8 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
-from dagster_hifld.sources import nhd_capture
+from dagster_hifld.sources import arcgis_layer, nhd_capture, nhd_transport
+from dagster_hifld.sources.arcgis_layer import witness_aside as _witness_attempt
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.output_policy import validate_output_policy
@@ -391,26 +392,11 @@ def _validate_feature(feature: object, expected_names: tuple[str, ...],
 
 
 def _load_receipt(capture_root: Path, name: str) -> dict[str, object]:
-    """Parse and structurally validate one retained receipt without page bytes."""
-    try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise NhdWaterbodyError("retained_capture_receipt_invalid:" + name) from exc
-    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
-            or receipt.get("url") != receipt.get("final_url")
-            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
-        raise NhdWaterbodyError("retained_capture_receipt_invalid:" + name)
-    return receipt
+    return arcgis_layer.load_receipt(capture_root, name, NhdWaterbodyError)
 
 
 def _read_capture(capture_root: Path, name: str) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = _load_receipt(capture_root, name)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise NhdWaterbodyError("retained_capture_receipt_invalid:" + name)
-    return body, receipt
+    return arcgis_layer.read_capture(capture_root, name, NhdWaterbodyError)
 
 
 def _load_state(capture_root: Path) -> dict[str, object]:
@@ -419,16 +405,11 @@ def _load_state(capture_root: Path) -> dict[str, object]:
 
 
 def _budget_guard(budget: list[int]) -> Callable[[str, bytes], None]:
-    def before_retain(kind: str, data: bytes) -> None:
-        budget[0] += len(data)
-        if budget[0] > MAX_CAPTURE_BYTES:
-            raise NhdWaterbodyError("source_capture_budget_exceeded")
-    return before_retain
+    return nhd_transport.budget_guard(budget, MAX_CAPTURE_BYTES, NhdWaterbodyError)
 
 
 def _budget_check(budget: list[int]) -> None:
-    if budget[0] > MAX_CAPTURE_BYTES:
-        raise NhdWaterbodyError("source_capture_budget_exceeded")
+    nhd_transport.budget_check(budget, MAX_CAPTURE_BYTES, NhdWaterbodyError)
 
 
 def _retained_or_fetch(client: httpx.Client | None, capture_root: Path, name: str,
@@ -442,97 +423,33 @@ def _retained_or_fetch(client: httpx.Client | None, capture_root: Path, name: st
         discard=nhd_capture.discard_capture, error_type=NhdWaterbodyError)
 
 
-def _witness_attempt(capture_root: Path, name: str) -> None:
-    """Move one complete-but-unusable retained answer aside as dated evidence.
-
-    This covers both producer error documents (which carry a self-consistent
-    receipt, so without the witness step a resumed capture would replay the
-    same error forever) and abandoned failed attempts. Witnessed evidence never
-    enters the capture roster.
-    """
-    stamp = time.time_ns()
-    for suffix in ("body", "wire", "receipt.json"):
-        source = capture_root / f"{name}.{suffix}"
-        if source.exists():
-            source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
 
 
 def _reject_error_response(capture_root: Path, name: str, body: bytes) -> None:
-    try:
-        document = json.loads(body)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return
-    if isinstance(document, dict) and "error" in document:
-        _witness_attempt(capture_root, name)
-        raise NhdWaterbodyError("source_page_error:" + name)
+    nhd_transport.reject_error_response(
+        capture_root, name, body, witness=_witness_attempt, error_type=NhdWaterbodyError)
 
 
-def _failed_receipt_error_code(capture_root: Path, name: str) -> str | None:
-    try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, ValueError):
-        return None
-    code = receipt.get("error_code")
-    return code if isinstance(code, str) else None
 
 
 def _capture_doc(client: httpx.Client, url: str, capture_root: Path, name: str,
                  budget: list[int]) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer document, retrying bounded times on transient failures."""
-    for attempt in range(1, DOC_ATTEMPTS + 1):
-        _budget_check(budget)
-        try:
-            return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES,
-                               before_retain=_budget_guard(budget))
-        except (ValueError, httpx.HTTPError) as exc:
-            if "source_capture_budget_exceeded" in str(exc):
-                raise
-            retryable = (isinstance(exc, httpx.HTTPError)
-                         or str(exc).startswith("incomplete_source_capture:"))
-            if attempt >= DOC_ATTEMPTS or not retryable:
-                raise
-            time.sleep(DOC_RETRY_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
-    raise AssertionError("unreachable_retry_state")
+    return nhd_transport.capture_document(
+        client, url, capture_root, name, budget, attempts=DOC_ATTEMPTS,
+        base_delay=DOC_RETRY_BASE_DELAY_SECONDS, max_body_bytes=MAX_BODY_BYTES,
+        check_budget=_budget_check, retain_budget=_budget_guard, fetch=capture_get,
+        sleep=time.sleep, retry_http_errors=True)
 
 
 def _fetch_page(active: httpx.Client, capture_root: Path, budget: list[int],
                 last_objectid: int, size: int) -> tuple[bytes, dict[str, object]]:
-    """Fetch one keyset page at ``size`` with bounded transport retries.
-
-    A producer error document or an over-cap answer aborts the attempt
-    immediately (deterministic for the requested window, so the caller bisects
-    the requested record count instead of retrying it); transport faults are
-    retried with backoff and every failed attempt is retained as witnessed
-    evidence that never enters the capture roster.
-    """
-    name = _page_name(last_objectid, size)
-    url = _page_url(last_objectid, size)
-    last_error: Exception | None = None
-    for attempt in range(1, PAGE_ATTEMPTS + 1):
-        _budget_check(budget)
-        try:
-            body, receipt = capture_get(active, url, capture_root, name,
-                                        max_bytes=MAX_BODY_BYTES,
-                                        before_retain=_budget_guard(budget))
-        except (ValueError, httpx.HTTPError) as exc:
-            if "source_capture_budget_exceeded" in str(exc):
-                raise
-            last_error = exc
-            error_code = _failed_receipt_error_code(capture_root, name)
-            if error_code in ("wire_limit_exceeded", "decoded_limit_exceeded"):
-                _witness_attempt(capture_root, name)
-                raise NhdWaterbodyError("source_page_body_limit:" + name) from exc
-            if attempt < PAGE_ATTEMPTS:
-                _witness_attempt(capture_root, name)
-                time.sleep(PAGE_RETRY_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
-                continue
-            _witness_attempt(capture_root, name)
-            raise NhdWaterbodyError("source_page_fetch_failed:" + name) from exc
-        if _producer_error_doc(body):
-            _witness_attempt(capture_root, name)
-            raise NhdWaterbodyError("source_page_error:" + name)
-        return body, receipt
-    raise NhdWaterbodyError("source_page_fetch_failed:" + name) from last_error
+    return nhd_transport.fetch_keyset_page(
+        active, capture_root, budget, _page_name(last_objectid, size),
+        _page_url(last_objectid, size), attempts=PAGE_ATTEMPTS,
+        base_delay=PAGE_RETRY_BASE_DELAY_SECONDS, max_body_bytes=MAX_BODY_BYTES,
+        check_budget=_budget_check, retain_budget=_budget_guard, fetch=capture_get,
+        witness=_witness_attempt, producer_error=_producer_error_doc, sleep=time.sleep,
+        error_type=NhdWaterbodyError)
 
 
 def _bisect(size: int) -> int:
@@ -541,96 +458,29 @@ def _bisect(size: int) -> int:
 
 def _capture_attrs_row(active: httpx.Client, capture_root: Path, budget: list[int],
                        oid: int) -> tuple[dict[str, object], dict[str, object]]:
-    """Capture one record's attributes through the working attributes-only channel.
-
-    The retained attributes page is reused when a resumed capture already holds
-    it (the request URL is deterministic).
-    """
-    name = f"refused_attrs_{oid:09d}"
-    if (capture_root / f"{name}.body").exists():
-        body, receipt = _read_capture(capture_root, name)
-    else:
-        body, receipt = _capture_doc(active, _record_url(oid, geometry=False),
-                                     capture_root, name, budget)
-    doc = json.loads(body)
-    rows = doc.get("features") if isinstance(doc, dict) else None
-    if (not isinstance(rows, list) or len(rows) != 1
-            or not isinstance(rows[0], dict) or not isinstance(rows[0].get("attributes"), dict)
-            or rows[0].get("geometry") is not None
-            or rows[0]["attributes"].get("OBJECTID") != oid):
-        raise NhdWaterbodyError("source_refused_attrs_record_drift:" + name)
-    attrs = rows[0]["attributes"]
-    _validate_attrs(attrs, tuple(entry[0] for entry in NATIVE_FIELDS))
-    return attrs, receipt
+    return nhd_transport.capture_attributes(
+        active, capture_root, budget, oid, record_url=_record_url(oid, geometry=False),
+        read_capture=_read_capture, capture_doc=_capture_doc,
+        validate_attrs=lambda attrs: _validate_attrs(attrs, tuple(entry[0] for entry in NATIVE_FIELDS)),
+        error_type=NhdWaterbodyError)
 
 
 def _refuse_single_record(active: httpx.Client, alias_client: httpx.Client,
                           capture_root: Path, budget: list[int], last_objectid: int,
                           pages: list[dict[str, object]], persist: Callable[[], None]
                           ) -> tuple[int, bool]:
-    """Stage the refusal evidence for the record following ``last_objectid``.
-
-    The record's identity comes from the producer's working attributes-only
-    keyset channel (geometry is never requested there); the geometry request is
-    then retried bounded times on both producer hosts. When both hosts persist
-    with their error document, the record joins the capture's refusal set: its
-    attributes stay staged verbatim through the attributes-only channel and its
-    candidate geometry is explicitly gated to null. Returns the record's
-    OBJECTID and whether a producer host ended up serving the geometry (the
-    answer is then retained as the single-record keyset page for this position
-    and the walk continues with a served record).
-    """
-    position = last_objectid + 1
-    probe_name = f"refused_probe_{position:09d}_attrs"
-    probe_body, _probe_receipt = _retained_or_fetch(
-        active, capture_root, probe_name, _attrs_keyset_url(last_objectid), budget=budget)
-    probe = json.loads(probe_body)
-    probe_rows = probe.get("features") if isinstance(probe, dict) else None
-    if (not isinstance(probe_rows, list) or len(probe_rows) != 1
-            or not isinstance(probe_rows[0], dict)
-            or not isinstance(probe_rows[0].get("attributes"), dict)):
-        raise NhdWaterbodyError("source_refused_record_identity_unavailable")
-    oid = probe_rows[0]["attributes"].get("OBJECTID")
-    if type(oid) is not int or oid <= last_objectid:
-        raise NhdWaterbodyError("source_refused_record_identity_unavailable")
-    attrs, attrs_receipt = _capture_attrs_row(active, capture_root, budget, oid)
-    del attrs
-    for attempt in range(1, PAGE_ATTEMPTS + 1):
-        # Each producer host is probed through its own service path: the alias
-        # host (hydro.nationalmap.gov/3DHP_all) must be contacted on
-        # ALIAS_LAYER_URL so a two-host refusal is witnessed by two distinct
-        # host receipts, and a rescued record's receipt names the host that
-        # served it.
-        for label, probe_client, probe_url in (
-                ("primary", active, _record_url(oid, geometry=True)),
-                ("alias", alias_client, _record_url_on(ALIAS_LAYER_URL, oid, geometry=True))):
-            probe_geo_name = f"refused_probe_{position:09d}_geo_{label}"
-            _budget_check(budget)
-            try:
-                body, geo_receipt = capture_get(
-                    probe_client, probe_url, capture_root,
-                    probe_geo_name, max_bytes=MAX_BODY_BYTES,
-                    before_retain=_budget_guard(budget))
-            except (ValueError, httpx.HTTPError):
-                _witness_attempt(capture_root, probe_geo_name)
-                continue
-            if _producer_error_doc(body):
-                _witness_attempt(capture_root, probe_geo_name)
-                continue
-            page_name = _page_name(last_objectid, 1)
-            for suffix in ("body", "wire", "receipt.json"):
-                (capture_root / f"{page_name}.{suffix}").write_bytes(
-                    (capture_root / f"{probe_geo_name}.{suffix}").read_bytes())
-            pages.append({"name": page_name, "start_after": last_objectid, "size": 1,
-                          "last_objectid": oid, "features": 1,
-                          "exceeded_transfer_limit": None,
-                          "captured_at": geo_receipt["observed_at"],
-                          "body_sha256": _sha(body), "rescued_host": label})
-            persist()
-            return oid, True
-        if attempt < PAGE_ATTEMPTS:
-            time.sleep(PAGE_RETRY_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
-    return oid, False
+    return nhd_transport.rescue_single_record(
+        active, capture_root, budget, last_objectid, pages, persist,
+        attrs_url=_attrs_keyset_url(last_objectid),
+        geometry_hosts=lambda oid: (
+            ("primary", active, _record_url(oid, geometry=True)),
+            ("alias", alias_client, _record_url_on(ALIAS_LAYER_URL, oid, geometry=True))),
+        capture_attrs=_capture_attrs_row, retained_or_fetch=_retained_or_fetch,
+        page_name_for=_page_name, attempts=PAGE_ATTEMPTS,
+        base_delay=PAGE_RETRY_BASE_DELAY_SECONDS, max_body_bytes=MAX_BODY_BYTES,
+        check_budget=_budget_check, retain_budget=_budget_guard, fetch=capture_get,
+        witness=_witness_attempt, producer_error=_producer_error_doc, sleep=time.sleep,
+        error_type=NhdWaterbodyError)
 
 
 def _default_client() -> httpx.Client:

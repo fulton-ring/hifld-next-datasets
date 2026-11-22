@@ -43,7 +43,8 @@ import pyarrow.parquet as pq
 import pyproj
 import shapely
 
-from dagster_hifld.sources import nhd_capture
+from dagster_hifld.sources import nhd_capture, nhd_transport
+from dagster_hifld.sources.nhd_transport import failed_receipt_error_code as _failed_receipt_error_code
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -190,42 +191,23 @@ def _validate_page_spatial_reference(value: object, label: str) -> None:
 _ATTEMPT_SUFFIXES = (".body", ".wire", ".receipt.json")
 
 
-def _failed_receipt_error_code(capture_root: Path, name: str) -> str | None:
-    try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, ValueError):
-        return None
-    code = receipt.get("error_code")
-    return code if isinstance(code, str) else None
 
 
 def _capture_doc(client: httpx.Client, url: str, capture_root: Path, name: str,
                  budget: list[int]) -> tuple[bytes, dict[str, object]]:
-    """Capture one producer document, retrying bounded times on transient failures."""
-    for attempt in range(1, DOC_CAPTURE_ATTEMPTS + 1):
-        _budget_check(budget)
-        try:
-            return capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES,
-                               before_retain=_budget_guard(budget))
-        except ValueError as exc:
-            if attempt >= DOC_CAPTURE_ATTEMPTS or not str(exc).startswith("incomplete_source_capture:"):
-                raise
-            _preserve_failed_attempt(capture_root, name, attempt)
-            time.sleep(DOC_CAPTURE_BASE_DELAY_SECONDS * (3 ** (attempt - 1)))
-    raise AssertionError("unreachable_retry_state")
+    return nhd_transport.capture_document(
+        client, url, capture_root, name, budget, attempts=DOC_CAPTURE_ATTEMPTS,
+        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS, max_body_bytes=MAX_BODY_BYTES,
+        check_budget=_budget_check, retain_budget=_budget_guard, fetch=capture_get,
+        sleep=time.sleep, retry_http_errors=False, preserve_attempt=_preserve_failed_attempt)
 
 
 def _budget_guard(budget: list[int]) -> Callable[[str, bytes], None]:
-    def before_retain(kind: str, data: bytes) -> None:
-        budget[0] += len(data)
-        if budget[0] > MAX_CAPTURE_BYTES:
-            raise ValueError("source_capture_budget_exceeded")
-    return before_retain
+    return nhd_transport.budget_guard(budget, MAX_CAPTURE_BYTES, ValueError)
 
 
 def _budget_check(budget: list[int]) -> None:
-    if budget[0] > MAX_CAPTURE_BYTES:
-        raise ValueError("source_capture_budget_exceeded")
+    nhd_transport.budget_check(budget, MAX_CAPTURE_BYTES, ValueError)
 
 
 def _validate_attrs_types(attrs: Mapping[str, object], fields: list[dict[str, object]]) -> None:
