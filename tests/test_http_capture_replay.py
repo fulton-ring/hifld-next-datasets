@@ -186,6 +186,15 @@ class ValidateRetainedCaptureReplayTests(unittest.TestCase):
                     load_capture=_load_capture, validate_request_identity=validate_capture_request_identity,
                     receipt_error="capture_receipt_manifest_mismatch")
 
+    def test_replay_iteration_retains_sorted_capture_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            _write_capture(root)
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            manifest["receipts"] = {name: manifest["receipts"][name] for name in ("beta", "alpha")}
+            (root / "capture_manifest.json").write_text(json.dumps(manifest))
+            self.assertEqual(list(self.replay(root)), ["alpha", "beta"])
+
     def test_symlinked_manifest_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "capture"

@@ -176,7 +176,7 @@ class RetainedReplayView(Mapping):
                  validate_request_identity,
                  receipt_error="retained_capture_manifest_receipt_mismatch"):
         self._root = root
-        self._receipts = copy.deepcopy(receipts)
+        self._receipts = copy.deepcopy(dict(sorted(receipts.items())))
         self._urls = dict(expected_urls)
         self._load = load_capture
         self._validate_identity = validate_request_identity
