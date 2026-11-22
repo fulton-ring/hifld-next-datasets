@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
+from dagster_hifld.http_capture import capture_retention_budget
 from dagster_hifld.sources import arcgis_layer
 from dagster_hifld.sources.capture_common import capture_get
 
@@ -144,3 +145,29 @@ class CaptureLayerBudgetTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'source_capture_budget_exceeded'):
                 self.capture(root / 'outer', 1, during_fetch=concurrent_capture)
             self.assertEqual((root / 'other/document.body').read_bytes(), b'unrelated')
+
+    def test_replay_validation_does_not_charge_already_retained_bytes_again(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.capture(root, 100000, compressed=True)
+            size = self.retained(root)
+            with capture_retention_budget(root, size):
+                body, receipt = arcgis_layer.load_replay(root, 'ids_before')
+            self.assertEqual(json.loads(body), {'objectIds': [1]})
+            self.assertTrue(receipt['complete_body'])
+            self.assertEqual(self.retained(root), size)
+
+    def test_existing_over_budget_prefix_refuses_even_an_empty_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'previous.body').write_bytes(b'already-retained')
+            with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(
+                    200, stream=httpx.ByteStream(b'')))) as client:
+                with self.assertRaisesRegex(ValueError, 'source_capture_budget_exceeded'):
+                    with capture_retention_budget(root, 1):
+                        capture_get(client, 'https://example.test/empty', root, 'empty', max_bytes=10000)
+            receipt = json.loads((root / 'empty.receipt.json').read_bytes())
+            self.assertFalse(receipt['complete_body'])
+            self.assertEqual(receipt['wire_bytes'], 0)
+            self.assertEqual(receipt['bytes'], 0)
+            self.assertEqual((root / 'previous.body').read_bytes(), b'already-retained')

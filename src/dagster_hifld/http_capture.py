@@ -37,6 +37,9 @@ class _RetentionBudget:
         # slots are charged by their physical retained size exactly once.
         retained = sum(path.stat().st_size for path in self.root.iterdir()
                        if path.is_file() and path.name.endswith((".body", ".wire")))
+        if self.exceeded or retained > self.limit:
+            self.exceeded = True
+            raise ValueError("source_capture_budget_exceeded")
 
         def charge(block: bytes) -> None:
             nonlocal retained
