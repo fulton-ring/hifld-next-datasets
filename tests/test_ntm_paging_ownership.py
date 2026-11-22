@@ -60,6 +60,7 @@ class ClosingWitnessFailureTests(unittest.TestCase):
         bodies['layer_after'] = {'error': {'code': 400}}
         observed = []
         with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            stack.enter_context(patch.object(stops, 'RETRY_BACKOFF_SECONDS', (0,)))
             for item in _capture_patches(2, 1, _fake_capture_get(observed, bodies)):
                 stack.enter_context(item)
             storage = StagingStorageResource(local_dir=str(Path(tmp) / 'staging'),
@@ -67,7 +68,10 @@ class ClosingWitnessFailureTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'source_response_error:layer_after'):
                 stops.capture_national_transit_map_stops(
                     storage, version='synthetic', capture_directory=str(Path(tmp) / 'capture'))
-            self.assertEqual(observed[-3:], ['page_000', 'page_001', 'layer_after'])
-            self.assertTrue((Path(tmp) / 'capture/page_001.body').is_file())
-            self.assertTrue((Path(tmp) / 'capture/page_001.wire').is_file())
-            self.assertTrue((Path(tmp) / 'capture/page_001.receipt.json').is_file())
+            closing_index = observed.index('layer_after')
+            self.assertEqual(observed[closing_index - 2:closing_index], ['page_000', 'page_001'])
+            self.assertEqual(observed[closing_index:], ['layer_after'] * stops.MAX_REQUEST_ATTEMPTS)
+            root = Path(tmp) / 'capture/synthetic'
+            self.assertTrue((root / 'page_001.body').is_file())
+            self.assertTrue((root / 'page_001.wire').is_file())
+            self.assertTrue((root / 'page_001.receipt.json').is_file())
