@@ -40,7 +40,7 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.arcgis_layer import fetch_capture, fetch_capture_retry
+from dagster_hifld.sources import arcgis_layer as capture_shared
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import (
@@ -229,14 +229,14 @@ def _capture_roster_digests(root: Path, *, exclude: set[str] = frozenset()) -> d
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
            *, max_capture_bytes: int = MAX_CAPTURE_BYTES):
-    return fetch_capture(client, url, root, name, budget,
+    return capture_shared.fetch_capture(client, url, root, name, budget,
                          max_capture_bytes=max_capture_bytes, max_body_bytes=MAX_BODY_BYTES, response_limit_errors=True, hard_sink_limits=True)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
                  *, schedule: tuple[float, ...] = (0.0, 2.0, 8.0),
                  max_capture_bytes: int = MAX_CAPTURE_BYTES):
-    return fetch_capture_retry(client, url, root, name, budget,
+    return capture_shared.fetch_capture_retry(client, url, root, name, budget,
                                max_capture_bytes=max_capture_bytes, max_body_bytes=MAX_BODY_BYTES,
                                attempts=len(schedule), schedule=schedule,
                                fetch=partial(_fetch, max_capture_bytes=max_capture_bytes))

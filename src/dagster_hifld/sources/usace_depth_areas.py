@@ -27,7 +27,7 @@ from dagster_hifld.http_capture import capture_http_response, capture_roster_dig
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.arcgis_layer import fetch_capture, fetch_capture_retry
+from dagster_hifld.sources import arcgis_layer as capture_shared
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -71,12 +71,12 @@ EXPECTED_FIELD_DECLARATIONS = [
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    return fetch_capture(client, url, root, name, budget,
+    return capture_shared.fetch_capture(client, url, root, name, budget,
                          max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES, record_retry_after=True)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    return fetch_capture_retry(client, url, root, name, budget,
+    return capture_shared.fetch_capture_retry(client, url, root, name, budget,
                                max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
                                attempts=2, schedule=(),
                                fetch=_fetch,

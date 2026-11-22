@@ -29,7 +29,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.arcgis_layer import capture_with_retry, fetch_capture_retry
+from dagster_hifld.sources import arcgis_layer as capture_shared
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
@@ -115,12 +115,12 @@ def _capture_roster(ids: list[int]) -> list[tuple[str, str]]:
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    return capture_with_retry(client, url, root, name, attempts=1, base_delay=0,
+    return capture_shared.capture_with_retry(client, url, root, name, attempts=1, base_delay=0,
                               max_bytes=PAGE_MAX_BYTES, max_total_bytes=CAPTURE_MAX_BYTES, error_document=None)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str) -> tuple[bytes, dict]:
-    return fetch_capture_retry(client, url, root, name, [0],
+    return capture_shared.fetch_capture_retry(client, url, root, name, [0],
                                max_capture_bytes=CAPTURE_MAX_BYTES, max_body_bytes=PAGE_MAX_BYTES,
                                attempts=2, schedule=(),
                                fetch=lambda c, u, r, n, _budget: _fetch(c, u, r, n))

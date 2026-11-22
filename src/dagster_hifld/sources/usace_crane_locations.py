@@ -29,7 +29,7 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.arcgis_layer import fetch_capture, fetch_capture_retry
+from dagster_hifld.sources import arcgis_layer as capture_shared
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
@@ -95,13 +95,13 @@ def _capture_started_at(captures: dict[str, tuple[bytes, dict]]) -> str:
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]):
-    return fetch_capture(client, url, root, name, budget,
+    return capture_shared.fetch_capture(client, url, root, name, budget,
                          max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_RESPONSE_BYTES)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str, budget: list[int],
                  *, schedule: tuple[float, ...] = (0.0, 2.0, 8.0)):
-    return fetch_capture_retry(client, url, root, name, budget,
+    return capture_shared.fetch_capture_retry(client, url, root, name, budget,
                                max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_RESPONSE_BYTES,
                                attempts=len(schedule), schedule=schedule,
                                fetch=_fetch)

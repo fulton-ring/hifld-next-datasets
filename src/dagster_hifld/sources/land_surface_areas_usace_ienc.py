@@ -25,7 +25,7 @@ import shapely
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
-from dagster_hifld.sources.arcgis_layer import fetch_capture_get, fetch_capture_retry
+from dagster_hifld.sources import arcgis_layer as capture_shared
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
@@ -86,14 +86,14 @@ _RESPONSE_LIMIT_CODES = {"wire_limit_exceeded", "decoded_limit_exceeded", "wire_
 
 
 def _fetch(client: httpx.Client, url: str, root: Path, name: str, budget: list[int]) -> tuple[bytes, dict]:
-    return fetch_capture_get(client, url, root, name, budget,
+    return capture_shared.fetch_capture_get(client, url, root, name, budget,
                              max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
                              response_limit_codes=_RESPONSE_LIMIT_CODES)
 
 
 def _fetch_retry(client: httpx.Client, url: str, root: Path, name: str,
                  budget: list[int], *, schedule: tuple[float, ...] = (0.0, 2.0)) -> tuple[bytes, dict]:
-    return fetch_capture_retry(client, url, root, name, budget,
+    return capture_shared.fetch_capture_retry(client, url, root, name, budget,
                                max_capture_bytes=MAX_CAPTURE_BYTES, max_body_bytes=MAX_BODY_BYTES,
                                attempts=len(schedule), schedule=schedule,
                                fetch=_fetch,
