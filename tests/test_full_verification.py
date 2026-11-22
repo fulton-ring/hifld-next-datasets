@@ -1,3 +1,24 @@
+"""Full-population comparison and release-boundary tests.
+
+Acceptance-matrix index for issue #417's final box ("Tests cover missing
+baseline, equal row totals with different IDs, missing geography hidden by
+additions elsewhere, legitimate updates, ID loss, extra columns, truncation
+and quality regressions"):
+
+| Case | Exercising test |
+| --- | --- |
+| missing baseline | FullPopulationTests.test_resource_exhaustion_and_missing_baseline_are_durable_blockers |
+| equal row totals with different IDs | FullPopulationTests.test_equal_rows_distinct_ids_and_hidden_coverage_loss |
+| missing geography hidden by additions elsewhere | FullPopulationTests.test_equal_rows_distinct_ids_and_hidden_coverage_loss (VA bucket lost while a PA row is added) |
+| legitimate updates | FullPopulationTests.test_complete_geometry_and_attributes_after_sample_limit |
+| ID loss | FullPopulationTests.test_schema_extra_column_null_and_duplicate_keys_fail (null id subcase) |
+| extra columns | FullPopulationTests.test_schema_extra_column_null_and_duplicate_keys_fail (extra column subcase) |
+| truncation | FullPopulationTests.test_truncated_candidate_is_a_named_distinct_case |
+| quality regressions | FullPopulationTests.test_quality_regression_is_named_in_report_and_sidecar |
+
+Real-baseline pilot results are a separate slice and are not recorded here.
+"""
+
 import copy
 import json
 import os
@@ -355,6 +376,48 @@ class FullPopulationTests(unittest.TestCase):
             report = compare_full_rows(root / "missing", root / "missing2", CONTRACT, root / "out",
                                        baseline_sha256="0" * 64, candidate_sha256="0" * 64, baseline_reference=BASELINE)
             self.assertEqual(report["status"], "blocked")
+
+    def test_truncated_candidate_is_a_named_distinct_case(self):
+        # Truncation: the candidate is a strict prefix of the baseline population,
+        # materially fewer rows and no additions, as an early-stopped capture.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            baseline = [feature(f"{i:03d}", state="PA" if i % 2 == 0 else "VA") for i in range(12)]
+            report = comparison(root, baseline, baseline[:10])
+            self.assertEqual(report["status"], "needs_decision")
+            self.assertEqual(report["differences"]["added"], 0)
+            self.assertEqual(report["differences"]["removed"], 2)
+            self.assertEqual(report["differences"]["coverage_buckets"], 2)
+            self.assertEqual((report["populations"]["baseline"]["rows"], report["populations"]["candidate"]["rows"]), (12, 10))
+            sidecar = (root / "metadata/baseline_differences.jsonl").read_text().splitlines()
+            removed = {json.dumps(json.loads(line)["key"]) for line in sidecar if json.loads(line)["kind"] == "removed"}
+            self.assertEqual(removed, {json.dumps(["array", [["string", "010"]]]), json.dumps(["array", [["string", "011"]]])})
+
+    def test_quality_regression_is_named_in_report_and_sidecar(self):
+        contract = {**CONTRACT, "geometry_nullable": True}
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            baseline = [feature("001"), feature("002")]
+            candidate = baseline + [{**feature("003"), "geometry": None}, {**feature("004", name=None), "geometry": None}]
+            report = comparison(root, baseline, candidate, contract)
+            self.assertEqual(report["status"], "needs_decision")
+            self.assertEqual(report["differences"]["added"], 2)
+            self.assertEqual(report["differences"]["quality_regressions"], 2)
+            self.assertEqual(report["quality"]["baseline"]["null_geometry"], 0)
+            self.assertEqual(report["quality"]["candidate"]["null_geometry"], 2)
+            self.assertEqual(report["quality"]["baseline"]["null_attributes"], 0)
+            self.assertEqual(report["quality"]["candidate"]["null_attributes"], 1)
+            self.assertEqual(report["quality"]["regressions"], ["null_attributes", "null_geometry"])
+            self.assertIn("quality_regressions_require_acceptance", report["reason_codes"])
+            sidecar = (root / "metadata/baseline_differences.jsonl").read_text().splitlines()
+            regressions = {json.loads(line)["field"]: (json.loads(line)["baseline"], json.loads(line)["candidate"])
+                           for line in sidecar if json.loads(line)["kind"] == "quality_regression"}
+            self.assertEqual(regressions, {"null_attributes": (0, 1), "null_geometry": (0, 2)})
+        with tempfile.TemporaryDirectory() as d:
+            report = comparison(Path(d), [feature()], [feature()], contract)
+            self.assertEqual(report["status"], "pass")
+            self.assertEqual(report["differences"]["quality_regressions"], 0)
+            self.assertEqual(report["quality"]["regressions"], [])
 
 
 class ReleaseBoundaryTests(unittest.TestCase):
