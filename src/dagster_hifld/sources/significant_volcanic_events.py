@@ -23,6 +23,9 @@ from collections import Counter
 import subprocess
 import tempfile
 from datetime import datetime
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
+
 from pathlib import Path
 from uuid import uuid4
 import httpx
@@ -128,11 +131,8 @@ def local_only(storage):
         if not stat.S_ISREG(info.st_mode)or info.st_nlink!=1:raise VolcanicQuarantineError('staging_alias_or_special_file_refused')
 
 
-def immutable(storage,key,body):
-    snapshot=storage.object_snapshot(key)
-    if snapshot is None: storage.write_key_if_unchanged(key,body,None)
-    elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:
-        raise VolcanicQuarantineError('immutable_capture_changed:'+key)
+immutable = partial(write_immutable, error_type=VolcanicQuarantineError,
+                    error_prefix='immutable_capture_changed:')
 
 
 def quarantine(storage,captures,reason):

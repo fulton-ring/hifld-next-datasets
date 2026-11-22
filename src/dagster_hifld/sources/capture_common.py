@@ -182,9 +182,12 @@ def load_checkpoint_receipt_map(
 def write_immutable(storage: StagingStorageResource, key: str, body: bytes, *,
                     error_type: type[Exception] = ValueError,
                     error_name: str | None = None,
-                    error_prefix: str = "immutable_staged_object_changed:") -> None:
+                    error_prefix: str = "immutable_staged_object_changed:",
+                    before_create: Callable[[], None] | None = None) -> None:
     snapshot = storage.object_snapshot(key)
     if snapshot is None:
+        if before_create is not None:
+            before_create()
         storage.write_key_if_unchanged(key, body, None)
     elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
         raise error_type(error_prefix + (key if error_name is None else error_name))
@@ -472,6 +475,13 @@ def write_candidate_file_by_sha(
         storage.upload_local_file(path, key)
     if storage.sha256_key(key) != expected_sha256:
         raise ValueError("candidate_object_readback_failed:" + relative)
+
+
+def write_candidate_blobs(storage, prefix, blobs, *, writer=None, reserve=None):
+    """Admit a lazy, ordered native artifact stream through ordinary custody."""
+    for name, body in blobs:
+        write_candidate_outputs(storage, prefix, {name: body}, snapshot_check="none",
+                                writer=writer, reserve=reserve)
 
 
 def write_candidate_transport_evidence(
@@ -781,6 +791,30 @@ def _validate_cached_catalog_sidecars(storage: StagingStorageResource, prefix: s
             raise ValueError("cached_catalog_source_snapshot_changed")
 
 
+def verify_cached_objects(storage, prefix, objects, *,
+                          error_prefix="cached_candidate_object_integrity_failed:"):
+    """Check exact stored descriptors and stable object identities for reuse."""
+    for name, descriptor in objects.items():
+        key = f"{prefix}/{name}"
+        snapshot = storage.object_snapshot(key)
+        if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+                or storage.object_snapshot(key) != snapshot):
+            raise ValueError(error_prefix + name)
+
+
+def verify_cached_capture_receipts(storage, prefix, capture_receipts):
+    """Bind cached raw body/wire objects to their original complete receipts."""
+    for name, receipt in capture_receipts.items():
+        body = storage.read_key(f"{prefix}/raw/{name}.body")
+        wire = storage.read_key(f"{prefix}/raw/{name}.wire")
+        receipt_body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
+        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
+                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
+                or receipt_body != _canonical(dict(receipt)) + b"\n"):
+            raise ValueError("cached_original_capture_changed:" + name)
+
+
 def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, state_key: str,
                             prefix: str, version: str, fingerprint: str, identity: Mapping[str, object],
                             source_record_sha256: str, source_schema_sha256: str,
@@ -821,30 +855,10 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
     if not expected_keys <= actual_keys or actual_keys - allowed_keys:
         raise ValueError("cached_candidate_storage_roster_changed")
     validate_staged_release_derivatives(storage, prefix, actual_keys)
-    for name in snapshot_names:
-        key = f"{prefix}/{name}"
-        if key not in actual_keys:
-            continue
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or manifest_descriptor != {
-                "bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_catalog_source_snapshot_changed:" + name)
-    for name, descriptor in expected_objects.items():
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_candidate_object_integrity_failed:" + name)
-    for name, receipt in capture_receipts.items():
-        body = storage.read_key(f"{prefix}/raw/{name}.body")
-        wire = storage.read_key(f"{prefix}/raw/{name}.wire")
-        receipt_body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
-        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt_body != _canonical(dict(receipt)) + b"\n"):
-            raise ValueError("cached_original_capture_changed:" + name)
+    verify_cached_objects(storage, prefix, {name: manifest_descriptor for name in snapshot_names
+        if f"{prefix}/{name}" in actual_keys}, error_prefix="cached_catalog_source_snapshot_changed:")
+    verify_cached_objects(storage, prefix, expected_objects)
+    verify_cached_capture_receipts(storage, prefix, capture_receipts)
     # Page evidence whose receipts are not duplicated into the construction
     # state is still bound to the first construction through the state's own
     # object descriptors above; here the staged receipt must self-canonicalize

@@ -6,6 +6,8 @@ remain release gates. No coordinate repair, projection or replacement IDs.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import write_immutable, write_candidate_blobs
+
 from dagster_hifld.sources import candidate_transaction
 import collections
 import hashlib
@@ -139,12 +141,12 @@ def immutable(storage, key, body):
     target = path_for(storage, key)
     if target.exists() and (not target.is_file() or target.stat().st_nlink != 1):
         raise ArcRegionsError('linked_or_special_object')
-    snapshot = storage.object_snapshot(key)
-    if snapshot is None:
+    def reserve_new_object():
         if shutil.disk_usage(local_root(storage)).free < FLOOR + len(body): raise ArcRegionsError('object_write_storage_reserve')
-        storage.write_key_if_unchanged(key, body, None)
-    elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-        raise ArcRegionsError('immutable_object_changed')
+
+    write_immutable(storage, key, body, error_type=ArcRegionsError,
+                    error_prefix='immutable_object_changed', error_name="",
+                    before_create=reserve_new_object)
 
 
 def diagnostic(storage, pieces, reason):

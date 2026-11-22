@@ -5,6 +5,8 @@ All original IDs, field names/types, native mixed polygon geometry and raw bytes
 are preserved. Historical publication compatibility is a separate hard gate.
 """
 from __future__ import annotations
+
+from dagster_hifld.sources.capture_common import write_immutable, write_candidate_blobs
 from dagster_hifld.sources import candidate_transaction
 import collections
 import hashlib
@@ -113,10 +115,8 @@ def immutable(storage, key, body):
         if ancestor.is_symlink(): raise FemaQuarantineError('linked_capture_path')
     if path.exists() and (not path.is_file() or path.stat().st_nlink != 1):
         raise FemaQuarantineError('linked_capture_object')
-    snapshot = storage.object_snapshot(key)
-    if snapshot is None: storage.write_key_if_unchanged(key, body, None)
-    elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-        raise FemaQuarantineError('immutable_capture_changed')
+    write_immutable(storage, key, body, error_type=FemaQuarantineError,
+                    error_prefix='immutable_capture_changed', error_name="")
 
 def retain_diagnostic(storage, pieces, reason):
     root = checked_path(storage,'_quarantine/'+SLUG+'/input-'+uuid4().hex)
@@ -563,10 +563,13 @@ def stage_fema_regions(storage,capture_directory,refresh_official=False):
     prefix=SLUG+'/'+SLUG+'/'+version;target=checked_path(storage,prefix);key='_construction-state/'+SLUG+'/'+version+'.json'
     # The full original captures are immutable outside versioned candidates;
     # historical raw payloads and complete original receipts are never replaced.
-    for name,pin in PINS.items():
-        raw=f'_raw-captures/{SLUG}/{pin["sha256"]}/{name}.body'
-        immutable(storage,raw,body_for(name,captures))
-        receipt=captures[name][1];immutable(storage,raw+'.receipt-'+digest(encode(receipt))+'.json',encode(receipt))
+    def raw_objects():
+        for name, pin in PINS.items():
+            raw = f'_raw-captures/{SLUG}/{pin["sha256"]}/{name}.body'
+            yield raw, body_for(name, captures)
+            receipt = encode(captures[name][1])
+            yield raw + '.receipt-' + digest(receipt) + '.json', receipt
+    write_candidate_blobs(storage, "", raw_objects(), writer=immutable)
     table,audit,metadata=decode_native(captures);comparison=compare_published(captures,table,audit)
     parquet=parquet_bytes(table);manifest=manifest_for(captures,identity,parquet)
     with version_lock(storage,version):

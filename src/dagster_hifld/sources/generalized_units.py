@@ -20,6 +20,8 @@ import sqlite3
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
 from pathlib import Path
 from uuid import uuid4
 
@@ -131,13 +133,8 @@ def require_local(storage: StagingStorageResource) -> None:
         raise CBRSQuarantineError('draft_requires_explicit_isolated_local_staging')
 
 
-def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
-    before = storage.object_snapshot(key)
-    if before is not None:
-        if storage.read_key(key) != body or storage.object_snapshot(key) != before:
-            raise CBRSQuarantineError(f'immutable_staging_conflict:{key}')
-    else:
-        storage.write_key_if_unchanged(key, body, None)
+immutable = partial(write_immutable, error_type=CBRSQuarantineError,
+                    error_prefix='immutable_staging_conflict:')
 
 
 def quarantine(storage: StagingStorageResource, body: bytes, receipt: dict, reason: str) -> str:

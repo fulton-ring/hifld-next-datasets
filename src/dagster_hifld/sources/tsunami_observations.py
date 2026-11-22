@@ -10,6 +10,7 @@ import collections
 from contextlib import contextmanager,nullcontext
 from datetime import datetime,timezone
 import fcntl,gzip,hashlib,importlib.metadata,io,json,math,os,platform,re,sqlite3,stat,struct,subprocess,tempfile,zipfile
+from dagster_hifld.sources.capture_common import write_immutable
 from pathlib import Path,PurePosixPath
 from urllib.parse import urlencode,urlsplit
 from uuid import uuid4
@@ -98,12 +99,8 @@ def require_local(storage: StagingStorageResource) -> Path:
 
 def immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
     local_candidate_path(storage, key)
-    before = storage.object_snapshot(key)
-    if before is not None:
-        if storage.read_key(key) != body or storage.object_snapshot(key) != before:
-            raise ObservationQuarantineError(f'immutable_staging_conflict:{key}')
-    else:
-        storage.write_key_if_unchanged(key, body, None)
+    write_immutable(storage, key, body, error_type=ObservationQuarantineError,
+                    error_prefix='immutable_staging_conflict:')
 
 def quarantine(storage: StagingStorageResource, body: bytes, receipt: dict, reason: str) -> str:
     prefix = f'_quarantine/{SLUG}/{sha(body)}/{uuid4().hex}'

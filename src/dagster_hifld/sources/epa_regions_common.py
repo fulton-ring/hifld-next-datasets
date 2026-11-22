@@ -5,6 +5,8 @@ attributes, OBJECTID values, physical types, nulls and native EPSG4326 rings sta
 literal. Large and Small Scale are now one resolution and produce the same output.
 """
 from __future__ import annotations
+
+from dagster_hifld.sources.capture_common import write_immutable, write_candidate_blobs
 from dagster_hifld.sources import candidate_transaction
 import hashlib
 import importlib.metadata
@@ -130,10 +132,8 @@ def local_only(storage):
 
 
 def immutable(storage,key,body):
-    snapshot=storage.object_snapshot(key)
-    if snapshot is None: storage.write_key_if_unchanged(key,body,None)
-    elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:
-        raise EpaRegions2023Error('immutable_capture_changed:'+key)
+    write_immutable(storage, key, body, error_type=EpaRegions2023Error,
+                    error_prefix='immutable_capture_changed:', error_name=key)
 
 
 def quarantine(storage,captures,reason,identity=REGIONS_IDENTITY):

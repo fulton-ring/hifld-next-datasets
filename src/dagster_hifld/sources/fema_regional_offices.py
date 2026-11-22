@@ -22,6 +22,8 @@ import subprocess
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import partial
+from dagster_hifld.sources.capture_common import write_immutable
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -88,10 +90,8 @@ def local_only(storage):
     if any(p.is_symlink() or(p.is_file() and p.stat().st_nlink!=1) for p in root.rglob('*')):raise FemaOfficesQuarantineError('linked_staging_object')
 
 
-def immutable(storage,key,body):
-    snapshot=storage.object_snapshot(key)
-    if snapshot is None:storage.write_key_if_unchanged(key,body,None)
-    elif storage.read_key(key)!=body or storage.object_snapshot(key)!=snapshot:raise FemaOfficesQuarantineError('immutable_capture_changed:'+key)
+immutable = partial(write_immutable, error_type=FemaOfficesQuarantineError,
+                    error_prefix='immutable_capture_changed:')
 
 def processing_identity():
     root=Path(__file__).parents[3]

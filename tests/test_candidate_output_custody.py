@@ -265,3 +265,13 @@ class CandidateOutputCustodyTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     stage_filegdb_archive(race_storage, 'candidate', archive, gdb, 'native.gdb')
             self.assertEqual(race_storage.read_key('candidate/file_geodatabase/source_filegdb.zip'), b'competing writer')
+
+    def test_create_only_reservation_preserves_existing_immutable_objects(self):
+        storage = MemoryStorage()
+        storage.objects['candidate/a'] = b'A'
+        def refuse():
+            raise ValueError('native_create_reserve')
+        common.write_immutable(storage, 'candidate/a', b'A', before_create=refuse)
+        with self.assertRaisesRegex(ValueError, 'native_create_reserve'):
+            common.write_immutable(storage, 'candidate/b', b'B', before_create=refuse)
+        self.assertNotIn('candidate/b', storage.objects)
