@@ -111,7 +111,7 @@ class NfhlLomasValidationTests(unittest.TestCase):
     def test_native_fields_and_null_and_nan_geometry_preserved_in_parquet(self):
         fields, features, captures = _fixture()
         with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
-            _, original_fields, extracted = attempt.validate(parquet_name="candidate.parquet")
+            original_fields, extracted = attempt.validate(parquet_name="candidate.parquet")
             table = pq.read_table(attempt.capture_root / "candidate.parquet")
         self.assertEqual(original_fields[0]["name"], "OBJECTID")
         self.assertEqual(table.num_rows, 3)
@@ -142,7 +142,7 @@ class NfhlLomasValidationTests(unittest.TestCase):
             doc["objectIds"] = ids
             captures[name] = (json.dumps(doc, separators=(",", ":")).encode(), captures[name][1])
         with patch.multiple(source, **_contract(fields)), _Attempt(captures) as attempt:
-            _, _, extracted = attempt.validate()
+            _fields, extracted = attempt.validate()
         self.assertEqual(extracted["ids"], [10, 11, 12])
 
     def test_id_roster_change_between_witnesses_is_rejected(self):

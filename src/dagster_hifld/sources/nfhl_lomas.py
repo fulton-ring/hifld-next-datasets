@@ -419,7 +419,7 @@ def _stream_validate_pages(pages, *, count: int, ids: list[int], attr_names: lis
 
 
 def _validate_and_extract(capture_root: Path, receipts: Mapping[str, Mapping[str, object]], *,
-                          parquet_path: Path) -> tuple[dict, list, dict[str, object]]:
+                          parquet_path: Path) -> tuple[list, dict[str, object]]:
     """Stream-validate the captured attempt and build the candidate GeoParquet.
 
     Every capture body is decoded once from the attempt directory; no capture
@@ -469,7 +469,7 @@ def _validate_and_extract(capture_root: Path, receipts: Mapping[str, Mapping[str
              "source_release_date_unknown_reason":
                  "FEMA updates the NFHL continuously and publishes no release date for this layer; "
                  "fetch time and the DataLumos archive modification date (2024-10-31) are not release dates."}
-    return layer, fields_value, {"audit": audit, "ids": ids}
+    return fields_value, {"audit": audit, "ids": ids}
 
 
 def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
@@ -565,7 +565,7 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
                 # during validation, so the population is never held.
                 receipts[name] = receipt
         parquet_path = capture_root / "candidate.parquet"
-        layer, source_fields, extracted = _validate_and_extract(capture_root, receipts, parquet_path=parquet_path)
+        source_fields, extracted = _validate_and_extract(capture_root, receipts, parquet_path=parquet_path)
     except Exception as exc:
         receipts_all: dict[str, dict[str, object]] = {}
         quarantinable: dict[str, dict[str, object]] = {}
