@@ -1,6 +1,10 @@
 """USACE Offices candidate source; preserves exact public FeatureServer responses."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs, write_immutable, write_candidate_ready_state,
+)
+
 import hashlib
 import json
 import math
@@ -568,18 +572,13 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
             original = json.loads(load_first_construction(storage, state_key, version, fingerprint))
             if original.get("payload", {}).get("id_roster_sha256") != audit["id_roster_sha256"]:
                 raise USACEOfficesSourceError("first_construction_source_roster_changed")
-        for name, body in payloads.items():
-            key = f"{version_prefix}/{name}"
-            snapshot = storage.object_snapshot(key)
-            if snapshot is None:
-                storage.write_key_if_unchanged(key, body, None)
-            elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-                raise USACEOfficesSourceError("immutable_staged_object_changed:" + name)
-        ready_key = f"{version_prefix}/metadata/candidate_ready.json"
-        if storage.object_snapshot(ready_key) is None:
-            storage.write_key_if_unchanged(ready_key, _json(ready), None)
-        elif storage.read_key(ready_key) != _json(ready):
-            raise USACEOfficesSourceError("candidate_ready_state_changed")
+        write_candidate_outputs(
+            storage, version_prefix, payloads, snapshot_check="none",
+            writer=lambda target, key, body: write_immutable(
+                target, key, body, error_type=USACEOfficesSourceError,
+                error_name=key.removeprefix(version_prefix + "/")))
+        write_candidate_ready_state(
+            storage, f"{version_prefix}/metadata/candidate_ready.json", _json(ready), USACEOfficesSourceError)
     return {"version": version, "rows": len(features), "quality_passed": not audit["quality_errors"],
         "quality_errors": audit["quality_errors"], "source_release_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False,

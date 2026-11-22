@@ -11,6 +11,8 @@ identity, never from the clock.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import stage_candidate_object as stage_object
+
 import json
 import shutil
 import tempfile
@@ -257,23 +259,6 @@ def capture_nfhl_layer(storage: StagingStorageResource, layer: NfhlLayer, *, cap
                 "capture_directory": str(root) if capture_directory else None}
 
 
-def stage_object(storage: StagingStorageResource, key: str, *, body: bytes | None = None,
-           path: Path | None = None) -> dict[str, object]:
-    if path is not None:
-        size, digest = path.stat().st_size, sha256_file(path)
-        snapshot = storage.object_snapshot(key)
-        if snapshot is None:
-            storage.upload_local_file(path, key)
-        elif snapshot.size != size or storage.sha256_key(key) != digest:
-            raise ValueError("immutable_staged_object_changed:" + key)
-    else:
-        write_immutable(storage, key, body)
-        size, digest = len(body), sha(body)
-    snapshot = storage.object_snapshot(key)
-    if snapshot is None or snapshot.size != size or storage.sha256_key(key) != digest \
-            or storage.object_snapshot(key) != snapshot:
-        raise ValueError("candidate_output_physical_readback_failed:" + key)
-    return {"bytes": size, "sha256": digest}
 
 
 def _alias_text(aliases: tuple[tuple[str, int], ...]) -> str:

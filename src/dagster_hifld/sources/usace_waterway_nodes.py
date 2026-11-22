@@ -1,6 +1,8 @@
 """Native, unapproved FileGDB candidate for BTS NTAD waterway network nodes."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import write_candidate_outputs
+
 import hashlib
 import json
 import math
@@ -537,9 +539,7 @@ def capture_usace_waterway_nodes(
         "source_release_date": None, **manifest["publication_gate"]}
     metadata = {"metadata/source_manifest.json": canonical_json(manifest) + b"\n",
                 "metadata/source_audit.json": canonical_json(audit) + b"\n"}
-    for name, body in metadata.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        objects[name] = {"bytes": len(body), "sha256": sha256(body)}
+    objects.update(write_candidate_outputs(storage, prefix, metadata, snapshot_check="none"))
     # Catalog owns the resolved projection after catalog materialization. Keep
     # the initial candidate projection for pre-catalog consumers, but do not
     # overwrite the catalog-enriched version during a strict cached replay.

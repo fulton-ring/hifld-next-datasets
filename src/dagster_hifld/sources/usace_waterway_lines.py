@@ -1,5 +1,7 @@
 """Unapproved, native FileGDB capture of the BTS NTAD waterway network lines."""
 from __future__ import annotations
+
+from dagster_hifld.sources.capture_common import write_candidate_outputs
 import hashlib, json, subprocess, os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -186,8 +188,9 @@ def capture_usace_waterway_lines(storage:StagingStorageResource,*,capture_direct
           "source_archive_sha256":archive_sha,"source_archive_bytes":archive_descriptor["bytes"],"native_Z_M_and_BLOB_preserved":True,"source_null_geometry_count":integrity["null_geometry_count"],
           "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     if not replayed:
-        for name,(body,_) in captured.items():
-            if name!="filegdb_export":write_immutable(storage,f"{prefix}/raw/{name}.body",body)
+        write_candidate_outputs(storage, prefix,
+            {f"raw/{name}.body": body for name, (body, _receipt) in captured.items()
+             if name != "filegdb_export"}, snapshot_check="none")
     manifest={"schema_version":1,"approved":False,"title":"Navigable Waterway Network Lines",
       "description":"BTS NTAD listed National Waterway Network lines, retained as a native measured FileGDB source candidate. Contract and downstream mapping remain pending.",
       "publisher":"USDOT Bureau of Transportation Statistics (BTS); hosted ArcGIS item owner usace_iwr_cac","agency":"U.S. Army Corps of Engineers (USACE)",

@@ -6,6 +6,10 @@ coordinate repair or projection is performed. Local draft construction only.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs, write_candidate_capture_files,
+)
+
 import hashlib
 from collections import Counter
 import io
@@ -446,11 +450,11 @@ def stage_state_territories(storage, state, capture_directory=None):
                 'objects': [{'path': output, 'sha256': digest(body), 'bytes': len(body)}]}}},
             'unsupported_output_formats': {'geopackage': 'No approved derived schema.', 'pmtiles': 'No approved display transformation.', 'shapefile_zip': 'Native dimensional and scalar contract requires review before a derived shapefile.'}}
         validate_release_provenance(manifest)
-        for name, (raw, _receipt) in captures.items():
-            write_immutable(storage, f'{prefix}/raw/{name}.body', raw)
-            write_immutable(storage, f'{prefix}/raw/{name}.wire', (directory / (name + '.wire')).read_bytes())
-        write_immutable(storage, f'{prefix}/{output}', body)
-        write_immutable(storage, f'{prefix}/metadata/source_manifest.json', _canonical(manifest))
+        write_candidate_capture_files(
+            storage, prefix, directory, {name: receipt for name, (_raw, receipt) in captures.items()},
+            lambda _directory, name: captures[name][0], order="insertion", receipt_encoding="omit")
+        write_candidate_outputs(storage, prefix, {
+            output: body, "metadata/source_manifest.json": _canonical(manifest)}, snapshot_check="none")
         result = {'dataset_slug': dataset, 'file_slug': slug, 'version': version,
             'staging_prefix': prefix, 'feature_count': table.num_rows, 'native_crs': crs,
             'source_population_complete': True, 'native_geometry_audit': native_audit, 'output_sha256': output_digest, **quality, **GATES}

@@ -32,6 +32,12 @@ bounded by the page size plus the metadata, not by the population.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import seal_candidate_objects
+
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs,
+)
+
 from functools import partial
 import hashlib
 import json
@@ -642,14 +648,8 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
     descriptors: dict[str, dict[str, object]] = {}
 
     def _stage(name: str, body: bytes) -> None:
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        snap = storage.object_snapshot(key)
-        if snap is None or snap.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"] \
-                or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_output_physical_readback_failed:" + name)
-        descriptors[name] = descriptor
+        descriptors.update(write_candidate_outputs(
+            storage, prefix, {name: body}, error_prefix="candidate_output_physical_readback_failed:"))
 
     _stage(rel, parquet_body)
     _stage("metadata/source_manifest.json", _canonical(manifest) + b"\n")
@@ -669,7 +669,12 @@ def capture_nfhl_lomas(storage: StagingStorageResource, *, version: str,
                "source_schema_sha256": audit["source_schema_sha256"],
                "capture_receipts": receipts,
                "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": audit["source_feature_count"],

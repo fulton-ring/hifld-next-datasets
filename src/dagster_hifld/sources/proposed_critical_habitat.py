@@ -1,6 +1,12 @@
 """Draft capture adapter for the official USFWS proposed critical habitat layer."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import seal_candidate_objects
+
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs, write_candidate_transport_evidence, verify_candidate_outputs,
+)
+
 import hashlib
 import json
 import gzip
@@ -641,35 +647,20 @@ def capture_proposed_critical_habitat(storage: StagingStorageResource, *, versio
                 "reused":True,"source_release_accepted":False,"schema_contract_accepted":False,
                 "id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,
                 "mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}
-    for name,body in out.items():
-        _enforce_issue_budget(budget_roots,len(body))
-        write_immutable(storage,f"{prefix}/{name}",body)
-    for name,descriptor in raw_descriptors.items():
-        if name.endswith(".wire"):
-            body=(capture_root/name.removeprefix("raw/")).read_bytes()
-        else:
-            raw_name=name.removeprefix("raw/").removesuffix(".receipt.json")
-            body=original_receipts[raw_name]
-        _enforce_issue_budget(budget_roots,len(body))
-        write_immutable(storage,f"{prefix}/{name}",body)
-        raw_descriptors[name]=descriptor
-        if name.endswith(".receipt.json"):
-            # The exact wire is now staged with its receipt; discard only the
-            # temporary decoded copy after the body's receipt hash was checked.
-            raw_name=name.removeprefix("raw/").removesuffix(".receipt.json")
-            body_path=capture_root/f"{raw_name}.body"
-            if body_path.exists():
-                decoded=body_path.read_bytes()
-                receipt=captures[raw_name][1]
-                if len(decoded)!=receipt["bytes"] or _sha(decoded)!=receipt["sha256"]:
-                    raise ValueError("capture_decoded_body_changed:"+raw_name)
-                body_path.unlink()
+    reserve = lambda size: _enforce_issue_budget(budget_roots, size)
+    write_candidate_outputs(storage, prefix, out, snapshot_check="none", reserve=reserve)
+    write_candidate_transport_evidence(
+        storage, prefix, capture_root, raw_descriptors, captures,
+        lambda name: original_receipts[name], reserve)
     descriptors = {n:{"bytes":len(b),"sha256":_sha(b)} for n,b in out.items()} | raw_descriptors
-    for n,d in descriptors.items():
-        key=f"{prefix}/{n}"; snap=storage.object_snapshot(key)
-        if snap is None or snap.size != d["bytes"] or storage.sha256_key(key) != d["sha256"] or storage.object_snapshot(key) != snap: raise ValueError("candidate_readback_failed:"+n)
+    verify_candidate_outputs(storage, prefix, descriptors, error_prefix="candidate_readback_failed:")
     fingerprint = _sha(_canonical(identity))
-    seal_first_construction(storage,state,candidate_version,fingerprint,canonical_construction_bundle(candidate_version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors}))
+    seal_candidate_objects(
+        storage, state, candidate_version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(repo,identity["code_commit"],identity["files"],identity=identity)
     shutil.rmtree(capture_root)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":candidate_version,"feature_count":audit["feature_count"],"source_unique_id_count":audit["source_unique_id_count"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}

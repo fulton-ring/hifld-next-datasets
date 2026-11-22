@@ -179,12 +179,22 @@ def load_checkpoint_receipt_map(
     return {name: load_receipt(capture_root, name) for name in names}
 
 
-def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
+def write_immutable(storage: StagingStorageResource, key: str, body: bytes, *,
+                    error_type: type[Exception] = ValueError,
+                    error_name: str | None = None,
+                    error_prefix: str = "immutable_staged_object_changed:") -> None:
     snapshot = storage.object_snapshot(key)
     if snapshot is None:
         storage.write_key_if_unchanged(key, body, None)
     elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-        raise ValueError("immutable_staged_object_changed:" + key)
+        raise error_type(error_prefix + (key if error_name is None else error_name))
+
+
+def write_immutable_key(storage, key, body, *, error_type=ValueError,
+                        error_prefix="immutable_staged_object_changed:") -> str:
+    """Write immutable bytes and return the storage-prefixed key for provenance."""
+    write_immutable(storage, key, body, error_type=error_type, error_prefix=error_prefix)
+    return storage._ensure_prefixed(key)
 
 
 CODE_IDENTITY_GIT = "git-commit-blobs-v1"
@@ -332,6 +342,8 @@ def write_candidate_outputs(
     error_prefix: str = "candidate_object_readback_failed:",
     error_type: type[Exception] = ValueError,
     writer: Callable[[StagingStorageResource, str, bytes], None] | None = None,
+    reserve: Callable[[int], None] | None = None,
+    file_snapshot_check: str = "content",
 ) -> dict[str, dict[str, object]]:
     """Write an ordered candidate inventory and prove each stored object's bytes.
 
@@ -349,10 +361,13 @@ def write_candidate_outputs(
              for name, body in outputs.items() if isinstance(body, Path)}
 
     def retain(name, body):
+        if reserve is not None:
+            reserve(files[name]["bytes"] if isinstance(body, Path) else len(body))
         if isinstance(body, Path):
-            write_immutable_file(storage, f"{prefix}/{name}", body, files[name])
+            write_immutable_file(storage, (f"{prefix}/{name}" if prefix else name), body, files[name],
+                                 recheck_snapshot=file_snapshot_check == "stable")
         else:
-            write(storage, f"{prefix}/{name}", body)
+            write(storage, (f"{prefix}/{name}" if prefix else name), body)
 
     def admit(name: str, body: bytes | Path) -> None:
         expected = files[name] if isinstance(body, Path) else {"bytes": len(body), "sha256": _sha(body)}
@@ -375,38 +390,42 @@ def write_candidate_outputs(
     return descriptors
 
 
-def _readback_candidate_output(storage, prefix, name, expected, stable, error_prefix, error_type):
-    key = f"{prefix}/{name}"
+def _readback_candidate_output(storage, prefix, name, expected, stable, error_prefix, error_type, error_name=None):
+    key = (f"{prefix}/{name}" if prefix else name)
     snapshot = storage.object_snapshot(key)
     if snapshot is None:
-        raise error_type(error_prefix + name)
+        raise error_type(error_prefix + (name if error_name is None else error_name))
     if expected is None:
         return {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
     if (snapshot.size != expected["bytes"] or storage.sha256_key(key) != expected["sha256"]
             or (stable and storage.object_snapshot(key) != snapshot)):
-        raise error_type(error_prefix + name)
+        raise error_type(error_prefix + (name if error_name is None else error_name))
     return dict(expected)
 
 
 def verify_candidate_outputs(
     storage: StagingStorageResource, prefix: str,
     descriptors: Mapping[str, Mapping[str, object]], *,
-    error_prefix: str = "candidate_output_physical_readback_failed:",
+    error_prefix: str = "candidate_output_physical_readback_failed:", error_suffix: str = "relative",
 ) -> None:
     """Admit a prepared inventory after every streamed output has been written."""
     for name, expected in descriptors.items():
-        _readback_candidate_output(storage, prefix, name, expected, True, error_prefix, ValueError)
+        _readback_candidate_output(storage, prefix, name, expected, True, error_prefix, ValueError,
+                                   None if error_suffix == "relative" else "")
 
 
 def write_candidate_capture_files(
     storage: StagingStorageResource, prefix: str, root: Path,
-    receipts: Mapping[str, Mapping[str, object]], read_body: Callable,
+    receipts: Mapping[str, Mapping[str, object]], read_body: Callable, *,
+    order: str = "sorted", receipt_encoding: str = "canonical",
 ) -> None:
     """Write raw evidence one blob at a time before a separate inventory readback."""
-    for name, receipt in sorted(receipts.items()):
+    items = sorted(receipts.items()) if order == "sorted" else receipts.items()
+    for name, receipt in items:
         write_immutable(storage, f"{prefix}/raw/{name}.body", read_body(root, name))
         write_immutable(storage, f"{prefix}/raw/{name}.wire", (root / f"{name}.wire").read_bytes())
-        write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
+        if receipt_encoding == "canonical":
+            write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
 
 
 def write_candidate_captures(
@@ -453,6 +472,45 @@ def write_candidate_file_by_sha(
         storage.upload_local_file(path, key)
     if storage.sha256_key(key) != expected_sha256:
         raise ValueError("candidate_object_readback_failed:" + relative)
+
+
+def write_candidate_transport_evidence(
+    storage: StagingStorageResource, prefix: str, root: Path,
+    descriptors: Mapping[str, Mapping[str, object]], captures: Mapping,
+    receipt_body: Callable[[str], bytes], reserve: Callable[[int], None],
+) -> None:
+    """Retain exact wire/receipt evidence, then release verified decoded copies."""
+    for name in descriptors:
+        raw_name = name.removeprefix("raw/").removesuffix(".receipt.json")
+        body = ((root / name.removeprefix("raw/")).read_bytes()
+                if name.endswith(".wire") else receipt_body(raw_name))
+        reserve(len(body))
+        write_immutable(storage, f"{prefix}/{name}", body)
+        if name.endswith(".receipt.json"):
+            body_path = root / f"{raw_name}.body"
+            if body_path.exists():
+                decoded = body_path.read_bytes()
+                receipt = captures[raw_name][1]
+                if len(decoded) != receipt["bytes"] or _sha(decoded) != receipt["sha256"]:
+                    raise ValueError("capture_decoded_body_changed:" + raw_name)
+                body_path.unlink()
+
+
+def write_candidate_ready_state(storage: StagingStorageResource, key: str, body: bytes,
+                                error_type: type[Exception]) -> None:
+    """Preserve ready-state admission for private transactional source candidates."""
+    if storage.object_snapshot(key) is None:
+        storage.write_key_if_unchanged(key, body, None)
+    elif storage.read_key(key) != body:
+        raise error_type("candidate_ready_state_changed")
+
+
+def stage_candidate_object(storage: StagingStorageResource, key: str, *,
+                           body: bytes | None = None, path: Path | None = None) -> dict[str, object]:
+    """Admit one bytes-or-file NFHL object with its full-key error contract."""
+    return write_candidate_outputs(
+        storage, "", {key: path if path is not None else body},
+        error_prefix="candidate_output_physical_readback_failed:")[key]
 
 
 def reuse_sealed_candidate(storage: StagingStorageResource, state_key: str,
@@ -519,13 +577,20 @@ def upload_candidate_objects(
 
 
 def write_immutable_file(storage: StagingStorageResource, key: str, source: Path,
-                          descriptor: Mapping[str, object]) -> None:
+                          descriptor: Mapping[str, object], *, recheck_snapshot: bool = False) -> None:
     """write_immutable for a local file too large to buffer as bytes."""
     snapshot = storage.object_snapshot(key)
     if snapshot is None:
-        storage.upload_local_file(source, key)
+        if recheck_snapshot:
+            local = StagingStorageResource(use_local=True, local_dir=str(source.parent))
+            source_snapshot = local.object_snapshot(source.name)
+            local.copy_key_to_if_unchanged(
+                storage, source.name, key, source_snapshot=source_snapshot, destination_snapshot=None)
+        else:
+            storage.upload_local_file(source, key)
         return
-    if snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
+    if (snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]
+            or (recheck_snapshot and storage.object_snapshot(key) != snapshot)):
         raise ValueError("immutable_staged_object_changed:" + key)
 
 

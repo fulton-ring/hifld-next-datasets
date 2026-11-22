@@ -21,6 +21,10 @@ remain unapproved.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs, write_candidate_capture_files,
+)
+
 import hashlib
 import json
 import math
@@ -637,14 +641,13 @@ def capture_historic_perimeters(storage: StagingStorageResource, *, version: str
     provenance_projection(manifest)
     feature_count = len(features)
     del features
-    write_immutable(storage, f"{prefix}/{parquet_path}", parquet)
-    write_immutable(storage, f"{prefix}/metadata/source_manifest.json", _canonical(manifest) + b"\n")
-    write_immutable(storage, f"{prefix}/metadata/source_audit.json", _canonical(audit) + b"\n")
-    for name, receipt in receipts.items():
-        body = static[name][0] if name in static else _page_body(root, name, receipt)
-        write_immutable(storage, f"{prefix}/raw/{name}.body", body)
-        write_immutable(storage, f"{prefix}/raw/{name}.wire", (root / f"{name}.wire").read_bytes())
-        write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
+    write_candidate_outputs(storage, prefix, {
+        parquet_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
+        "metadata/source_audit.json": _canonical(audit) + b"\n"}, snapshot_check="none")
+    write_candidate_capture_files(
+        storage, prefix, root, receipts,
+        lambda directory, name: static[name][0] if name in static else _page_body(directory, name, receipts[name]),
+        order="insertion")
     ready = {"approved": False, "version": resolved_version,
              "objects": {parquet_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
              "source_population_complete": True,

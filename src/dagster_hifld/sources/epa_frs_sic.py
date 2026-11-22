@@ -17,6 +17,12 @@ path, which requires a real WKB geometry column. No geometry is invented.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import seal_candidate_objects
+
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs,
+)
+
 import json
 import shutil
 from datetime import datetime, timezone
@@ -377,15 +383,15 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
                                        identity, record_sha, schema_sha, descriptors,
                                        payload["capture_receipts"])
     try:
-        for name, body in objects.items():
-            write_immutable(storage, f"{prefix}/{name}", body)
-        for name, descriptor in descriptors.items():
-            key = f"{prefix}/{name}"
-            snapshot = storage.object_snapshot(key)
-            if (snapshot is None or snapshot.size != descriptor["bytes"]
-                    or storage.sha256_key(key) != descriptor["sha256"]):
-                raise ValueError("candidate_output_physical_readback_failed:" + name)
-        seal_ready_candidate(storage, state_key, version, identity_fingerprint, payload)
+        write_candidate_outputs(
+            storage, prefix, objects, snapshot_check="content", readback_order="after-all",
+            error_prefix="candidate_output_physical_readback_failed:")
+        seal_candidate_objects(
+            storage, state_key, version,
+            payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+            source_record_sha256=payload['source_record_sha256'],
+            source_schema_sha256=payload['source_schema_sha256'],
+            fingerprint=identity_fingerprint)
     except Exception as exc:
         quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, captures,
                                       getattr(exc, "code", type(exc).__name__))

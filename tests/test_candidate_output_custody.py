@@ -188,3 +188,80 @@ class CandidateOutputCustodyTests(unittest.TestCase):
             self.assertEqual(inventory['native.parquet'], {
                 'bytes': len(b'parquet bytes'), 'sha256': hashlib.sha256(b'parquet bytes').hexdigest()})
             self.assertEqual(storage.read_key('candidate/native.parquet'), b'parquet bytes')
+
+    def test_budget_reservation_refuses_before_any_object_io(self):
+        storage = MemoryStorage()
+        def refuse(size):
+            self.assertEqual(size, 1)
+            raise ValueError('native_budget_exceeded')
+        with self.assertRaisesRegex(ValueError, 'native_budget_exceeded'):
+            common.write_candidate_outputs(storage, 'candidate', {'a': b'A'}, reserve=refuse)
+        self.assertEqual(storage.events, [])
+
+    def test_transport_cleanup_only_releases_hash_verified_decoded_copy(self):
+        for valid in (False, True):
+            with self.subTest(valid=valid), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                storage = MemoryStorage()
+                (root / 'page.wire').write_bytes(b'wire')
+                (root / 'page.body').write_bytes(b'body' if valid else b'forged')
+                receipt = {'bytes': 4, 'sha256': hashlib.sha256(b'body').hexdigest()}
+                descriptors = {'raw/page.wire': {}, 'raw/page.receipt.json': {}}
+                reserve = []
+                def stage():
+                    common.write_candidate_transport_evidence(storage, 'candidate', root,
+                        descriptors, {'page': (None, receipt)}, lambda name: b'exact receipt', reserve.append)
+                if valid:
+                    stage()
+                    self.assertFalse((root / 'page.body').exists())
+                else:
+                    with self.assertRaisesRegex(ValueError, 'capture_decoded_body_changed:page'):
+                        stage()
+                    self.assertTrue((root / 'page.body').exists())
+                self.assertEqual(reserve, [4, len(b'exact receipt')])
+                self.assertEqual(storage.objects['candidate/raw/page.receipt.json'], b'exact receipt')
+
+    def test_native_immutable_and_ready_error_policies_are_preserved(self):
+        class NativeError(ValueError):
+            pass
+        storage = MemoryStorage()
+        storage.objects['candidate/a'] = b'original'
+        with self.assertRaisesRegex(NativeError, 'native_conflict:a'):
+            common.write_immutable(storage, 'candidate/a', b'changed', error_type=NativeError,
+                                   error_name='a', error_prefix='native_conflict:')
+        with self.assertRaisesRegex(NativeError, 'candidate_ready_state_changed'):
+            common.write_candidate_ready_state(storage, 'candidate/a', b'changed', NativeError)
+        self.assertEqual(storage.objects['candidate/a'], b'original')
+
+    def test_nfhl_single_object_retains_full_key_error_name(self):
+        storage = MemoryStorage()
+        storage.bad_hash = True
+        with self.assertRaisesRegex(ValueError, 'candidate_output_physical_readback_failed:native/object'):
+            common.stage_candidate_object(storage, 'native/object', body=b'bytes')
+        self.assertEqual(storage.objects['native/object'], b'bytes')
+
+    def test_filegdb_custody_streams_paths_and_retains_cas(self):
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources.arcgis_filegdb import stage_filegdb_archive
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            archive = root / 'source.zip'
+            archive.write_bytes(b'archive')
+            gdb = root / 'native.gdb'
+            gdb.mkdir()
+            (gdb / 'table.gdbtable').write_bytes(b'native table')
+            storage = StagingStorageResource(local_dir=str(root / 'stage'))
+            with patch.object(Path, 'read_bytes', side_effect=AssertionError('buffered archive/member')):
+                objects = stage_filegdb_archive(storage, 'candidate', archive, gdb, 'native.gdb')
+            self.assertEqual([item['path'] for item in objects], [
+                'file_geodatabase/source_filegdb.zip', 'file_geodatabase/native.gdb/table.gdbtable'])
+            self.assertEqual(storage.read_key('candidate/file_geodatabase/source_filegdb.zip'), b'archive')
+            race_storage = StagingStorageResource(local_dir=str(root / 'race'))
+            original = StagingStorageResource.copy_key_to_if_unchanged
+            def race(source, target, key, destination_key, **kwargs):
+                target.write_key_if_unchanged(destination_key, b'competing writer', None)
+                return original(source, target, key, destination_key, **kwargs)
+            with patch.object(StagingStorageResource, 'copy_key_to_if_unchanged', race):
+                with self.assertRaises(RuntimeError):
+                    stage_filegdb_archive(race_storage, 'candidate', archive, gdb, 'native.gdb')
+            self.assertEqual(race_storage.read_key('candidate/file_geodatabase/source_filegdb.zip'), b'competing writer')

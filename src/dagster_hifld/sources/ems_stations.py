@@ -6,6 +6,12 @@ all wire attributes and the producer's field declaration document.
 """
 from __future__ import annotations
 
+from functools import partial
+
+from dagster_hifld.sources.capture_common import (
+    write_immutable_key,
+)
+
 import hashlib
 import json
 import math
@@ -266,12 +272,8 @@ def _arrow(features: list[dict], layer: dict) -> pa.Table:
     return pa.Table.from_arrays(arrays, schema=pa.schema(schema, metadata=metadata))
 
 
-def _immutable(storage: StagingStorageResource, key: str, body: bytes) -> str:
-    prior = storage.object_snapshot(key)
-    if prior is None: storage.write_key_if_unchanged(key, body, None)
-    elif storage.read_key(key) != body or storage.object_snapshot(key) != prior:
-        raise EMSQuarantineError(f"immutable_object_conflict:{key}")
-    return storage._ensure_prefixed(key)
+_immutable = partial(write_immutable_key, error_type=EMSQuarantineError,
+                     error_prefix="immutable_object_conflict:")
 
 
 def _validate_existing_catalog(storage: StagingStorageResource, prefix: str,
