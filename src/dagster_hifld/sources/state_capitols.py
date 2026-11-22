@@ -8,6 +8,7 @@ approve the source, schema, baseline, coverage, rights, or release.
 """
 from __future__ import annotations
 
+
 from functools import partial
 import io
 import json
@@ -37,6 +38,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import layer_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -664,20 +667,13 @@ def capture_state_capitols(storage: StagingStorageResource, *, version: str,
                 "schema_contract_accepted": False, "id_contract_accepted": False,
                 "baseline_accepted": False, "coverage_accepted": False, "rights_accepted": False,
                 "mapping_approved": False, "release_accepted": False}
-    descriptors = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if snapshot is None or snapshot.size != len(body) or storage.sha256_key(key) != descriptor["sha256"]:
-            raise ValueError("candidate_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint,
-                         {"processing_identity": identity,
-                          "source_record_sha256": audit["source_record_sha256"],
-                          "source_schema_sha256": audit["source_schema_sha256"],
-                          "capture_receipts": receipts, "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content", error_prefix='candidate_readback_failed:')
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(repo, identity["code_commit"], identity["files"],
                                         identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

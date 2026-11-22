@@ -6,6 +6,7 @@ the candidate payload; no published-schema mapping is performed here.
 """
 from __future__ import annotations
 
+
 import hashlib
 import io
 import json
@@ -31,6 +32,8 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.capture_completeness import validate_capture_witness
@@ -386,11 +389,8 @@ def capture_noaa_nautical_navaids(storage: StagingStorageResource, *, capture_di
         "id_contract_accepted": False, "rights_accepted": False, "mapping_approved": False,
         "release_accepted": False}
     outputs["metadata/candidate_ready.json"] = _canonical(ready) + b"\n"
-    for path, body in outputs.items(): write_immutable(storage, f"{prefix}/{path}", body)
-    for path, body in outputs.items():
-        key = f"{prefix}/{path}"; snap = storage.object_snapshot(key)
-        if snap is None or snap.size != len(body) or storage.sha256_key(key) != _sha(body) or storage.object_snapshot(key) != snap:
-            raise ValueError("noaa_candidate_readback_failed:" + path)
+    write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='noaa_candidate_readback_failed:')
     payload = {"source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"processing_identity":identity,
                "capture_receipts":capture_receipts,
                "objects":{name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}}
@@ -406,7 +406,12 @@ def capture_noaa_nautical_navaids(storage: StagingStorageResource, *, capture_di
                 "published_baseline_compatible":False,"source_release_accepted":False,
                 "schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     if storage.object_snapshot(state_key) is None:
-        seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+        seal_candidate_objects(
+            storage, state_key, version,
+            payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+            source_record_sha256=payload['source_record_sha256'],
+            source_schema_sha256=payload['source_schema_sha256'],
+            fingerprint=fingerprint)
     else:
         prior = json.loads(load_first_construction(storage, state_key, version, fingerprint))
         if prior.get("payload") != payload: raise ValueError("noaa_first_candidate_changed")

@@ -1,6 +1,7 @@
 """Lossless native capture of USACE FUDS Munitions Response Sites."""
 from __future__ import annotations
 
+
 import json
 import math
 
@@ -29,6 +30,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -308,14 +311,13 @@ def capture_fuds_mrs(storage: StagingStorageResource, *, version: str,
             return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"prefix":prefix,
                     "feature_count":count,"capture_complete":True,"source_id_sha256":record_sha,
                     "candidate_approved":False,"reused":True}
-        for name,body in outputs.items():
-            write_immutable(storage,f"{prefix}/{name}",body)
-            snap=storage.object_snapshot(f"{prefix}/{name}")
-            if snap is None or snap.size != len(body) or storage.sha256_key(f"{prefix}/{name}") != _sha(body):
-                raise ValueError("candidate_output_physical_readback_failed:"+name)
-        seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-            "source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipts,
-            "objects":descriptors})
+        write_candidate_outputs(storage, prefix, outputs, snapshot_check="content", error_prefix='candidate_output_physical_readback_failed:')
+        seal_candidate_objects(
+            storage, state_key, version,
+            identity, receipts, descriptors,
+            source_record_sha256=record_sha,
+            source_schema_sha256=schema_sha,
+            fingerprint=fingerprint)
         validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"prefix":prefix,
                 "feature_count":count,"capture_complete":True,"source_id_sha256":record_sha,

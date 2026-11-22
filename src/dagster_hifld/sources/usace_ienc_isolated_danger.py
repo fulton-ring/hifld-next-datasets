@@ -7,6 +7,7 @@ date, and no output/schema/ID/rights decision is implied.
 """
 from __future__ import annotations
 
+
 import json
 import math
 import shutil
@@ -40,6 +41,8 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -509,18 +512,16 @@ def capture_usace_ienc_isolated_danger(
     if storage.object_snapshot(state_key) is not None:
         return _verify_first_candidate(storage, state_key, prefix, version, fingerprint, identity,
                                        audit, parquet_body, captures)
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-    descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    for name, descriptor in descriptors.items():
-        key=f"{prefix}/{name}"
-        snapshot=storage.object_snapshot(key)
-        if (snapshot is None or snapshot.size != descriptor["bytes"]
-                or storage.sha256_key(key) != descriptor["sha256"] or storage.object_snapshot(key) != snapshot):
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_physical_readback_failed:')
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],
              "source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fingerprint,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {
         "dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,

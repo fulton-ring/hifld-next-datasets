@@ -7,6 +7,7 @@ shared candidate-construction module is not part of this branch.
 """
 from __future__ import annotations
 
+
 from collections.abc import Mapping
 
 import hashlib
@@ -51,6 +52,9 @@ from dagster_hifld.sources.capture_common import (
     STAGED_RELEASE_DERIVATIVE_NAMES,
     _validate_cached_catalog_sidecars,
     validate_staged_release_derivatives,
+    seal_candidate_objects,
+    write_candidate_outputs,
+    write_immutable,
 )
 from dagster_hifld.validation import sha256_file
 from dagster_hifld.sources.arcgis_layer import capture_witness, ienc_layer_capture_roster
@@ -338,14 +342,6 @@ def _validate(captures: Mapping[str, tuple[bytes, dict]]):
         "drift_guard": "BTS " + BTS_ITEM_ID + " distribution/delegation link (the prior BTS item " + PRIOR_BTS_ITEM_ID + " returned anonymous-access denial during 2026-10-21 extraction and is recorded in docs, not validated here), official service-directory membership, service/layer identity, field names/types, CRS, pinned layer extent, valid non-empty polygon topology (invalid or empty geometry is rejected, never repaired), page errors, and before/after exact ID roster are checked; duplicate Feature_ID values are preserved."}
 
 
-def write_immutable(storage: StagingStorageResource, key: str, body: bytes) -> None:
-    snapshot = storage.object_snapshot(key)
-    if snapshot is None:
-        storage.write_key_if_unchanged(key, body, None)
-    elif storage.read_key(key) != body or storage.object_snapshot(key) != snapshot:
-        raise ValueError("immutable_staged_object_changed:" + key)
-
-
 def _processing_files(root: Path) -> dict[str, str]:
     files = {str(path.relative_to(root)): sha256_file(path)
              for path in sorted(root.joinpath("src/dagster_hifld").rglob("*.py"))}
@@ -527,16 +523,7 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
 
 
 def _write_outputs(storage, prefix: str, outputs: dict[str, bytes]) -> dict[str, dict[str, object]]:
-    descriptors = {}
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        snapshot = storage.object_snapshot(f"{prefix}/{name}")
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if (snapshot is None or snapshot.size != descriptor["bytes"]
-                or storage.sha256_key(f"{prefix}/{name}") != descriptor["sha256"]
-                or storage.object_snapshot(f"{prefix}/{name}") != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 
@@ -773,11 +760,12 @@ def capture_land_region_areas_usace_ienc(storage: StagingStorageResource, *, ver
             "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
             "release_accepted": False, "capture_directory": str(root)}
     descriptors = _write_outputs(storage, prefix, outputs)
-    seal_ready_candidate(storage, state_key, version, state_fingerprint,
-                         {"processing_identity": identity,
-                          "source_record_sha256": audit["source_record_sha256"],
-                          "source_schema_sha256": audit["source_schema_sha256"],
-                          "capture_receipts": receipts, "objects": descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=state_fingerprint)
     validate_processing_identity(Path(__file__).parents[3], identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,

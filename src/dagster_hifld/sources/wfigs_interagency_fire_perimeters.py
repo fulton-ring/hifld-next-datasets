@@ -15,6 +15,7 @@ contract, baseline, rights and release acceptance remain unapproved.
 """
 from __future__ import annotations
 
+
 import io
 import json
 import math
@@ -43,6 +44,7 @@ from dagster_hifld.sources.capture_common import (
     content_derived_version,
     processing_identity,
     write_immutable,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -644,8 +646,7 @@ def capture_wfigs_interagency_fire_perimeters(storage: StagingStorageResource, *
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = (root / f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
+    write_candidate_outputs(storage, prefix, outputs, snapshot_check="none")
     ready = {"approved": False, "version": resolved_version,
              "objects": {parquet_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
              "source_population_complete": True, "source_id_sha256": audit["source_id_sha256"],

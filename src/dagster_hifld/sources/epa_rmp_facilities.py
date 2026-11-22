@@ -6,6 +6,7 @@ DataLumos export. Candidate creation is local-only and never grants release.
 """
 from __future__ import annotations
 
+
 import json
 import shutil
 from collections import Counter
@@ -32,6 +33,8 @@ from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureV
 from dagster_hifld.sources.capture_common import (
     capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
     verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import offset_layer_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -512,18 +515,17 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
                         "source_record_sha256": audit["source_record_sha256"],
                         "source_geometry_sha256": audit["source_geometry_sha256"], "receipts": receipts}
     (capture_root / "capture_manifest.json").write_bytes(_canonical(capture_manifest) + b"\n")
-    for name, body in outputs.items():
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        if snapshot is None or snapshot.size != len(body) or storage.sha256_key(key) != _sha(body) or storage.object_snapshot(key) != snapshot:
-            raise ValueError("candidate_physical_readback_failed:" + name)
+    write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_physical_readback_failed:')
     descriptors = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
     payload = {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"], "capture_receipts": receipts,
                "objects": descriptors}
-    seal_first_construction(storage, f"_construction-state/{DATASET_SLUG}/{version_id}.json", version_id,
-                            fingerprint, canonical_construction_bundle(version_id, fingerprint, payload))
+    seal_candidate_objects(
+        storage, f'_construction-state/{DATASET_SLUG}/{version_id}.json', version_id,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(root, identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version_id,
             "feature_count": len(extracted["features"]), "source_null_geometry_count": audit["null_geometry_count"],

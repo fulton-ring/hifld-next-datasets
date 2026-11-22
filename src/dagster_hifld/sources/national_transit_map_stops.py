@@ -5,6 +5,7 @@ HIFLD/DataLumos snapshot. Source and release approvals remain false.
 """
 from __future__ import annotations
 
+
 import json
 import math
 import os
@@ -37,6 +38,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.http_capture import validate_capture_roster
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -618,14 +621,14 @@ def capture_national_transit_map_stops(storage: StagingStorageResource, *, versi
             "source_release_accepted":False,"release_accepted":False,"capture_directory":str(root)}
     if shutil.disk_usage(base).free < MIN_FREE_BYTES + sum(map(len,outputs.values())) + STAGING_OVERHEAD_BYTES:
         raise ValueError("candidate_staging_disk_reserve_exceeded")
-    for name,body in outputs.items():
-        key=f"{prefix}/{name}"; write_immutable(storage,key,body); snapshot=storage.object_snapshot(key)
-        if snapshot is None or snapshot.size!=len(body) or storage.sha256_key(key)!=_sha(body) or storage.object_snapshot(key)!=snapshot:
-            raise ValueError("candidate_output_readback_failed:"+name)
+    write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_output_readback_failed:')
     descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    seal_ready_candidate(storage,state_key,version_id,fingerprint,{"processing_identity":identity,
-        "source_record_sha256":record_sha,"source_schema_sha256":schema_sha,
-        "capture_receipts":{name:receipt for name,(_body,receipt) in captures.items()},"objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version_id,
+        identity, {name: receipt for name, (_body, receipt) in captures.items()}, descriptors,
+        source_record_sha256=record_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version_id,"feature_count":count,
         "source_reported_count":count,"source_population_complete":True,"source_id_sha256":_sha(_canonical(seed)),

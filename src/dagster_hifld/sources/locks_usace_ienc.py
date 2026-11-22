@@ -12,6 +12,7 @@ unapproved. The producer-declared EPSG:4019 unknown datum is preserved as-is.
 """
 from __future__ import annotations
 
+
 from collections.abc import Mapping
 
 import hashlib
@@ -45,6 +46,8 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 
 DATASET_SLUG = "locks-usace-ienc"
@@ -909,14 +912,7 @@ def _canonical_geoparquet(table: pa.Table) -> bytes:
 
 
 def _write_outputs(storage: StagingStorageResource, prefix: str, outputs: dict[str,bytes]) -> dict:
-    descriptors={}
-    for name,body in outputs.items():
-        key=f"{prefix}/{name}";write_immutable(storage,key,body)
-        snap=storage.object_snapshot(key);descriptor={"bytes":len(body),"sha256":digest(body)}
-        if (snap is None or snap.size!=len(body) or storage.sha256_key(key)!=digest(body)
-                or storage.object_snapshot(key)!=snap):
-            raise LocksQuarantineError("candidate_write_readback_failed:"+name)
-        descriptors[name]=descriptor
+    descriptors = write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_write_readback_failed:', error_type=LocksQuarantineError)
     return descriptors
 
 
@@ -1058,9 +1054,12 @@ def capture_locks_usace_ienc(storage: StagingStorageResource, *,
             "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,
             "id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     descriptors=_write_outputs(storage,prefix,outputs)
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-        "source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipt_map,
-        "objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipt_map, descriptors,
+        source_record_sha256=record_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(ids),"source_reported_count":len(ids),
         "source_population_complete":True,"source_id_sha256":native_audit["source_id_sha256"],

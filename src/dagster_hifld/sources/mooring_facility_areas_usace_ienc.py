@@ -1,6 +1,7 @@
 """Bounded, source-faithful capture for the official USACE IENC mooring facility areas."""
 from __future__ import annotations
 
+
 from collections.abc import Mapping
 
 import hashlib
@@ -38,6 +39,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -698,21 +701,13 @@ def capture_mooring_facility_areas_usace_ienc(storage: StagingStorageResource, *
                 "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
                 "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
                 "capture_directory": str(root)}
-    descriptors = {}
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        snapshot = storage.object_snapshot(f"{prefix}/{name}")
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if (snapshot is None or snapshot.size != descriptor["bytes"]
-                or storage.sha256_key(f"{prefix}/{name}") != descriptor["sha256"]
-                or storage.object_snapshot(f"{prefix}/{name}") != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
-                                                                    "source_record_sha256": audit["source_record_sha256"],
-                                                                    "source_schema_sha256": audit["source_schema_sha256"],
-                                                                    "capture_receipts": receipts,
-                                                                    "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": audit["source_feature_count"], "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"],

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+
 import io
 import json
 import math
@@ -35,6 +36,8 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -433,16 +436,7 @@ def _read_capture(root: Path, storage: StagingStorageResource,
 
 def _write_outputs(storage: StagingStorageResource, prefix: str,
                    outputs: dict[str, bytes]) -> dict[str, dict[str, object]]:
-    descriptors = {}
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        snapshot = storage.object_snapshot(f"{prefix}/{name}")
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if (snapshot is None or snapshot.size != descriptor["bytes"]
-                or storage.sha256_key(f"{prefix}/{name}") != descriptor["sha256"]
-                or storage.object_snapshot(f"{prefix}/{name}") != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 
@@ -589,12 +583,12 @@ def capture_principal_ports(storage: StagingStorageResource, *, version: str,
                 "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
                 "release_accepted": False, "capture_directory": str(root)}
     descriptors = _write_outputs(storage, prefix, outputs)
-    seal_ready_candidate(storage, state_key, candidate_version, identity_sha, {
-        "processing_identity": identity, "source_record_sha256": record_sha,
-        "source_schema_sha256": schema_sha,
-        "capture_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
-        "objects": descriptors,
-    })
+    seal_candidate_objects(
+        storage, state_key, candidate_version,
+        identity, {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}, descriptors,
+        source_record_sha256=record_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=identity_sha)
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
     )

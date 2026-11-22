@@ -7,6 +7,7 @@ publication.
 """
 from __future__ import annotations
 
+
 import json
 import math
 import platform
@@ -32,6 +33,8 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
@@ -389,13 +392,14 @@ def capture_fuds_property_boundaries(storage: StagingStorageResource, *, version
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
         return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs),parquet_body)
-    for relative, body in outputs.items(): _write_immutable(storage,f"{prefix}/{relative}",body)
-    descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    for name, descriptor in descriptors.items():
-        key=f"{prefix}/{name}"; snapshot=storage.object_snapshot(key)
-        if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"] or storage.object_snapshot(key) != snapshot:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_physical_readback_failed:', writer=_write_immutable)
     payload = {"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{name:receipt for name,(_,receipt) in captures.items()},"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fingerprint,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(extracted["features"]),"capture_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_null_geometry_count":0,"source_invalid_geometry_count":audit["invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root)}

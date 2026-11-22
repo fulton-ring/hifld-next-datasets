@@ -60,6 +60,7 @@ false and the draft refresh schedule is stopped.
 from __future__ import annotations
 
 from dagster_hifld.http_capture import validated_capture_view
+
 from dagster_hifld.sources.arcgis_layer import (
     capture_document_retry, bracket_document_complete as _document_complete,
 )
@@ -96,6 +97,8 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -222,10 +225,6 @@ def _capture_names(ids: list[int]) -> list[tuple[str, str]]:
 
 _BRACKET_RETRY_ATTEMPTS = 4
 _BRACKET_RETRY_BASE_DELAY_SECONDS = 5.0
-
-
-
-
 
 
 def _acquire_document(client: httpx.Client, root: Path, name: str, url: str, *,
@@ -829,20 +828,18 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
              "id_contract_accepted": False, "rights_accepted": False,
              "source_authority_accepted": False, "mapping_approved": False}
     outputs["metadata/candidate_ready.json"] = _canonical(ready) + b"\n"
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-    objects = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
-    for name, descriptor in objects.items():
-        key = f"{prefix}/{name}"
-        snap = storage.object_snapshot(key)
-        if snap is None or descriptor != {"bytes": snap.size, "sha256": storage.sha256_key(key)} \
-                or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_physical_readback_failed:" + name)
+    objects = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_physical_readback_failed:')
     payload = {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
                "capture_receipts": {n: r for n, (_, r) in ((name, captures[name]) for name in sorted(captures))},
                "objects": objects}
-    seal_ready_candidate(storage, state_key, version, _sha(_canonical(identity)), payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=_sha(_canonical(identity)))
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

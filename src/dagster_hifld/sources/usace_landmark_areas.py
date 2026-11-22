@@ -5,6 +5,7 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
+
 from collections.abc import Mapping
 
 import json
@@ -40,6 +41,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import capture_witness, ienc_layer_capture_roster
 
@@ -277,14 +280,7 @@ def _validate(captures: Mapping[str, tuple[bytes, dict]]):
 
 
 def _write_outputs(storage, prefix: str, outputs: dict[str,bytes]) -> dict[str,dict[str,object]]:
-    descriptors={}
-    for name,body in outputs.items():
-        write_immutable(storage,f"{prefix}/{name}",body)
-        snapshot=storage.object_snapshot(f"{prefix}/{name}")
-        descriptor={"bytes":len(body),"sha256":_sha(body)}
-        if snapshot is None or snapshot.size!=descriptor["bytes"] or storage.sha256_key(f"{prefix}/{name}")!=descriptor["sha256"] or storage.object_snapshot(f"{prefix}/{name}")!=snapshot:
-            raise ValueError("candidate_object_readback_failed:"+name)
-        descriptors[name]=descriptor
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 
@@ -453,6 +449,11 @@ def capture_usace_landmark_areas(storage: StagingStorageResource, *, version: st
             "rights_accepted":False,"mapping_approved":False,"release_accepted":False,
             "capture_directory":str(root)}
     descriptors=_write_outputs(storage,prefix,outputs)
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":receipts,"objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"],identity=identity)
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_reported_count": audit["source_feature_count"],"source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],"source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],"source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],"drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

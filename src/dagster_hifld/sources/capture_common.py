@@ -326,6 +326,135 @@ def seal_ready_candidate(storage: StagingStorageResource, state_key: str, versio
                             canonical_construction_bundle(version, fingerprint, dict(payload)))
 
 
+def write_candidate_outputs(
+    storage: StagingStorageResource, prefix: str, outputs: Mapping[str, bytes | Path], *,
+    snapshot_check: str = "stable", readback_order: str = "per-object",
+    error_prefix: str = "candidate_object_readback_failed:",
+    error_type: type[Exception] = ValueError,
+    writer: Callable[[StagingStorageResource, str, bytes], None] | None = None,
+) -> dict[str, dict[str, object]]:
+    """Write an ordered candidate inventory and prove each stored object's bytes.
+
+    Preserve the adapter's admission policy: some producers verify content
+    only, others also require a stable snapshot; two-pass candidates finish
+    every immutable write before admitting any readback. Mapping order is the
+    upload order, so callers can supply sorted outputs when required. Native
+    file paths use the streamed immutable-file writer and are never buffered.
+    """
+    if snapshot_check not in {"content", "stable", "observed", "none"} or readback_order not in {"per-object", "after-all"}:
+        raise ValueError("invalid_candidate_readback_policy")
+    write = writer or write_immutable
+    descriptors = {}
+    files = {name: {"bytes": body.stat().st_size, "sha256": sha256_file(body)}
+             for name, body in outputs.items() if isinstance(body, Path)}
+
+    def retain(name, body):
+        if isinstance(body, Path):
+            write_immutable_file(storage, f"{prefix}/{name}", body, files[name])
+        else:
+            write(storage, f"{prefix}/{name}", body)
+
+    def admit(name: str, body: bytes | Path) -> None:
+        expected = files[name] if isinstance(body, Path) else {"bytes": len(body), "sha256": _sha(body)}
+        if snapshot_check == "none":
+            descriptors[name] = expected
+        else:
+            descriptors[name] = _readback_candidate_output(
+                storage, prefix, name, None if snapshot_check == "observed" else expected,
+                snapshot_check == "stable", error_prefix, error_type)
+
+    if readback_order == "after-all":
+        for name, body in outputs.items():
+            retain(name, body)
+        for name, body in outputs.items():
+            admit(name, body)
+    else:
+        for name, body in outputs.items():
+            retain(name, body)
+            admit(name, body)
+    return descriptors
+
+
+def _readback_candidate_output(storage, prefix, name, expected, stable, error_prefix, error_type):
+    key = f"{prefix}/{name}"
+    snapshot = storage.object_snapshot(key)
+    if snapshot is None:
+        raise error_type(error_prefix + name)
+    if expected is None:
+        return {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+    if (snapshot.size != expected["bytes"] or storage.sha256_key(key) != expected["sha256"]
+            or (stable and storage.object_snapshot(key) != snapshot)):
+        raise error_type(error_prefix + name)
+    return dict(expected)
+
+
+def verify_candidate_outputs(
+    storage: StagingStorageResource, prefix: str,
+    descriptors: Mapping[str, Mapping[str, object]], *,
+    error_prefix: str = "candidate_output_physical_readback_failed:",
+) -> None:
+    """Admit a prepared inventory after every streamed output has been written."""
+    for name, expected in descriptors.items():
+        _readback_candidate_output(storage, prefix, name, expected, True, error_prefix, ValueError)
+
+
+def write_candidate_capture_files(
+    storage: StagingStorageResource, prefix: str, root: Path,
+    receipts: Mapping[str, Mapping[str, object]], read_body: Callable,
+) -> None:
+    """Write raw evidence one blob at a time before a separate inventory readback."""
+    for name, receipt in sorted(receipts.items()):
+        write_immutable(storage, f"{prefix}/raw/{name}.body", read_body(root, name))
+        write_immutable(storage, f"{prefix}/raw/{name}.wire", (root / f"{name}.wire").read_bytes())
+        write_immutable(storage, f"{prefix}/raw/{name}.receipt.json", _canonical(receipt) + b"\n")
+
+
+def write_candidate_captures(
+    storage: StagingStorageResource, prefix: str, root: Path, names: Iterable[str],
+    read_capture: Callable, *, snapshot_check: str = "content",
+) -> dict[str, dict[str, object]]:
+    """Admit retained body/wire/receipt triples without buffering the population."""
+    inventory = {}
+    for name in names:
+        body, wire, receipt = read_capture(root, name)
+        outputs = {f"raw/{name}.body": body, f"raw/{name}.wire": wire,
+                   f"raw/{name}.receipt.json": _canonical(receipt) + b"\n"}
+        inventory.update(write_candidate_outputs(storage, prefix, outputs,
+                                                 snapshot_check=snapshot_check))
+    return inventory
+
+
+def upload_candidate_local_file(
+    storage: StagingStorageResource, prefix: str, relative: str, path: Path,
+    expected: Mapping[str, object],
+) -> dict[str, object]:
+    """Upload a streamed native file and admit its observed size and digest."""
+    key = f"{prefix}/{relative}"
+    storage.upload_local_file(path, key)
+    snapshot = storage.object_snapshot(key)
+    if snapshot is None:
+        raise ValueError("candidate_object_readback_failed:" + relative)
+    actual = {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+    if actual != expected:
+        raise ValueError("candidate_object_readback_failed:" + relative)
+    return actual
+
+
+def write_candidate_file_by_sha(
+    storage: StagingStorageResource, prefix: str, relative: str, path: Path,
+    expected_sha256: str,
+) -> None:
+    """Preserve an existing file's bytes or upload a new file, then prove its SHA."""
+    key = f"{prefix}/{relative}"
+    if storage.object_exists(key):
+        if storage.sha256_key(key) != expected_sha256:
+            raise ValueError("immutable_staged_object_changed:" + key)
+    else:
+        storage.upload_local_file(path, key)
+    if storage.sha256_key(key) != expected_sha256:
+        raise ValueError("candidate_object_readback_failed:" + relative)
+
+
 def reuse_sealed_candidate(storage: StagingStorageResource, state_key: str,
                            verify: Callable[[], dict[str, object]]) -> dict[str, object] | None:
     """Dispatch reuse only after a seal exists; the adapter verifies its source contract.
@@ -443,13 +572,15 @@ def seal_candidate_objects(
     identity: Mapping[str, object], receipts: Mapping[str, object],
     descriptors: Mapping[str, Mapping[str, object]], *,
     source_record_sha256: str, source_schema_sha256: str,
+    fingerprint: str | None = None,
 ) -> None:
     """CAS-seal the exact uploaded inventory and checkpoint receipt map."""
     payload = {"processing_identity": identity,
                "source_record_sha256": source_record_sha256,
                "source_schema_sha256": source_schema_sha256,
                "capture_receipts": receipts, "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, _sha(_canonical(identity)), payload)
+    seal_ready_candidate(storage, state_key, version,
+                         _sha(_canonical(identity)) if fingerprint is None else fingerprint, payload)
 
 
 def stage_candidate_objects(

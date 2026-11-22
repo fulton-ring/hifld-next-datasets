@@ -1,6 +1,7 @@
 """Native capture and unapproved candidate construction for EPA DDRT."""
 from __future__ import annotations
 
+
 import json
 import shutil
 from datetime import datetime, timezone
@@ -26,6 +27,8 @@ from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureV
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -324,12 +327,14 @@ def _build_candidate(storage: StagingStorageResource, version: str, root: Path, 
             raise ValueError("cached_native_candidate_changed")
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fp,identity,audit["source_record_sha256"],audit["source_schema_sha256"],payload["objects"],payload["capture_receipts"])
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_id_count":audit["source_id_count"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_invalid_coordinate_count":audit["source_invalid_coordinate_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"capture_directory":str(root),"source_release_accepted":False,"release_accepted":False}
-    for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
-    descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    for name,desc in descriptors.items():
-        snap=storage.object_snapshot(f"{prefix}/{name}")
-        if snap is None or snap.size!=desc["bytes"] or storage.sha256_key(f"{prefix}/{name}")!=desc["sha256"] or storage.object_snapshot(f"{prefix}/{name}")!=snap: raise ValueError("candidate_output_readback_failed:"+name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_readback_failed:')
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{n:r for n,(_,r) in captures.items()},"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fp,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fp)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_id_count":audit["source_id_count"],"source_null_geometry_count":audit["source_null_geometry_count"],"source_invalid_coordinate_count":audit["source_invalid_coordinate_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json","source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(root)}

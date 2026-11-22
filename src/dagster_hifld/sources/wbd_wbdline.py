@@ -52,6 +52,7 @@ draft refresh schedule is stopped.
 """
 from __future__ import annotations
 
+
 from functools import partial
 import hashlib
 import json
@@ -86,6 +87,10 @@ from dagster_hifld.sources.capture_common import (
     capture_get, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
+    write_candidate_captures,
+    upload_candidate_local_file,
 )
 from dagster_hifld.sources.arcgis_layer import (
     _canonical, _capture_identity, _sha, load_replay, RetainedCaptureViews,
@@ -1065,44 +1070,24 @@ def capture_wbd_wbdline(storage: StagingStorageResource, *, version: str,
             audit["source_schema_sha256"], original.get("objects", {}), original_receipts)
         return _candidate_result(audit, content_version, prefix, capture_hash,
                                  reused=True, root=root)
-    descriptors = {}
-    for name, key, body in (
-            (output_path, f"{prefix}/{output_path}", None),
-            ("metadata/source_manifest.json", f"{prefix}/metadata/source_manifest.json",
-             _canonical(manifest) + b"\n"),
-            ("metadata/source_audit.json", f"{prefix}/metadata/source_audit.json",
-             _canonical(audit) + b"\n"),
-            ("metadata/processing_identity.json", f"{prefix}/metadata/processing_identity.json",
-             _canonical(identity) + b"\n"),
-            ("metadata/candidate_ready.json", f"{prefix}/metadata/candidate_ready.json",
-             _canonical(ready) + b"\n")):
-        if body is None:
-            storage.upload_local_file(parquet_path, key)
-        else:
-            write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        if snapshot is None:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptor = {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-        if name == output_path and descriptor != {"bytes": parquet_bytes, "sha256": parquet_sha}:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    for name in sorted(captures):
-        body, wire, receipt = _load_capture(root, name)
-        for suffix, payload in (("body", body), ("wire", wire),
-                                ("receipt.json", _canonical(receipt) + b"\n")):
-            key = f"{prefix}/raw/{name}.{suffix}"
-            write_immutable(storage, key, payload)
-            snapshot = storage.object_snapshot(key)
-            if snapshot is None or snapshot.size != len(payload) \
-                    or storage.sha256_key(key) != _sha(payload):
-                raise ValueError("candidate_object_readback_failed:raw/" + name + "." + suffix)
-            descriptors[f"raw/{name}.{suffix}"] = {"bytes": len(payload), "sha256": _sha(payload)}
-    seal_ready_candidate(storage, state_key, content_version, fingerprint,
-                         {"processing_identity": identity,
-                          "source_record_sha256": audit["source_record_sha256"],
-                          "source_schema_sha256": audit["source_schema_sha256"],
-                          "capture_receipts": receipts, "objects": descriptors})
+    descriptors = {output_path: upload_candidate_local_file(
+        storage, prefix, output_path, parquet_path,
+        {"bytes": parquet_bytes, "sha256": parquet_sha})}
+    descriptors.update(write_candidate_outputs(
+        storage, prefix, {
+            'metadata/source_manifest.json': _canonical(manifest) + b'\n',
+            'metadata/source_audit.json': _canonical(audit) + b'\n',
+            'metadata/processing_identity.json': _canonical(identity) + b'\n',
+            'metadata/candidate_ready.json': _canonical(ready) + b'\n',
+        }, snapshot_check='observed'))
+    descriptors.update(write_candidate_captures(
+        storage, prefix, root, sorted(captures), _load_capture))
+    seal_candidate_objects(
+        storage, state_key, content_version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return _candidate_result(audit, content_version, prefix, capture_hash,

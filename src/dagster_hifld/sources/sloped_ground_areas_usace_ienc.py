@@ -32,6 +32,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import (
     capture_witness,
@@ -87,7 +89,6 @@ _BASE_CAPTURE_NAMES = {"bts_item", "service_directory", "service_before", "layer
 def _capture_names(ids: list[int]) -> set[str]:
     return set(_BASE_CAPTURE_NAMES) | {
         f"page_{index:03d}" for index in range((len(ids) + PAGE_SIZE - 1) // PAGE_SIZE)}
-
 
 
 def _query(params: dict[str, object]) -> str:
@@ -443,18 +444,13 @@ def capture_sloped_ground_areas_usace_ienc(storage: StagingStorageResource, *, v
             "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
             "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
             "mapping_approved": False, "release_accepted": False, "capture_directory": str(root)}
-    descriptors = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if snapshot is None or snapshot.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"]:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
-        "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "capture_receipts": receipts, "objects": descriptors})
+    descriptors = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content")
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": len(features), "source_reported_count": len(features), "source_population_complete": True,

@@ -6,6 +6,10 @@ release, field-ID, and date interpretation decisions remain pending.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import seal_candidate_objects
+
+from dagster_hifld.sources.capture_common import write_candidate_outputs
+
 import json
 import shutil
 from dataclasses import replace
@@ -381,15 +385,15 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
     if storage.object_snapshot(state_key) is not None:
         result = _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,set(outputs),parquet)
     else:
-        for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
-        descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-        for name,desc in descriptors.items():
-            key=f"{prefix}/{name}"; snap=storage.object_snapshot(key)
-            if snap is None or snap.size != desc["bytes"] or storage.sha256_key(key) != desc["sha256"] or storage.object_snapshot(key) != snap:
-                raise ValueError("candidate_output_physical_readback_failed:"+name)
-        seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-            "source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
-            "capture_receipts":{n:r for n,(_,r) in captures.items()},"objects":descriptors})
+        descriptors = write_candidate_outputs(
+            storage, prefix, outputs, readback_order="after-all",
+            error_prefix="candidate_output_physical_readback_failed:")
+        seal_candidate_objects(
+            storage, state_key, version,
+            identity, {n: r for n, (_, r) in captures.items()}, descriptors,
+            source_record_sha256=audit['source_record_sha256'],
+            source_schema_sha256=audit['source_schema_sha256'],
+            fingerprint=fingerprint)
         validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
         result = {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(records),
                 "source_null_geometry_count":0,"candidate_ready":prefix+"/metadata/candidate_ready.json",

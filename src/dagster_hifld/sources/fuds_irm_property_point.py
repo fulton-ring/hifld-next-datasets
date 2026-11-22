@@ -6,6 +6,7 @@ schema acceptance as explicit release gates.
 """
 from __future__ import annotations
 
+
 import json
 import math
 import shutil
@@ -34,6 +35,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
@@ -295,12 +298,14 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
         if not isinstance(payload,dict): raise ValueError("cached_first_candidate_invalid")
         verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],payload.get("objects",{}),payload.get("capture_receipts",{}))
         return _candidate_result(version,audit,prefix,reused=True)
-    for name,value in outputs.items(): write_immutable(storage,f"{prefix}/{name}",value)
-    descriptors={n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
-    for name,desc in descriptors.items():
-        key=f"{prefix}/{name}"; snap=storage.object_snapshot(key)
-        if snap is None or snap.size!=desc["bytes"] or storage.sha256_key(key)!=desc["sha256"] or storage.object_snapshot(key)!=snap: raise ValueError("candidate_output_readback_failed:"+name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_readback_failed:')
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{n:r for n,(b,r) in captures.items()},"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fingerprint,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return _candidate_result(version,audit,prefix,reused=False,capture_directory=str(caproot))

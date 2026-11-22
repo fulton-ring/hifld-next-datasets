@@ -21,6 +21,7 @@ is recorded as lineage context, never fetched.
 """
 from __future__ import annotations
 
+
 import hashlib
 import json
 import math
@@ -49,6 +50,10 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, processing_identity, seal_ready_candidate,
     validate_capture_request_identity as _validate_capture_request_identity,
     verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
+    write_candidate_captures,
+    write_candidate_file_by_sha,
 )
 from dagster_hifld.sources.census_tiger_common import (
     EXTENT_TOLERANCE_METERS, EXPECTED_SERVICE_LAYERS, EXPECTED_SERVICE_MAP_NAME,
@@ -719,38 +724,25 @@ def capture_local_roads_census(storage: StagingStorageResource, *, version: str,
             "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
             "mapping_approved": False, "release_accepted": False, "capture_directory": str(root)}
     descriptors = {}
-    for name, receipt in sorted(receipts.items()):
-        body, wire, _receipt = _load_capture(root, name)
-        for key, payload in ((f"raw/{name}.body", body), (f"raw/{name}.wire", wire),
-                             (f"raw/{name}.receipt.json", _canonical(receipt) + b"\n")):
-            write_immutable(storage, f"{prefix}/{key}", payload)
-            snapshot = storage.object_snapshot(f"{prefix}/{key}")
-            descriptors[key] = {"bytes": len(payload), "sha256": _sha(payload)}
-            if snapshot is None or snapshot.size != len(payload) or storage.sha256_key(f"{prefix}/{key}") != descriptors[key]["sha256"]:
-                raise ValueError("candidate_object_readback_failed:" + key)
-    parquet_key = f"{prefix}/{output_path}"
-    if storage.object_exists(parquet_key):
-        if storage.sha256_key(parquet_key) != parquet_sha:
-            raise ValueError("immutable_staged_object_changed:" + parquet_key)
-    else:
-        storage.upload_local_file(parquet_path, parquet_key)
-    if storage.sha256_key(parquet_key) != parquet_sha:
-        raise ValueError("candidate_object_readback_failed:" + output_path)
+    descriptors.update(write_candidate_captures(
+        storage, prefix, root, sorted(receipts),
+        lambda directory, name: (*_load_capture(directory, name)[:2], receipts[name])))
+    write_candidate_file_by_sha(storage, prefix, output_path, parquet_path, parquet_sha)
     parquet_path.unlink()
     descriptors[output_path] = {"bytes": parquet_bytes, "sha256": parquet_sha}
-    for key, payload in (("metadata/source_manifest.json", _canonical(manifest) + b"\n"),
-                         ("metadata/source_audit.json", _canonical(audit) + b"\n"),
-                         ("metadata/processing_identity.json", _canonical(identity) + b"\n"),
-                         ("metadata/candidate_ready.json", _canonical(ready) + b"\n")):
-        write_immutable(storage, f"{prefix}/{key}", payload)
-        snapshot = storage.object_snapshot(f"{prefix}/{key}")
-        descriptors[key] = {"bytes": len(payload), "sha256": _sha(payload)}
-        if snapshot is None or snapshot.size != len(payload) or storage.sha256_key(f"{prefix}/{key}") != descriptors[key]["sha256"]:
-            raise ValueError("candidate_object_readback_failed:" + key)
-    seal_ready_candidate(storage, state_key, version, fingerprint, {"processing_identity": identity,
-        "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "capture_receipts": {name: receipt for name, receipt in sorted(receipts.items())},
-        "objects": descriptors})
+    descriptors.update(write_candidate_outputs(
+        storage, prefix, {
+            'metadata/source_manifest.json': _canonical(manifest) + b'\n',
+            'metadata/source_audit.json': _canonical(audit) + b'\n',
+            'metadata/processing_identity.json': _canonical(identity) + b'\n',
+            'metadata/candidate_ready.json': _canonical(ready) + b'\n',
+        }, snapshot_check='content'))
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, {name: receipt for name, receipt in sorted(receipts.items())}, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
         "feature_count": audit["source_feature_count"],

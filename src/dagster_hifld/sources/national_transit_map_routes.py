@@ -9,6 +9,12 @@ data are captured by importing this module.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import seal_candidate_objects
+
+from dagster_hifld.sources.capture_common import (
+    write_candidate_outputs, write_candidate_capture_files, verify_candidate_outputs,
+)
+
 import hashlib
 import json
 import math
@@ -816,15 +822,12 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
     fingerprint = _sha(_canonical(identity))
     if storage.object_snapshot(state_key) is not None:
         return _verify_first_candidate(storage,prefix,state_key,version,fingerprint,identity,audit,output_names)
-    write_immutable(storage,f"{prefix}/{native_path}",parquet)
+    write_candidate_outputs(storage, prefix, {native_path: parquet}, snapshot_check="none")
     del parquet
-    for name,body in metadata_outputs.items():
-        write_immutable(storage,f"{prefix}/{name}",body)
-    for name,receipt in sorted(receipts.items()):
-        write_immutable(storage,f"{prefix}/raw/{name}.body",_read_capture_body(capture_root,name))
-        write_immutable(storage,f"{prefix}/raw/{name}.wire",(capture_root/f"{name}.wire").read_bytes())
-        write_immutable(storage,f"{prefix}/raw/{name}.receipt.json",_canonical(receipt)+b"\n")
-    write_immutable(storage,f"{prefix}/metadata/candidate_ready.json",candidate_ready)
+    write_candidate_outputs(storage, prefix, metadata_outputs, snapshot_check="none")
+    write_candidate_capture_files(storage, prefix, capture_root, receipts, _read_capture_body)
+    write_candidate_outputs(storage, prefix, {"metadata/candidate_ready.json": candidate_ready},
+                            snapshot_check="none")
     descriptors = {native_path:dict(source_objects[native_path])}
     for name,body in metadata_outputs.items():
         descriptors[name] = {"bytes":len(body),"sha256":_sha(body)}
@@ -834,13 +837,15 @@ def capture_national_transit_map_routes(storage: StagingStorageResource, *,
         descriptors[f"raw/{name}.body"] = {"bytes":receipt["bytes"],"sha256":receipt["sha256"]}
         descriptors[f"raw/{name}.wire"] = {"bytes":receipt["wire_bytes"],"sha256":receipt["wire_sha256"]}
         descriptors[f"raw/{name}.receipt.json"] = {"bytes":len(receipt_body),"sha256":_sha(receipt_body)}
-    for name,d in descriptors.items():
-        key=f"{prefix}/{name}"; snap=storage.object_snapshot(key)
-        if snap is None or snap.size != d["bytes"] or storage.sha256_key(key) != d["sha256"] or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    verify_candidate_outputs(storage, prefix, descriptors)
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
         "capture_receipts":dict(receipts),"objects":descriptors}
-    seal_ready_candidate(storage,state_key,version,fingerprint,payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],"source_population_complete":True,
         "source_null_geometry_count":audit["source_null_geometry_count"],

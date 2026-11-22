@@ -212,6 +212,19 @@ class RoadsUsaceIencTests(unittest.TestCase):
                                                     capture_directory=str(root))
                 self.assertEqual(storage.list_prefix(""), [])
 
+    def test_failed_candidate_readback_never_seals_construction(self):
+        from dagster_hifld.sources import capture_common
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            root = self._replay_directory(Path(tmp) / "capture", self._documents())
+            with patch.object(StagingStorageResource, "sha256_key", return_value="wrong"), \
+                    patch.object(capture_common, "seal_first_construction") as seal:
+                with self.assertRaisesRegex(ValueError, "candidate_object_readback_failed:"):
+                    source.capture_roads_usace_ienc(
+                        storage, version="failed-readback", capture_directory=str(root))
+                seal.assert_not_called()
+            self.assertEqual(storage.list_prefix("_construction-state"), [])
+
     def test_valid_replay_seals_ready_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))

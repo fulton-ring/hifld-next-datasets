@@ -23,6 +23,7 @@ public names.
 """
 from __future__ import annotations
 
+
 import hashlib
 import json
 import math
@@ -42,7 +43,11 @@ import pyproj
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.http_capture import capture_http_response, validate_capture_roster, validate_retained_capture_replay
 from dagster_hifld.source_release import ReleaseSignal
-from dagster_hifld.sources.capture_common import capture_get, write_immutable
+from dagster_hifld.sources.capture_common import (
+    capture_get,
+    write_immutable,
+    write_candidate_outputs as write_outputs,
+)
 from dagster_hifld.sources.esri_common import arrow_type, canonical as _canonical, sha as _sha
 from dagster_hifld.sources.esri_geometry import (
     _validate_spatial_reference, esri_polygon_wkb as _shared_esri_polygon_wkb,
@@ -465,20 +470,6 @@ def _validate_offset_replay_refusal(root: Path, name: str, url: str, *, max_capt
                 and (not isinstance(receipt.get('error_type'), str)
                      or result.error_code not in {None, 'compressed_stream_incomplete', 'content_length_mismatch'}))):
         raise ValueError('retained_capture_refusal_invalid:' + name)
-
-
-def write_outputs(storage, prefix: str, outputs: dict[str, bytes]) -> dict[str, dict[str, object]]:
-    descriptors = {}
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        snapshot = storage.object_snapshot(f"{prefix}/{name}")
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if (snapshot is None or snapshot.size != descriptor["bytes"]
-                or storage.sha256_key(f"{prefix}/{name}") != descriptor["sha256"]
-                or storage.object_snapshot(f"{prefix}/{name}") != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    return descriptors
 
 
 def validate_crs(ref: object) -> None:

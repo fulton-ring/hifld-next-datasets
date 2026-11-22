@@ -12,6 +12,7 @@ drift quarantines; historical published IDs remain separately preserved.
 """
 from __future__ import annotations
 
+
 from functools import partial
 import io
 import json
@@ -41,6 +42,8 @@ from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureVie
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -687,19 +690,13 @@ def capture_retrospective_bpr_deployments(storage: StagingStorageResource, *, ve
                 "baseline_accepted": False, "coverage_accepted": False, "rights_accepted": False,
                 "mapping_approved": False, "release_accepted": False}
     objects = {}
-    for name, body in sorted(outputs.items()):
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or snapshot.size != len(body)
-                or storage.sha256_key(key) != _sha(body)):
-            raise ValueError("candidate_readback_failed:" + name)
-        objects[name] = {"bytes": len(body), "sha256": _sha(body)}
-    seal_ready_candidate(storage, state_key, version, fingerprint,
-                         {"processing_identity": identity,
-                          "source_record_sha256": audit["source_record_sha256"],
-                          "source_schema_sha256": audit["source_schema_sha256"],
-                          "capture_receipts": receipts, "objects": objects})
+    objects = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content", error_prefix='candidate_readback_failed:')
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, objects,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(repo, identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": EXPECTED_COUNT, "source_population_complete": True,

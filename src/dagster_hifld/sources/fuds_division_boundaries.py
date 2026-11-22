@@ -1,6 +1,7 @@
 """Unapproved native capture of the USACE FUDS Program Division polygons."""
 from __future__ import annotations
 
+
 import json
 import math
 from pathlib import Path
@@ -24,6 +25,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
@@ -217,14 +220,14 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
             if set(payload["objects"]) != set(outputs): raise ValueError("cached_candidate_roster_changed")
             return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":count,
                 "candidate_ready":f"{prefix}/metadata/candidate_ready.json","release_accepted":False,"reused":True}
-        for name,body in outputs.items():
-            key=f"{prefix}/{name}"; write_immutable(storage,key,body); snap=storage.object_snapshot(key)
-            if snap is None or snap.size != len(body) or storage.sha256_key(key) != _sha(body) or storage.object_snapshot(key) != snap:
-                raise ValueError("candidate_output_physical_readback_failed:"+name)
+        write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_output_physical_readback_failed:')
         descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-        seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-            "source_record_sha256":record_digest,"source_schema_sha256":schema_digest,
-            "capture_receipts":{n:r for n,(_b,r) in captures.items()},"objects":descriptors})
+        seal_candidate_objects(
+            storage, state_key, version,
+            identity, {n: r for n, (_b, r) in captures.items()}, descriptors,
+            source_record_sha256=record_digest,
+            source_schema_sha256=schema_digest,
+            fingerprint=fingerprint)
         validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":count,
             "candidate_ready":f"{prefix}/metadata/candidate_ready.json","release_accepted":False,"reused":False}

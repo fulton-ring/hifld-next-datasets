@@ -8,6 +8,7 @@ coverage, rights, or release.
 """
 from __future__ import annotations
 
+
 from functools import partial
 import io
 import json
@@ -31,7 +32,12 @@ from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
-from dagster_hifld.sources.capture_common import capture_get, processing_identity, write_immutable
+from dagster_hifld.sources.capture_common import (
+    capture_get,
+    processing_identity,
+    write_immutable,
+    write_candidate_outputs,
+)
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "quaternary-fault-lines"
@@ -500,8 +506,7 @@ def capture_quaternary_fault_lines(storage: StagingStorageResource, *, version: 
         if "wire_bytes" in receipt:
             outputs[f"raw/{name}.wire"] = wire_path.read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
-    for name, body in sorted(outputs.items()):
-        write_immutable(storage, f"{prefix}/{name}", body)
+    write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="none")
     ready = {
         "approved": False,
         "version": version,

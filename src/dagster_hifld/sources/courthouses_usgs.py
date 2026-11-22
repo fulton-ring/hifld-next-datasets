@@ -6,6 +6,7 @@ coverage, and migration decisions remain unapproved.
 """
 from __future__ import annotations
 
+
 import io
 import json
 import math
@@ -28,7 +29,12 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
-from dagster_hifld.sources.capture_common import capture_get, processing_identity, write_immutable
+from dagster_hifld.sources.capture_common import (
+    capture_get,
+    processing_identity,
+    write_immutable,
+    write_candidate_outputs,
+)
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "courthouses-3"
@@ -460,7 +466,7 @@ def capture_courthouses(storage: StagingStorageResource, *, version: str,
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = (root/f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt)+b"\n"
-    for name,body in outputs.items(): write_immutable(storage,f"{prefix}/{name}",body)
+    write_candidate_outputs(storage, prefix, outputs, snapshot_check="none")
     ready = {"approved":False,"version":version,"objects":{parquet_path:{"bytes":len(parquet),"sha256":_sha(parquet)}},
         "source_population_complete":True,"source_id_sha256":audit["id_sha256"],"source_record_sha256":audit["record_sha256"],
         "source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,

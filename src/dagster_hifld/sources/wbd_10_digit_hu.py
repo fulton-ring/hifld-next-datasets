@@ -66,6 +66,7 @@ the bounded-memory replay that returns receipts instead of retaining every body.
 """
 from __future__ import annotations
 
+
 from functools import partial
 import struct
 import hashlib
@@ -101,6 +102,10 @@ from dagster_hifld.sources.capture_common import (
     processing_identity, quarantine_incomplete_capture,
     seal_ready_candidate, validate_capture_request_identity,
     verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
+    write_candidate_captures,
+    upload_candidate_local_file,
 )
 from dagster_hifld.sources.arcgis_layer import (
     _canonical, _load_capture, _sha,
@@ -196,7 +201,6 @@ METADATA_NAMES = ("service_doc", "service_before", "layer_before", "count_before
                   "ids_before", "count_after", "ids_after", "layer_after", "service_after")
 
 _EPSG3857_PROJJSON = family.EPSG3857_PROJJSON
-
 
 
 GATE_MODES: frozenset = frozenset()
@@ -349,7 +353,6 @@ def _capture_roster(roster: list[int]) -> list[tuple[str, str]]:
                  ("layer_after", LAYER_URL + "?f=pjson"),
                  ("service_after", SERVICE_URL + "?f=pjson")])
     return urls
-
 
 
 def _capture(client: httpx.Client, url: str, root: Path, name: str,
@@ -692,7 +695,6 @@ def _capture_page_window(client: httpx.Client, roster: list[int], index: int,
         at_floor=partial(wbd_capture.capture_protobuf_fallback,
             pbf_url=lambda path: _window_url(roster, index, path, fmt="pbf"),
             is_pbf_refusal=_is_pbf_refusal))
-
 
 
 _validate_spatial_reference = partial(
@@ -1450,44 +1452,24 @@ def capture_wbd_10_digit_hu(storage: StagingStorageResource, *, version: str,
             audit["source_schema_sha256"], original.get("objects", {}), original_receipts)
         return _candidate_result(audit, content_version, prefix, capture_hash,
                                  reused=True, root=root)
-    descriptors = {}
-    for name, key, body in (
-            (output_path, f"{prefix}/{output_path}", None),
-            ("metadata/source_manifest.json", f"{prefix}/metadata/source_manifest.json",
-             _canonical(manifest) + b"\n"),
-            ("metadata/source_audit.json", f"{prefix}/metadata/source_audit.json",
-             _canonical(audit) + b"\n"),
-            ("metadata/processing_identity.json", f"{prefix}/metadata/processing_identity.json",
-             _canonical(identity) + b"\n"),
-            ("metadata/candidate_ready.json", f"{prefix}/metadata/candidate_ready.json",
-             _canonical(ready) + b"\n")):
-        if body is None:
-            storage.upload_local_file(parquet_path, key)
-        else:
-            write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        if snapshot is None:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptor = {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-        if name == output_path and descriptor != {"bytes": parquet_bytes, "sha256": parquet_sha}:
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
-    for name in sorted(captures):
-        body, wire, receipt = _load_capture(root, name)
-        for suffix, payload in (("body", body), ("wire", wire),
-                                ("receipt.json", _canonical(receipt) + b"\n")):
-            key = f"{prefix}/raw/{name}.{suffix}"
-            write_immutable(storage, key, payload)
-            snapshot = storage.object_snapshot(key)
-            if snapshot is None or snapshot.size != len(payload) \
-                    or storage.sha256_key(key) != _sha(payload):
-                raise ValueError("candidate_object_readback_failed:raw/" + name + "." + suffix)
-            descriptors[f"raw/{name}.{suffix}"] = {"bytes": len(payload), "sha256": _sha(payload)}
-    seal_ready_candidate(storage, state_key, content_version, fingerprint,
-                         {"processing_identity": identity,
-                          "source_record_sha256": audit["source_record_sha256"],
-                          "source_schema_sha256": audit["source_schema_sha256"],
-                          "capture_receipts": receipts, "objects": descriptors})
+    descriptors = {output_path: upload_candidate_local_file(
+        storage, prefix, output_path, parquet_path,
+        {"bytes": parquet_bytes, "sha256": parquet_sha})}
+    descriptors.update(write_candidate_outputs(
+        storage, prefix, {
+            'metadata/source_manifest.json': _canonical(manifest) + b'\n',
+            'metadata/source_audit.json': _canonical(audit) + b'\n',
+            'metadata/processing_identity.json': _canonical(identity) + b'\n',
+            'metadata/candidate_ready.json': _canonical(ready) + b'\n',
+        }, snapshot_check='observed'))
+    descriptors.update(write_candidate_captures(
+        storage, prefix, root, sorted(captures), _load_capture))
+    seal_candidate_objects(
+        storage, state_key, content_version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return _candidate_result(audit, content_version, prefix, capture_hash,

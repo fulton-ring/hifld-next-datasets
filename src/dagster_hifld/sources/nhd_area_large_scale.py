@@ -26,6 +26,7 @@ blocked pending the schema/ID contract, coverage, rights and release decisions.
 """
 from __future__ import annotations
 
+
 import hashlib
 import json
 import shutil
@@ -62,6 +63,7 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable, write_immutable_file,
+    seal_candidate_objects, write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -192,8 +194,6 @@ def _validate_page_spatial_reference(value: object, label: str) -> None:
 
 
 _ATTEMPT_SUFFIXES = (".body", ".wire", ".receipt.json")
-
-
 
 
 def _capture_doc(client: httpx.Client, url: str, capture_root: Path, name: str,
@@ -920,27 +920,20 @@ def capture_nhd_area_large_scale(storage: StagingStorageResource, *, version: st
                 "schema_contract_accepted": False, "id_contract_accepted": False,
                 "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False,
                 "release_accepted": False}
-    descriptors = {name: ({"bytes": value.stat().st_size, "sha256": sha256_file(value)}
-                          if isinstance(value, Path) else {"bytes": len(value), "sha256": _sha(value)})
-                   for name, value in outputs.items()}
-    for relative, value in outputs.items():
-        key = f"{prefix}/{relative}"
-        if isinstance(value, Path):
-            write_immutable_file(storage, key, value, descriptors[relative])
-        else:
-            write_immutable(storage, key, value)
-    for name, descriptor in descriptors.items():
-        key = f"{prefix}/{name}"
-        snap = storage.object_snapshot(key)
-        if snap is None or snap.size != descriptor["bytes"] or storage.sha256_key(key) != descriptor["sha256"] \
-                or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_output_physical_readback_failed:" + name)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all",
+        error_prefix="candidate_output_physical_readback_failed:")
     payload = {"processing_identity": identity,
                "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
                "capture_receipts": {name: receipt for name, (_, receipt) in captures.items()},
                "objects": descriptors}
-    seal_ready_candidate(storage, state_key, version, fingerprint, payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

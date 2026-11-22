@@ -5,6 +5,7 @@ rights, release freshness, and HIFLD continuity remain maintainer decisions.
 """
 from __future__ import annotations
 
+
 from collections.abc import Mapping
 
 import json
@@ -36,6 +37,8 @@ from dagster_hifld.sources.capture_common import (
     verify_cached_candidate,
     write_immutable,
     processing_identity,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps
@@ -286,15 +289,7 @@ def _capture_manifest(root: Path, *, complete: bool, captures: Mapping[str, tupl
 
 def _persist_outputs(storage: StagingStorageResource, prefix: str,
                      outputs: dict[str, bytes]) -> dict[str, dict[str, object]]:
-    descriptors = {}
-    for name, body in outputs.items():
-        key = f"{prefix}/{name}"
-        write_immutable(storage, key, body)
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or snapshot.size != len(body) or storage.sha256_key(key) != _sha(body)
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = _object_descriptor(body)
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 
@@ -532,12 +527,12 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     descriptors = _persist_outputs(storage, prefix, outputs)
-    seal_ready_candidate(storage, state_key, version, state_fingerprint, {
-        "processing_identity": identity, "source_record_sha256": source_record_sha,
-        "source_schema_sha256": source_schema_sha,
-        "capture_receipts": {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))},
-        "objects": descriptors,
-    })
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}, descriptors,
+        source_record_sha256=source_record_sha,
+        source_schema_sha256=source_schema_sha,
+        fingerprint=state_fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"],
                                         identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,

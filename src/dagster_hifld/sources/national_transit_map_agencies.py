@@ -6,6 +6,7 @@ Source, rights, historical equivalence and release acceptance remain false.
 """
 from __future__ import annotations
 
+
 import json
 import re
 import shutil
@@ -36,6 +37,8 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
     quarantine_incomplete_capture, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -358,12 +361,14 @@ def capture_national_transit_map_agencies(storage: StagingStorageResource, *, ve
         original_audit = json.loads(storage.read_key(prefix + "/metadata/source_audit.json"))
         compilation_date = original_audit.get("producer_stated_compilation_date")
         return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_null_geometry_count":0,"producer_stated_compilation_date":compilation_date,"reused":True,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    for n,b in outputs.items(): write_immutable(storage,f"{prefix}/{n}",b)
-    descriptors={n:{"bytes":len(b),"sha256":_sha(b)} for n,b in outputs.items()}
-    for n,d in descriptors.items():
-        snap=storage.object_snapshot(f"{prefix}/{n}")
-        if snap is None or snap.size!=d["bytes"] or storage.sha256_key(f"{prefix}/{n}")!=d["sha256"] or storage.object_snapshot(f"{prefix}/{n}")!=snap: raise ValueError("candidate_readback_failed:"+n)
+    descriptors = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_readback_failed:')
     from dagster_hifld.sources.capture_common import seal_ready_candidate
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,"source_record_sha256":record_sha,"source_schema_sha256":schema_sha,"capture_receipts":receipts,"objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=record_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":feature_count,"source_reported_count":feature_count,"source_population_complete":True,"source_id_sha256":ids_sha,"source_null_geometry_count":0,"producer_stated_compilation_date":compilation_date,"candidate_ready":prefix+"/metadata/candidate_ready.json","historical_baseline_acceptance_pending":True,"source_release_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}

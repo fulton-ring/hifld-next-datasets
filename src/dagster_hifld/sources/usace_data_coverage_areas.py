@@ -6,6 +6,7 @@ HIFLD equivalence, a dated source release, rights, or publication acceptance.
 """
 from __future__ import annotations
 
+
 from collections.abc import Mapping
 
 import json
@@ -43,6 +44,8 @@ from dagster_hifld.sources.capture_common import (
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.arcgis_layer import capture_witness
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha
@@ -313,16 +316,7 @@ def _validate(captures: Mapping[str, tuple[bytes, dict]]):
 
 def _write_outputs(storage: StagingStorageResource, prefix: str,
                    outputs: dict[str, bytes]) -> dict[str, dict[str, object]]:
-    descriptors = {}
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-        snapshot = storage.object_snapshot(f"{prefix}/{name}")
-        descriptor = {"bytes": len(body), "sha256": _sha(body)}
-        if (snapshot is None or snapshot.size != len(body)
-                or storage.sha256_key(f"{prefix}/{name}") != descriptor["sha256"]
-                or storage.object_snapshot(f"{prefix}/{name}") != snapshot):
-            raise ValueError("candidate_object_readback_failed:" + name)
-        descriptors[name] = descriptor
+    descriptors = write_candidate_outputs(storage, prefix, outputs)
     return descriptors
 
 
@@ -575,11 +569,12 @@ def capture_usace_data_coverage_areas(
             "reused": True, "release_accepted": False, "capture_directory": str(root),
         }
     descriptors = _write_outputs(storage, prefix, outputs)
-    seal_ready_candidate(storage, state_key, version, fingerprint, {
-        "processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
-        "source_schema_sha256": audit["source_schema_sha256"],
-        "capture_receipts": receipts, "objects": descriptors,
-    })
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, receipts, descriptors,
+        source_record_sha256=audit['source_record_sha256'],
+        source_schema_sha256=audit['source_schema_sha256'],
+        fingerprint=fingerprint)
     validate_construction_code_identity(
         Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity,
     )

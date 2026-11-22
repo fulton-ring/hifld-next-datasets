@@ -11,6 +11,7 @@ geometry or release acceptance.
 """
 from __future__ import annotations
 
+
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,6 +38,8 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
@@ -387,17 +390,17 @@ def capture_boem_ocs_diagrams(storage: StagingStorageResource, *, version: str =
              "id_contract_accepted": False, "rights_accepted": False,
              "source_authority_accepted": False, "mapping_approved": False}
     outputs["metadata/candidate_ready.json"] = _canonical(ready)+b"\n"
-    for name, body in outputs.items():
-        write_immutable(storage, f"{prefix}/{name}", body)
-    objects = {name: {"bytes": len(body), "sha256": _sha(body)} for name, body in outputs.items()}
-    for name, descriptor in objects.items():
-        key = f"{prefix}/{name}"; snap = storage.object_snapshot(key)
-        if snap is None or descriptor != {"bytes": snap.size, "sha256": storage.sha256_key(key)} or storage.object_snapshot(key) != snap:
-            raise ValueError("candidate_physical_readback_failed:" + name)
+    objects = write_candidate_outputs(
+        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_physical_readback_failed:')
     payload = {"processing_identity": identity, "source_record_sha256": audit["source_record_sha256"],
                "source_schema_sha256": audit["source_schema_sha256"],
                "capture_receipts": {n: r for n, (_, r) in ((name, captures[name]) for name in sorted(captures))}, "objects": objects}
-    seal_ready_candidate(storage, state_key, version, _sha(_canonical(identity)), payload)
+    seal_candidate_objects(
+        storage, state_key, version,
+        payload['processing_identity'], payload['capture_receipts'], payload['objects'],
+        source_record_sha256=payload['source_record_sha256'],
+        source_schema_sha256=payload['source_schema_sha256'],
+        fingerprint=_sha(_canonical(identity)))
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
             "feature_count": audit["feature_count"], "candidate_ready": prefix + "/metadata/candidate_ready.json",

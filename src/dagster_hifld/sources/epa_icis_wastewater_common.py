@@ -1,6 +1,7 @@
 """Shared EPA ICIS wastewater family core (EPA_GEO FRS_Wastewater FeatureServer)."""
 from __future__ import annotations
 
+
 import json
 import math
 import re
@@ -23,6 +24,8 @@ from dagster_hifld.sources.epa_capture import OffsetCaptureSpec, capture_offset_
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
+    seal_candidate_objects,
+    write_candidate_outputs,
 )
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.construction_provenance import validate_construction_code_identity
@@ -473,16 +476,13 @@ def capture_epa_icis_wastewater(storage: StagingStorageResource, *, version: str
                 "capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":retained_bytes,
                 "capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes}
     _require_disk_space(base, sum(map(len, outputs.values())) + STAGING_OVERHEAD_BYTES)
-    for name,body in outputs.items():
-        key=f"{prefix}/{name}"
-        write_immutable(storage,key,body)
-        snapshot=storage.object_snapshot(key)
-        if snapshot is None or snapshot.size!=len(body) or storage.sha256_key(key)!=_sha(body) or storage.object_snapshot(key)!=snapshot:
-            raise ValueError("candidate_output_physical_readback_failed:"+name)
+    write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_output_physical_readback_failed:')
     descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-                         "source_record_sha256":record_sha,"source_schema_sha256":schema_sha,
-                         "capture_receipts":{name:receipt for name,(_body,receipt) in captures.items()},
-                         "objects":descriptors})
+    seal_candidate_objects(
+        storage, state_key, version,
+        identity, {name: receipt for name, (_body, receipt) in captures.items()}, descriptors,
+        source_record_sha256=record_sha,
+        source_schema_sha256=schema_sha,
+        fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     return {"dataset_slug":dataset_slug,"file_slug":file_slug,"version":version,"feature_count":count,"source_null_geometry_count":null_geometry_count,"candidate_ready":f"{prefix}/metadata/candidate_ready.json","source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,"capture_directory":str(capture_root),"capture_manifest_sha256":capture_manifest_sha,"capture_retained_wire_plus_decoded_bytes":retained_bytes,"capture_budget_bytes":max_capture_bytes,"response_budget_bytes":max_response_bytes}
