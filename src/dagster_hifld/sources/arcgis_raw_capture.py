@@ -196,7 +196,9 @@ class CapturedRows(Sequence):
         body = self._read_page(offset)
         if _sha(body) != digest:
             raise ValueError('retained_capture_page_changed:' + str(offset))
-        rows = list(self._project_rows(_parsed(body, 'page_' + str(offset))))
+        if count == 0:
+            return []
+        rows = list(self._project_rows(json.loads(body)))
         if len(rows) != count:
             raise ValueError('retained_capture_page_changed:' + str(offset))
         return rows
@@ -231,6 +233,8 @@ def capture_exact_id_population(ids, page_size, *, fetch_page, validate_page,
     page is validated once and bound to those bytes before its rows are dropped.
     ``project_rows`` is a pure native row projection; validation callbacks may
     populate candidate geometry arrays and must never be called by row reads.
+    A native zero-row result retains bytes without decoding them, preserving
+    capture-only adapters whose final validation follows the closing witnesses.
     ``page_size`` is an integer or the native URL-bound sizing callback.
     """
     project = project_rows or (lambda document: document['features'])
@@ -245,7 +249,7 @@ def capture_exact_id_population(ids, page_size, *, fetch_page, validate_page,
         page = validate_page(offset, requested, result)
         returned = [feature.get('attributes', {}).get('OBJECTID') for feature in page]
         body = read_page(offset)
-        projected = list(project(_parsed(body, 'page_' + str(offset))))
+        projected = list(project(json.loads(body))) if page else []
         if json.dumps(projected, sort_keys=True) != json.dumps(page, sort_keys=True):
             raise ValueError('retained_capture_page_changed:' + str(offset))
         pages.append({'offset': offset, 'requested_ids': requested, 'returned_ids': returned, 'count': len(page)})

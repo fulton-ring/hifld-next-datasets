@@ -210,3 +210,110 @@ class RawCaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'source_population_changed_during_capture'):
             validate_population_snapshot(2, [1, 4], 2, [1, 9],
                 [{'attributes': {'OBJECTID': 1}}, {'attributes': {'OBJECTID': 4}}])
+
+    def test_row_view_releases_every_capture_page_before_closing_and_reloads_on_demand(self):
+        import tempfile
+        import weakref
+        from pathlib import Path
+        class Feature(dict):
+            pass
+        references, peaks, reads = [], [], []
+        ids = list(range(18))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def fetch(offset, requested):
+                rows = [Feature(attributes={'OBJECTID': oid}, geometry={'x': oid, 'y': oid})
+                        for oid in requested]
+                references.extend(weakref.ref(row) for row in rows)
+                peaks.append(sum(ref() is not None for ref in references))
+                document = {'features': rows}
+                (root / f'{offset}.json').write_text(json.dumps(document))
+                return document
+            def read(offset):
+                reads.append(offset)
+                return (root / f'{offset}.json').read_bytes()
+            def close():
+                self.assertLessEqual(max(peaks), 2)
+                self.assertTrue(all(ref() is None for ref in references))
+                self.assertEqual(reads, ids)
+                return 'closed'
+            rows, pages, closing = capture_exact_id_population(ids, 1, fetch_page=fetch,
+                validate_page=lambda offset, requested, document: document['features'],
+                close_witnesses=close, read_page=read)
+            self.assertEqual(closing, 'closed')
+            self.assertEqual(len(rows), len(ids))
+            self.assertEqual(len(pages), len(ids))
+            self.assertEqual(reads, ids)
+            self.assertEqual(rows[7]['attributes']['OBJECTID'], 7)
+            self.assertEqual(reads, ids + [7])
+            self.assertEqual(rows[-1]['attributes']['OBJECTID'], 17)
+            self.assertEqual([row['attributes']['OBJECTID'] for row in rows], ids)
+            self.assertEqual([row['attributes']['OBJECTID'] for row in rows], ids)
+            self.assertEqual([row['attributes']['OBJECTID'] for row in rows[2:4]], [2, 3])
+            (root / '7.json').write_text('{"features":[]}')
+            with self.assertRaisesRegex(ValueError, 'retained_capture_page_changed:7'):
+                rows[7]
+
+    def test_row_view_projection_does_not_repeat_native_candidate_validation(self):
+        raw = json.dumps({'features': [{'attributes': {'OBJECTID': 2},
+            'geometry': {'x': 1, 'y': 2, 'spatialReference': {'wkid': 4326}}}]}).encode()
+        validations, closings = [], []
+        def project(document):
+            return [{'attributes': row['attributes'], 'geometry':
+                     {key: row['geometry'][key] for key in ('x', 'y')}}
+                    for row in document['features']]
+        def validate(offset, requested, document):
+            validations.append(offset)
+            return project(document)
+        rows, _, _ = capture_exact_id_population([2], 1,
+            fetch_page=lambda offset, requested: json.loads(raw), validate_page=validate,
+            close_witnesses=lambda: closings.append('after'), read_page=lambda offset: raw,
+            project_rows=project)
+        expected = [{'attributes': {'OBJECTID': 2}, 'geometry': {'x': 1, 'y': 2}}]
+        self.assertEqual(list(rows), expected)
+        self.assertEqual(list(rows), expected)
+        self.assertEqual(validations, [0])
+        self.assertEqual(closings, ['after'])
+
+    def test_capture_only_empty_rows_preserve_deferred_error_and_malformed_json_custody(self):
+        for raw in (b'{"error":{"code":500}}', b'not JSON'):
+            with self.subTest(raw=raw):
+                calls = []
+                rows, pages, _ = capture_exact_id_population([2], 1,
+                    fetch_page=lambda offset, requested: calls.append('page') or raw,
+                    validate_page=lambda offset, requested, document: [],
+                    close_witnesses=lambda: calls.append('after'), read_page=lambda offset: raw)
+                self.assertEqual(calls, ['page', 'after'])
+                self.assertEqual(len(rows), 0)
+                self.assertEqual(list(rows), [])
+                self.assertEqual(pages[0]['count'], 0)
+
+    def test_native_variable_page_size_owns_slices_without_aggregating_rows(self):
+        stored, calls = {}, []
+        def fetch(offset, requested):
+            calls.append((offset, requested))
+            document = {'features': [{'attributes': {'OBJECTID': oid}} for oid in requested]}
+            stored[offset] = json.dumps(document).encode()
+            return document
+        rows, _, _ = capture_exact_id_population([1, 2, 3, 4, 5, 6],
+            lambda offset, remaining: 2 if offset == 0 else 1 if offset == 2 else 3,
+            fetch_page=fetch, validate_page=lambda offset, requested, document: document['features'],
+            close_witnesses=lambda: None, read_page=stored.__getitem__)
+        self.assertEqual(calls, [(0, [1, 2]), (2, [3]), (3, [4, 5, 6])])
+        self.assertEqual([row['attributes']['OBJECTID'] for row in rows], [1, 2, 3, 4, 5, 6])
+
+    def test_staged_row_change_and_invalid_page_size_refuse_before_closing(self):
+        closed = []
+        with self.assertRaisesRegex(ValueError, 'retained_capture_page_changed:0'):
+            capture_exact_id_population([1], 1,
+                fetch_page=lambda offset, requested: {'features': [{'attributes': {'OBJECTID': 1}}]},
+                validate_page=lambda offset, requested, document: document['features'],
+                close_witnesses=lambda: closed.append(True),
+                read_page=lambda offset: b'{"features":[]}')
+        self.assertEqual(closed, [])
+        with self.assertRaisesRegex(ValueError, 'source_page_size_invalid'):
+            capture_exact_id_population([1], lambda offset, remaining: 0,
+                fetch_page=lambda *args: self.fail('invalid size must not fetch'),
+                validate_page=lambda *args: [], close_witnesses=lambda: closed.append(True),
+                read_page=lambda offset: b'{}')
+        self.assertEqual(closed, [])
