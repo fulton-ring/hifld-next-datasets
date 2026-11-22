@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -671,12 +672,18 @@ def fetch_capture_retry(client: httpx.Client, url: str, root: Path, name: str, b
     attempt's artifacts are promoted to the final names, and non-transient
     ValueError failures re-raise immediately.
     """
+    # A resumed slot may contain only a receipt or wire artifact. Every such
+    # name reserves its ordinal so no previous failure is silently replaced.
+    pattern = re.compile(re.escape(name) + r"\.attempt([0-9]+)\.(?:body|wire|receipt\.json)")
+    retained_ordinals = [int(match.group(1)) for path in (root.iterdir() if root.exists() else ())
+                         if (match := pattern.fullmatch(path.name))]
+    first_ordinal = max(retained_ordinals, default=0) + 1
     last = None
     for attempt in range(attempts):
         wait = schedule[attempt] if attempt < len(schedule) else 0.0
         if wait:
             time.sleep(wait)
-        attempt_name = f"{name}.attempt{attempt + 1}"
+        attempt_name = f"{name}.attempt{first_ordinal + attempt}"
         try:
             if fetch is not None:
                 body, receipt = fetch(client, url, root, attempt_name, budget)
