@@ -235,6 +235,8 @@ def capture_exact_id_population(ids, page_size, *, fetch_page, validate_page,
     populate candidate geometry arrays and must never be called by row reads.
     A native zero-row result retains bytes without decoding them, preserving
     capture-only adapters whose final validation follows the closing witnesses.
+    Native candidate construction may materialize rows after population-witness
+    validation; acquisition itself never aggregates the row population.
     ``page_size`` is an integer or the native URL-bound sizing callback.
     """
     project = project_rows or (lambda document: document['features'])

@@ -246,6 +246,7 @@ def capture(staging, version, client=None, replay_version=None):
             if replay_prefix else json.loads(staging.read_key(
                 f"{DATASET_SLUG}/{FILE_SLUG}/{version}/raw/layer.receipt.json")).get("observed_at")
         )
+        features = list(features)
         parquet = _parquet(fields, features)
         invalid_coordinate_count = sum(
             feature.get("geometry") is not None

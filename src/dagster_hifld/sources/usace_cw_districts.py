@@ -510,6 +510,7 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
             if service_after != service_before:
                 raise ValueError("official_usace_cw_districts_service_changed_during_capture")
         validate_population_snapshot(count_before, before, count_after, after, features)
+        features = list(features)
         rows = [{"attributes": f["attributes"], "geometry": {"rings": grouped}} for f, grouped in zip(features, grouped_geometries)]
         row_digest = _digest(_json_bytes(rows))
         ids_digest = _digest(_json_bytes(before))
