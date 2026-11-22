@@ -300,11 +300,9 @@ def capture_epa_rcra_tsd(storage: StagingStorageResource, *, version: str,
             captures = RetainedCaptureView(capture_root, captures)
             capture_layer(LAYER_URL, capture_root, 192_000_000, PAGE_SIZE, client=client,
                 captures=captures, seed_name='ids_seed', seed_url=LAYER_URL + '/query?' + urlencode({'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'}),
-                validate_seed=validate_seed, roster=_urls,
+                validate_seed=validate_seed, roster=lambda ids: [*_urls(ids), ("epa_item_after", EPA_ITEM_URL)],
                 fetch=lambda client, url, root, name: capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES),
                 on_validation_error=lambda c: validate_capture_documents({n: body for n, (body, receipt) in c.items()}))
-            item_after_body, item_after_receipt = capture_get(client, EPA_ITEM_URL, capture_root, "epa_item_after", max_bytes=MAX_BODY_BYTES)
-            captures["epa_item_after"] = (item_after_body, item_after_receipt)
         layer, fields, extracted = validate_capture_documents({name: body for name, (body, _) in captures.items()})
     except Exception as exc:
         (capture_root / "capture_manifest.json").write_bytes(_canonical({"complete":False,"error_code":type(exc).__name__,"receipts":{n:r for n,(_,r) in captures.items()}})+b"\n")
