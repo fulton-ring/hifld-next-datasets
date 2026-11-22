@@ -59,6 +59,7 @@ from shapely.geometry import Point
 from dagster_hifld.http_capture import capture_retention_budget
 from dagster_hifld.sources import esri_geometry as crs_validation
 from dagster_hifld.http_capture import capture_roster_digests
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages, capture_offset_documents
 from dagster_hifld.sources.arcgis_layer import (
     capture_witness, offset_layer_capture_roster, read_adaptive_offset_replay,
@@ -447,7 +448,7 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures = RetainedCaptureView(capture_root)
     try:
         if offline_capture_directory:
             offline = Path(offline_capture_directory).absolute()
@@ -494,7 +495,7 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
         (capture_root / "capture_manifest.json").write_bytes(
             _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                         "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        retained = dict(captures)
+        retained = RetainedCaptureView(capture_root, captures)
         for receipt_path in capture_root.glob("*.receipt.json"):
             name = receipt_path.name.removesuffix(".receipt.json")
             if name in retained:

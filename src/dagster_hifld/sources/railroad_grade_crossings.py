@@ -75,6 +75,7 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages, capture_offset_documents
 from dagster_hifld.sources.arcgis_layer import (
     capture_with_retry,
@@ -600,7 +601,7 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+    captures = RetainedCaptureView(capture_root)
     ledger = _CaptureLedger(MAX_CAPTURE_TOTAL_BYTES)
     try:
         with capture_retention_budget(capture_root, MAX_CAPTURE_TOTAL_BYTES), httpx.Client(follow_redirects=False, timeout=180,
@@ -634,7 +635,7 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
             _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
                         "error_code": type(exc).__name__, "capture_bytes_retained": ledger.retained,
                         "receipts": receipts}) + b"\n")
-        retained = dict(captures)
+        retained = RetainedCaptureView(capture_root, captures)
         for receipt_path in capture_root.glob("*.receipt.json"):
             name = receipt_path.name.removesuffix(".receipt.json")
             if name in retained:

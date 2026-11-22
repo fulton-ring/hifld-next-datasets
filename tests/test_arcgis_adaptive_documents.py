@@ -72,3 +72,27 @@ class AdaptiveDocumentTests(unittest.TestCase):
             self.assertTrue((root / "service_doc.receipt.json").exists())
             self.assertEqual(sum(path.stat().st_size for path in root.iterdir()
                                  if path.name.endswith((".body", ".wire"))), 0)
+
+    def test_adaptive_pages_keep_receipts_and_read_bodies_from_disk(self):
+        from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages
+        from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
+
+        def capture(client, url, root, name, **policy):
+            body = name.encode()
+            (root / f"{name}.body").write_bytes(body)
+            return body, {"bytes": len(body), "wire_bytes": 0}
+
+        spec = SliceCaptureSpec(byte_budget=1000,
+            page_name=lambda offset, count: f"page_{offset}_{count}",
+            page_url=lambda offset, count: f"https://producer.invalid/{offset}/{count}",
+            capture=capture, producer_error=lambda body: False,
+            page_attempts=1, page_delay=0, doc_attempts=1, doc_delay=0)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            captures = capture_offset_pages(spec, None, root, 4, page_size=2)
+            self.assertIsInstance(captures, RetainedCaptureView)
+            self.assertEqual(set(captures), {"page_0_2", "page_2_2"})
+            self.assertEqual(captures["page_0_2"][0], b"page_0_2")
+            (root / "page_0_2.body").write_bytes(b"loaded from disk")
+            self.assertEqual(captures["page_0_2"][0], b"loaded from disk")
+            self.assertEqual(captures.receipts["page_2_2"], {"bytes": 8, "wire_bytes": 0})

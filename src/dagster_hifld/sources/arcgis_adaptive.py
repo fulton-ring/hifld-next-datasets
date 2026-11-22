@@ -12,6 +12,7 @@ from typing import Callable
 import httpx
 
 from dagster_hifld.sources.esri_common import sha
+from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.http_capture import capture_retention_budget
 
 
@@ -142,7 +143,7 @@ class SliceCaptureSpec:
 
 def capture_slices(spec: SliceCaptureSpec, client: httpx.Client, root: Path,
                    ranges, *, skip=None, refused=None, incomplete=None,
-                   accept=None) -> tuple[dict, bool]:
+                   accept=None) -> tuple[RetainedCaptureView, bool]:
     with capture_retention_budget(root, spec.byte_budget):
         return _capture_slices(spec, client, root, ranges, skip=skip,
             refused=refused, incomplete=incomplete, accept=accept)
@@ -150,14 +151,14 @@ def capture_slices(spec: SliceCaptureSpec, client: httpx.Client, root: Path,
 
 def _capture_slices(spec: SliceCaptureSpec, client: httpx.Client, root: Path,
                     ranges, *, skip=None, refused=None, incomplete=None,
-                    accept=None) -> tuple[dict, bool]:
+                    accept=None) -> tuple[RetainedCaptureView, bool]:
     """Capture ordered ranges, bisect transient refusals and retain singleton errors.
 
     Evidence and checkpoint callbacks run before replacement children are queued.
     Source row/geometry contracts remain in the acceptance callback.
     """
     todo = deque(ranges)
-    captures = {}
+    captures = RetainedCaptureView(root)
     refreshed = False
     while todo:
         offset, count = todo.popleft()
@@ -196,7 +197,7 @@ def _capture_slices(spec: SliceCaptureSpec, client: httpx.Client, root: Path,
 
 
 def capture_offset_pages(spec: SliceCaptureSpec, client: httpx.Client, root: Path,
-                         total: int, *, page_size: int) -> dict:
+                         total: int, *, page_size: int) -> RetainedCaptureView:
     """Capture a complete offset universe with adaptive refusal bisection."""
     ranges = ((offset, min(page_size, total - offset))
               for offset in range(0, total, page_size))
@@ -448,7 +449,7 @@ def capture_document_group(client: httpx.Client, root: Path, requests, *, fetch,
                            max_total_bytes: int | None = None,
                            client_for=None, validate=None) -> tuple[dict, int]:
     """Acquire ordered documents and update the native receipt-byte ledger."""
-    captures = {} if captures is None else captures
+    captures = RetainedCaptureView(root) if captures is None else captures
     for name, url in requests:
         active = client if client_for is None else client_for(name)
         body, receipt = fetch(active, url, root, name)
