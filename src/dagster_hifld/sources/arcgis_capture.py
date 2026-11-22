@@ -13,6 +13,7 @@ from urllib.parse import urlencode, urlsplit, parse_qs
 
 import httpx
 
+from dagster_hifld.http_capture import capture_retention_budget
 from dagster_hifld.sources.capture_common import capture_get
 
 
@@ -67,12 +68,13 @@ def capture_layer(url, capture_dir, byte_budget, page_size, *, client=None,
 
     ``roster`` maps the validated seed IDs to ordered (name, URL) requests. It
     preserves family URL and receipt identities, including offset-based plans.
-    ``fetch`` accepts (client, URL, root, name), enforcing the family's existing
-    retry and total-budget policy. Without it, bounded capture_get is used.
-    Discovery documents can bracket seed acquisition: ``discovery_documents``
-    precede the seed, and ``after_seed_documents`` follow its validation before
-    the metadata-dependent page plan is built. A supplied view exposes the
-    successful prefix even when a request fails.
+    ``fetch`` accepts (client, URL, root, name), preserving native retry and
+    reservation policy. The acquisition budget also binds every streamed wire
+    and decoded sink inside custom fetch callbacks. Without a custom callback,
+    bounded capture_get is used. Discovery documents can bracket seed acquisition:
+    ``discovery_documents`` precede the seed, and ``after_seed_documents`` follow
+    its validation before the metadata-dependent page plan is built. A supplied
+    view exposes the successful prefix even when a request fails.
     """
     # Imported here because arcgis_layer re-exports this entry point.
     from dagster_hifld.sources.arcgis_layer import capture_witness, layer_capture_roster
@@ -93,57 +95,58 @@ def capture_layer(url, capture_dir, byte_budget, page_size, *, client=None,
                 discovery_documents=discovery_documents, after_seed_documents=after_seed_documents,
                 on_validation_error=on_validation_error)
 
-    def acquire(name, request_url):
-        if name in view:
-            return
-        if before_fetch and name != seed_name:
-            before_fetch(name)
-        if fetch is None:
-            retained = sum(p.stat().st_size for suffix in ('*.body', '*.wire')
-                           for p in root.glob(suffix) if p.is_file())
-            remaining = byte_budget - retained
-            if remaining < 2:
-                raise ValueError('source_capture_budget_exceeded_before_request')
-            value = capture_get(client, request_url, root, name,
-                                max_bytes=min(8_000_000, remaining // 2))
-        else:
-            value = fetch(client, request_url, root, name)
-        view[name] = value
-        if after_fetch and name != seed_name:
-            after_fetch(name)
+    with capture_retention_budget(root, byte_budget):
+        def acquire(name, request_url):
+            if name in view:
+                return
+            if before_fetch and name != seed_name:
+                before_fetch(name)
+            if fetch is None:
+                retained = sum(p.stat().st_size for suffix in ('*.body', '*.wire')
+                               for p in root.glob(suffix) if p.is_file())
+                remaining = byte_budget - retained
+                if remaining < 2:
+                    raise ValueError('source_capture_budget_exceeded_before_request')
+                value = capture_get(client, request_url, root, name,
+                                    max_bytes=min(8_000_000, remaining // 2))
+            else:
+                value = fetch(client, request_url, root, name)
+            view[name] = value
+            if after_fetch and name != seed_name:
+                after_fetch(name)
 
-    seed_url = seed_url or url + '/query?' + urlencode(
-        {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'})
-    for name, request_url in discovery_documents:
-        acquire(name, request_url)
-    acquire(seed_name, seed_url)
-    seed = view[seed_name][0]
-    if validate_seed:
-        ids = validate_seed(seed)
-    else:
-        ids = json.loads(seed).get('objectIds')
-        if (not isinstance(ids, list) or any(type(i) is not int for i in ids)
-                or len(set(ids)) != len(ids)):
-            raise ValueError('source_seed_id_population_drift')
-        ids = sorted(ids)
-    for name, request_url in after_seed_documents:
-        acquire(name, request_url)
-    requests = list(roster(ids) if roster else layer_capture_roster(
-        ids, layer_url=url, service_url=url.rsplit('/', 1)[0], page_size=page_size,
-        oid_field=oid_field))
-    names = [name for name, _ in requests]
-    if len(names) != len(set(names)):
-        raise ValueError('capture_roster_name_duplicate')
-    for name, request_url in requests:
-        acquire(name, request_url)
-    try:
-        captured_ids = [feature['attributes'][oid_field]
-                        for name, request_url in requests
-                        if parse_qs(urlsplit(request_url).query).get('outFields') == ['*']
-                        for feature in json.loads(view[name][0]).get('features', [])]
-        capture_witness(view, captured_ids=captured_ids)
-    except (ValueError, KeyError, TypeError):
-        if on_validation_error is not None:
-            on_validation_error(view)
-        raise
-    return view
+        seed_url = seed_url or url + '/query?' + urlencode(
+            {'where': '1=1', 'returnIdsOnly': 'true', 'f': 'json'})
+        for name, request_url in discovery_documents:
+            acquire(name, request_url)
+        acquire(seed_name, seed_url)
+        seed = view[seed_name][0]
+        if validate_seed:
+            ids = validate_seed(seed)
+        else:
+            ids = json.loads(seed).get('objectIds')
+            if (not isinstance(ids, list) or any(type(i) is not int for i in ids)
+                    or len(set(ids)) != len(ids)):
+                raise ValueError('source_seed_id_population_drift')
+            ids = sorted(ids)
+        for name, request_url in after_seed_documents:
+            acquire(name, request_url)
+        requests = list(roster(ids) if roster else layer_capture_roster(
+            ids, layer_url=url, service_url=url.rsplit('/', 1)[0], page_size=page_size,
+            oid_field=oid_field))
+        names = [name for name, _ in requests]
+        if len(names) != len(set(names)):
+            raise ValueError('capture_roster_name_duplicate')
+        for name, request_url in requests:
+            acquire(name, request_url)
+        try:
+            captured_ids = [feature['attributes'][oid_field]
+                            for name, request_url in requests
+                            if parse_qs(urlsplit(request_url).query).get('outFields') == ['*']
+                            for feature in json.loads(view[name][0]).get('features', [])]
+            capture_witness(view, captured_ids=captured_ids)
+        except (ValueError, KeyError, TypeError):
+            if on_validation_error is not None:
+                on_validation_error(view)
+            raise
+        return view

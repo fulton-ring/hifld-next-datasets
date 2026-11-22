@@ -312,7 +312,7 @@ def load_replay(root: Path, name: str) -> tuple[bytes, dict]:
         headers["Content-Length"] = str(receipt["content_length"])
     response = httpx.Response(200, headers=headers, stream=httpx.ByteStream(wire))
     result = capture_http_response(response, max_wire_bytes=len(wire), max_decoded_bytes=len(body),
-        reserve=lambda _progress: None, retain_wire=lambda _chunk: None,
+        apply_retention_budget=False, reserve=lambda _progress: None, retain_wire=lambda _chunk: None,
         retain_decoded=lambda _chunk: None)
     response.close()
     if (not result.complete or result.decoded_bytes_retained != len(body)
@@ -448,7 +448,7 @@ def _validate_offset_replay_refusal(root: Path, name: str, url: str, *, max_capt
         headers['Content-Length'] = str(receipt['content_length'])
     response = httpx.Response(receipt['status'], headers=headers, stream=httpx.ByteStream(wire))
     result = capture_http_response(response, max_wire_bytes=max_capture_bytes, max_decoded_bytes=max_capture_bytes,
-        reserve=lambda _progress: None, retain_wire=lambda _chunk: None, retain_decoded=lambda _chunk: None)
+        apply_retention_budget=False, reserve=lambda _progress: None, retain_wire=lambda _chunk: None, retain_decoded=lambda _chunk: None)
     response.close()
     if (result.wire_bytes_retained != len(wire) or result.wire_sha256 != _sha(wire)
             or result.decoded_bytes_retained != len(body) or result.decoded_sha256 != _sha(body)

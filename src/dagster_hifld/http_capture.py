@@ -14,6 +14,8 @@ import json
 import stat
 import zlib
 from collections.abc import Callable, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,6 +23,56 @@ import httpx
 
 
 DECODE_BLOCK_BYTES = 1024 * 1024
+
+
+@dataclass
+class _RetentionBudget:
+    root: Path
+    limit: int
+    exceeded: bool = False
+
+    def response_charge(self):
+        # Capture helpers unlink the current response slots before calling the
+        # HTTP owner. Rescan here so resumed attempts, renames and overwritten
+        # slots are charged by their physical retained size exactly once.
+        retained = sum(path.stat().st_size for path in self.root.iterdir()
+                       if path.is_file() and path.name.endswith((".body", ".wire")))
+
+        def charge(block: bytes) -> None:
+            nonlocal retained
+            if self.exceeded or retained + len(block) > self.limit:
+                self.exceeded = True
+                raise ValueError("source_capture_budget_exceeded")
+            retained += len(block)
+        return charge
+
+
+_retention_budget: ContextVar[_RetentionBudget | None] = ContextVar("capture_retention_budget", default=None)
+
+
+@contextmanager
+def capture_retention_budget(root: Path, limit: int):
+    """Bound one synchronous acquisition, including opaque family fetch callbacks.
+
+    Actual wire and decoded sink blocks are charged before persistence. Native
+    reservation callbacks retain their allocation/disk checks independently;
+    speculative decoder allocation is not charged as retained disk evidence.
+    A refused block stays fatal even if a callback retries or swallows its
+    incomplete result. Native capture helpers get to write truthful receipts
+    before the acquisition boundary raises the budget refusal.
+    """
+    budget = _RetentionBudget(Path(root), limit)
+    token = _retention_budget.set(budget)
+    try:
+        yield
+        if budget.exceeded:
+            raise ValueError("source_capture_budget_exceeded")
+    except Exception as exc:
+        if budget.exceeded:
+            raise ValueError("source_capture_budget_exceeded") from exc
+        raise
+    finally:
+        _retention_budget.reset(token)
 
 
 def validate_capture_roster(root: Path, expected: set[str] | dict[str, dict[str, object]]) -> None:
@@ -165,6 +217,7 @@ def capture_http_response(
     reserve: Callable[[CaptureProgress], None],
     retain_wire: Callable[[bytes], None],
     retain_decoded: Callable[[bytes], None],
+    apply_retention_budget: bool = True,
 ) -> HTTPCaptureResult:
     """Consume a fresh synchronous streamed response using unbuffered iter_raw.
 
@@ -202,6 +255,8 @@ def capture_http_response(
     pending_wire = pending_decoded = b""
     failure = error_type = None
     phase = "response_validation"
+    budget = _retention_budget.get() if apply_retention_budget else None
+    charge = budget.response_charge() if budget is not None else None
 
     def reservation(kind: str, allocation: int) -> None:
         nonlocal phase
@@ -216,6 +271,8 @@ def capture_http_response(
         produced_hash.update(block)
         pending_decoded = block
         phase = "decoded_sink"
+        if charge is not None:
+            charge(block)
         retain_decoded(block)
         decoded_retained += len(block)
         decoded_hash.update(block)
@@ -256,6 +313,8 @@ def capture_http_response(
                 if max_wire_block_bytes is not None:
                     reservation("wire_block", len(block))
                 phase = "wire_sink"
+                if charge is not None:
+                    charge(block)
                 retain_wire(block)
                 retained += len(block)
                 retained_hash.update(block)
