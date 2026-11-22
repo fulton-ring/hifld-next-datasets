@@ -6,6 +6,9 @@ receipt-only and staging-backed families without changing their evidence shape.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+
 from dagster_hifld.sources import capture_common
 
 
@@ -54,6 +57,18 @@ class LayerCaptureFetch:
         return value
 
 
+@dataclass(frozen=True)
+class ExactIdCapturePlan:
+    """Native request and validation policy for the common ID population owner."""
+    ids: Sequence[int]
+    page_size: int
+    page_request: Callable
+    validate_page: Callable
+    read_page: Callable
+    closing_requests: Sequence[tuple] = ()
+    project_rows: Callable | None = None
+
+
 def capture_request_steps(steps, fetch, *, capture_root=None, byte_budget=None):
     """Drive native request steps, validating each response before advancing.
 
@@ -73,7 +88,17 @@ def capture_request_steps(steps, fetch, *, capture_root=None, byte_budget=None):
                 request = steps.send(result)
             except StopIteration as completed:
                 return completed.value
-            result = fetch(*request)
+            if isinstance(request, ExactIdCapturePlan):
+                from dagster_hifld.sources.arcgis_raw_capture import capture_exact_id_population
+                result = capture_exact_id_population(request.ids, request.page_size,
+                    fetch_page=lambda offset, ids: fetch(*request.page_request(offset, ids)),
+                    validate_page=request.validate_page,
+                    read_page=request.read_page, project_rows=request.project_rows,
+                    close_witnesses=lambda: capture_request_sequence({},
+                        [(item[0], item[1:]) for item in request.closing_requests],
+                        lambda captures: (), lambda name, args: fetch(name, *args)))
+            else:
+                result = fetch(*request)
 
 
 def retry_capture_request(operation, *, attempts, schedule, retryable, preserve_failed):
