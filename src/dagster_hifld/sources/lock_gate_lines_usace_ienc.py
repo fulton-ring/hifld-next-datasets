@@ -37,7 +37,6 @@ from dagster_hifld.construction_state import (
     load_first_construction,
     seal_first_construction,
 )
-from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir

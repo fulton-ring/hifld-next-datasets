@@ -110,3 +110,31 @@ class FamilyFetchTests(unittest.TestCase):
                 for function in functions:
                     self.assertFalse(any(isinstance(n, (ast.For, ast.While, ast.Try, ast.With))
                                          for n in ast.walk(function)), function.name)
+
+    def test_hard_sink_limits_keep_native_failure_receipt_without_writing_oversize_block(self):
+        with tempfile.TemporaryDirectory() as tmp, httpx.Client(transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, stream=httpx.ByteStream(b'oversized')))) as client:
+            root = Path(tmp)
+            budget = [0]
+            with self.assertRaisesRegex(ValueError, 'source_capture_budget_exceeded'):
+                shared.fetch_capture(client, 'https://producer.test/layer', root, 'page', budget,
+                    max_capture_bytes=10000000, max_body_bytes=4, hard_sink_limits=True)
+            receipt = json.loads((root / 'page.receipt.json').read_bytes())
+            self.assertEqual(receipt['error_type'], '_CaptureBudgetExceeded')
+            self.assertEqual(receipt['error_code'], 'wire_sink_error')
+            self.assertEqual(receipt['bytes'], 0)
+            self.assertEqual(receipt['wire_bytes'], 0)
+            self.assertEqual(budget, [0])
+
+    def test_capture_get_budget_variant_maps_limit_and_reservation_failures(self):
+        for max_body, max_total, error in [(4, 10000000, 'source_response_limit_exceeded'),
+                                           (100, 4, 'source_capture_budget_exceeded')]:
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as tmp, httpx.Client(
+                    transport=httpx.MockTransport(lambda request: httpx.Response(
+                        200, stream=httpx.ByteStream(b'oversized')))) as client:
+                root = Path(tmp)
+                with self.assertRaisesRegex(ValueError, error):
+                    shared.fetch_capture_get(client, 'https://producer.test/layer', root, 'page', [0],
+                        max_capture_bytes=max_total, max_body_bytes=max_body,
+                        response_limit_codes={'wire_limit_exceeded', 'decoded_limit_exceeded'})
+                self.assertFalse(json.loads((root / 'page.receipt.json').read_bytes())['complete_body'])

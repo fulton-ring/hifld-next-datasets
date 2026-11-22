@@ -32,8 +32,12 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources import arcgis_layer as capture_shared
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
-    seal_ready_candidate, verify_cached_candidate, write_immutable,
+    candidate_prefix,
+    processing_identity,
+    quarantine_incomplete_capture,
+    seal_ready_candidate,
+    verify_cached_candidate,
+    write_immutable,
     validate_capture_request_identity,
 )
 from dagster_hifld.sources.esri_common import arrow_type as _arrow_type, canonical as _canonical, sha as _sha

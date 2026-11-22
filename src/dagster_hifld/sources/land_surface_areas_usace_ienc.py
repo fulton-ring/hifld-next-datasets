@@ -29,7 +29,6 @@ from dagster_hifld.sources import arcgis_layer as capture_shared
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
-    capture_get,
     content_derived_version,
     processing_identity,
     quarantine_incomplete_capture,

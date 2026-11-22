@@ -42,12 +42,11 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pyproj
 import shapely
-from time import sleep
 
 from dagster_hifld.http_capture import validate_capture_roster
 from dagster_hifld.sources.arcgis_layer import (
     capture_layer, RetainedCaptureView, capture_witness, load_replay, offset_layer_capture_roster,
-    retained_capture_ids, witness_aside as _witness_refused,
+    retained_capture_ids,
 )
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
@@ -55,8 +54,11 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    candidate_prefix,
+    processing_identity,
+    quarantine_incomplete_capture,
+    seal_ready_candidate,
+    verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha

@@ -5,7 +5,6 @@ feature class. Each ArcGIS response is retained verbatim with its wire receipt.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import shutil
@@ -24,7 +23,10 @@ import shapely
 from dagster_hifld.catalog import generate_data_dictionary
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
-from dagster_hifld.http_capture import capture_http_response, capture_roster_digests, validate_capture_roster
+from dagster_hifld.http_capture import (
+    capture_roster_digests,
+    validate_capture_roster,
+)
 from dagster_hifld.native_geoparquet_catalog import summarize_native_path
 from dagster_hifld.output_policy import prebuilt_output_spec, validate_output_policy
 from dagster_hifld.provenance import provenance_projection
