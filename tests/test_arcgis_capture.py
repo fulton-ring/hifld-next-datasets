@@ -98,3 +98,57 @@ class LayerAcquisitionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.run_capture(root, after_ids=(1, 3))
             self.assertTrue((root / 'ids_after.body').is_file())
+
+    def test_metadata_after_validated_seed_precedes_metadata_selected_page_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = 'https://example.test/FeatureServer/0'
+            view = arcgis_layer.RetainedCaptureView(root)
+            requests = []
+
+            def serve(request):
+                requests.append(str(request.url))
+                query = request.url.params
+                if query.get('returnIdsOnly'):
+                    doc = {'objectIds': [1]}
+                elif query.get('returnCountOnly'):
+                    doc = {'count': 1}
+                elif query.get('outFields'):
+                    doc = {'features': [{'attributes': {'OBJECTID': 1}}]}
+                else:
+                    doc = {'advancedQueryCapabilities': {'supportsPagination': True}}
+                return httpx.Response(200, stream=httpx.ByteStream(json.dumps(doc).encode()))
+
+            def roster(ids):
+                layer = json.loads(view['layer_before'][0])
+                self.assertTrue(layer['advancedQueryCapabilities']['supportsPagination'])
+                return arcgis_layer.layer_capture_roster(ids, layer_url=base,
+                    service_url=base.rsplit('/', 1)[0], page_size=2)
+
+            with httpx.Client(transport=httpx.MockTransport(serve)) as client:
+                arcgis_layer.capture_layer(base, root, 100_000, 2, client=client,
+                    captures=view, roster=roster,
+                    after_seed_documents=[('layer_before', base + '?f=pjson')])
+            self.assertIn('returnIdsOnly=true', requests[0])
+            self.assertEqual(requests[1], base + '?f=pjson')
+            self.assertEqual(len(requests), 9)
+            self.assertEqual(list(view)[:2], ['ids_before', 'layer_before'])
+
+    def test_invalid_seed_never_fetches_following_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            view = arcgis_layer.RetainedCaptureView(root)
+            requests = []
+
+            def serve(request):
+                requests.append(str(request.url))
+                return httpx.Response(200, stream=httpx.ByteStream(b'{"objectIds": null}'))
+
+            with httpx.Client(transport=httpx.MockTransport(serve)) as client:
+                with self.assertRaisesRegex(ValueError, 'source_seed_id_population_drift'):
+                    arcgis_layer.capture_layer('https://example.test/FeatureServer/0',
+                        root, 100_000, 2, client=client, captures=view,
+                        after_seed_documents=[('layer_before', 'https://example.test/metadata')])
+            self.assertEqual(len(requests), 1)
+            self.assertEqual(list(view), ['ids_before'])
+            self.assertTrue((root / 'ids_before.receipt.json').is_file())

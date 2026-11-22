@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
+
 import pyarrow.parquet as pq
 import pyarrow as pa
 
@@ -147,7 +149,7 @@ class EpaFrsTriTests(unittest.TestCase):
         layer = json.loads(captures["layer_before"][0])
         schema_sha = tri._sha(tri._canonical([tri._plain_field(f) for f in layer["fields"]]))
         with tempfile.TemporaryDirectory() as tmp, self._schema_pin(captures), \
-                patch.object(tri, "capture_get", side_effect=fake_get):
+                patch.object(tri.capture_common, "capture_get", side_effect=fake_get):
             storage = tri.StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
             result = tri.capture_epa_frs_tri(storage, version="fixture-v1", capture_directory=tmp)
             self.assertEqual(result["feature_count"], 2)
@@ -167,6 +169,49 @@ class EpaFrsTriTests(unittest.TestCase):
             self.assertTrue(verify_cached_candidate(storage, Path(__file__).resolve().parents[1],
                 state_key, prefix, result["version"], tri._sha(tri._canonical(identity)), identity,
                 payload["source_record_sha256"], schema_sha, payload["objects"], payload["capture_receipts"])["reused"])
+
+
+    def test_failed_page_stream_retains_exact_request_custody_in_quarantine(self):
+        for pagination in (True, False):
+            with self.subTest(pagination=pagination):
+                captures = self._capture_fixture()
+                for name in ("layer_before", "layer_after"):
+                    layer = json.loads(captures[name][0])
+                    layer["advancedQueryCapabilities"]["supportsPagination"] = pagination
+                    captures[name] = (json.dumps(layer).encode(), captures[name][1])
+                urls = {name: url for name, url in tri._source_metadata_urls() + tri._source_after_urls()}
+                urls["ids_seed"] = tri._query_url(where="1=1", returnIdsOnly="true", f="json")
+                plan = tri._page_plan([8, 21], json.loads(captures["layer_before"][0]))[1]
+                urls.update({name: url for name, url, _ids in plan})
+                bodies = {urls[name]: body for name, (body, _receipt) in captures.items()}
+                real_client = httpx.Client
+
+                class BrokenStream(httpx.SyncByteStream):
+                    def __iter__(self):
+                        yield b'{"features":['
+                        raise httpx.ReadError("stream interrupted")
+
+                def serve(request):
+                    stream = BrokenStream() if str(request.url) == urls["page_000"] else httpx.ByteStream(bodies[str(request.url)])
+                    return httpx.Response(200, stream=stream)
+
+                with tempfile.TemporaryDirectory() as tmp, self._schema_pin(captures), patch.object(
+                        tri.httpx, "Client", side_effect=lambda **kwargs:
+                        real_client(transport=httpx.MockTransport(serve), **kwargs)):
+                    storage = tri.StagingStorageResource(local_dir=tmp, use_local=True)
+                    with self.assertRaisesRegex(ValueError, "incomplete_source_capture:page_000"):
+                        tri.capture_epa_frs_tri(storage, version="torn", capture_directory=tmp + "/captures")
+                    root = next((Path(tmp) / "captures").iterdir())
+                    receipt = json.loads((root / "capture_manifest.json").read_bytes())["receipts"]["page_000"]
+                    self.assertEqual(receipt["url"], urls["page_000"])
+                    self.assertFalse(receipt["complete_body"])
+                    self.assertGreater(receipt["wire_bytes"], 0)
+                    quarantined = storage.list_prefix(f"_quarantine/{tri.DATASET_SLUG}/")
+                    wire_key = next(key for key in quarantined if key.endswith("/raw/page_000.wire"))
+                    self.assertEqual(storage.read_key(wire_key), b'{"features":[')
+                    receipt_key = next(key for key in quarantined if key.endswith("/raw/page_000.receipt.json"))
+                    self.assertEqual(json.loads(storage.read_key(receipt_key)), receipt)
+                    self.assertFalse(storage.list_prefix(f"{tri.DATASET_SLUG}/"))
 
 
 if __name__ == "__main__":

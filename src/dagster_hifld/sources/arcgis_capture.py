@@ -62,14 +62,17 @@ def capture_layer(url, capture_dir, byte_budget, page_size, *, client=None,
                   fetch=None, roster=None, seed_name='ids_before', seed_url=None,
                   validate_seed=None, captures=None, before_fetch=None,
                   after_fetch=None, oid_field='OBJECTID',
-                  discovery_documents=(), on_validation_error=None):
+                  discovery_documents=(), after_seed_documents=(), on_validation_error=None):
     """Discover and capture a native ArcGIS population to retained disk evidence.
 
     ``roster`` maps the validated seed IDs to ordered (name, URL) requests. It
     preserves family URL and receipt identities, including offset-based plans.
     ``fetch`` accepts (client, URL, root, name), enforcing the family's existing
     retry and total-budget policy. Without it, bounded capture_get is used.
-    A supplied view exposes the successful prefix even when a request fails.
+    Discovery documents can bracket seed acquisition: ``discovery_documents``
+    precede the seed, and ``after_seed_documents`` follow its validation before
+    the metadata-dependent page plan is built. A supplied view exposes the
+    successful prefix even when a request fails.
     """
     # Imported here because arcgis_layer re-exports this entry point.
     from dagster_hifld.sources.arcgis_layer import capture_witness, layer_capture_roster
@@ -87,7 +90,8 @@ def capture_layer(url, capture_dir, byte_budget, page_size, *, client=None,
                 fetch=fetch, roster=roster, seed_name=seed_name, seed_url=seed_url,
                 validate_seed=validate_seed, captures=view, before_fetch=before_fetch,
                 after_fetch=after_fetch, oid_field=oid_field,
-                discovery_documents=discovery_documents, on_validation_error=on_validation_error)
+                discovery_documents=discovery_documents, after_seed_documents=after_seed_documents,
+                on_validation_error=on_validation_error)
 
     def acquire(name, request_url):
         if name in view:
@@ -122,6 +126,8 @@ def capture_layer(url, capture_dir, byte_budget, page_size, *, client=None,
                 or len(set(ids)) != len(ids)):
             raise ValueError('source_seed_id_population_drift')
         ids = sorted(ids)
+    for name, request_url in after_seed_documents:
+        acquire(name, request_url)
     requests = list(roster(ids) if roster else layer_capture_roster(
         ids, layer_url=url, service_url=url.rsplit('/', 1)[0], page_size=page_size,
         oid_field=oid_field))

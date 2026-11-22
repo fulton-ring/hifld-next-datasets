@@ -37,13 +37,13 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.arcgis_layer import (
     capture_with_retry, producer_error_doc as _producer_error_doc,
 )
+from dagster_hifld.sources.arcgis_layer import capture_layer, load_replay, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version,
     processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
 )
-from dagster_hifld.sources.arcgis_layer import load_replay
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = "travel-monitoring-analysis-system-tmas-stations"
@@ -524,44 +524,37 @@ def capture_tmas_stations(storage: StagingStorageResource, *, version: str,
         if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
             raise ValueError("unsafe_capture_directory")
         capture_root.mkdir(parents=True, exist_ok=True)
-        captures: dict[str, tuple[bytes, dict[str, object]]] = {}
+        captures = RetainedCaptureView(capture_root)
         try:
             with httpx.Client(follow_redirects=False, timeout=180,
                               headers={"User-Agent": "hifld-next-datasets/tmas-stations-draft"}) as client:
-                seed_body, seed_receipt = capture_with_retry(client, _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"}), capture_root, "ids_seed",
-                    max_bytes=MAX_CAPTURE_BYTES,
-                    attempts=DOC_CAPTURE_ATTEMPTS,
-                    base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
-                    max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
-                seed = json.loads(seed_body).get("objectIds")
-                if (not isinstance(seed, list) or any(type(value) is not int or value <= 0 for value in seed)
-                        or len(set(seed)) != len(seed)):
-                    raise ValueError("source_seed_id_population_drift")
-                captures["ids_seed"] = (seed_body, seed_receipt)
-                for name, url in _doc_urls():
-                    captures[name] = capture_with_retry(client, url, capture_root, name,
-                        max_bytes=MAX_CAPTURE_BYTES,
-                        attempts=DOC_CAPTURE_ATTEMPTS,
-                        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
-                        max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
-                layer_doc = json.loads(captures["layer_before"][0])
-                if layer_doc.get("maxRecordCount") != EXPECTED_MAX_RECORD_COUNT \
-                        or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
-                    raise ValueError("source_record_limit_drift")
-                for offset in range(0, len(seed), PAGE_START_RECORDS):
-                    count = min(PAGE_START_RECORDS, len(seed) - offset)
-                    name = _page_name(offset, count)
-                    captures[name] = capture_with_retry(client, _page_query(offset, count), capture_root, name,
-                        max_bytes=MAX_CAPTURE_BYTES,
-                        attempts=PAGE_CAPTURE_ATTEMPTS,
-                        base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS,
-                        max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
-                for name, url in _after_doc_urls():
-                    captures[name] = capture_with_retry(client, url, capture_root, name,
-                        max_bytes=MAX_CAPTURE_BYTES,
-                        attempts=DOC_CAPTURE_ATTEMPTS,
-                        base_delay=DOC_CAPTURE_BASE_DELAY_SECONDS,
-                        max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
+                def validate_seed(body):
+                    seed = json.loads(body).get("objectIds")
+                    if (not isinstance(seed, list) or any(type(value) is not int or value <= 0 for value in seed)
+                            or len(set(seed)) != len(seed)):
+                        raise ValueError("source_seed_id_population_drift")
+                    return seed
+
+                def roster(seed):
+                    layer_doc = json.loads(captures["layer_before"][0])
+                    if layer_doc.get("maxRecordCount") != EXPECTED_MAX_RECORD_COUNT \
+                            or PAGE_START_RECORDS > layer_doc["maxRecordCount"]:
+                        raise ValueError("source_record_limit_drift")
+                    return [(_page_name(offset, min(PAGE_START_RECORDS, len(seed) - offset)),
+                             _page_query(offset, min(PAGE_START_RECORDS, len(seed) - offset)))
+                            for offset in range(0, len(seed), PAGE_START_RECORDS)] + _after_doc_urls()
+
+                def fetch(client, url, root, name):
+                    page = name.startswith("page_")
+                    return capture_with_retry(client, url, root, name, max_bytes=MAX_CAPTURE_BYTES,
+                        max_total_bytes=MAX_CAPTURE_TOTAL_BYTES,
+                        attempts=PAGE_CAPTURE_ATTEMPTS if page else DOC_CAPTURE_ATTEMPTS,
+                        base_delay=PAGE_CAPTURE_BASE_DELAY_SECONDS if page else DOC_CAPTURE_BASE_DELAY_SECONDS)
+
+                capture_layer(LAYER_URL, capture_root, MAX_CAPTURE_TOTAL_BYTES, PAGE_START_RECORDS,
+                    client=client, captures=captures, seed_name="ids_seed", validate_seed=validate_seed,
+                    after_seed_documents=_doc_urls(), roster=roster, fetch=fetch,
+                    on_validation_error=_validate_captures)
             layer, source_fields, extracted = _validate_captures(captures)
         except Exception as exc:
             receipts = {}

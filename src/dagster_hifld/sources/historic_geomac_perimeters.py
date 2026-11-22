@@ -44,7 +44,9 @@ from dagster_hifld.resources import (
     StagingStorageResource,
     default_capture_dir,
 )
-from dagster_hifld.sources.arcgis_layer import capture_page, load_receipt, load_replay
+from dagster_hifld.sources.arcgis_layer import (
+    capture_layer, capture_page, load_receipt, load_replay, RetainedCaptureView,
+)
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     content_derived_version,
@@ -494,29 +496,33 @@ def capture_historic_perimeters(storage: StagingStorageResource, *, version: str
                     ("count_before", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
                     ("ids_before", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
                 ]
-                for name, url in documents:
-                    body, receipt = _capture(client, url, root, name)
-                    static[name] = (body, receipt)
-                    receipts[name] = receipt
-                ids = json.loads(static["ids_before"][0]).get("objectIds")
-                if (not isinstance(ids, list) or not ids
-                        or any(type(value) is not int for value in ids)
-                        or len(ids) != len(set(ids))):
-                    raise ValueError("ifph_initial_id_population_drift")
-                for start in range(0, len(sorted(ids)), page_size):
-                    name = f"page_{start:05d}"
-                    _body, receipt = _capture(client, _scope_query(name, page_size), root, name)
-                    page_names.append(name)
-                    receipts[name] = receipt
-                for name, url in [
-                    ("count_after", _query({"where": "1=1", "returnCountOnly": "true", "f": "json"})),
-                    ("ids_after", _query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})),
-                    ("layer_after", LAYER_URL + "?f=pjson"),
-                    ("service_after", SERVICE_URL + "?f=pjson"),
-                ]:
-                    body, receipt = _capture(client, url, root, name)
-                    static[name] = (body, receipt)
-                    receipts[name] = receipt
+                def fetch(client, url, root, name):
+                    value = _capture(client, url, root, name)
+                    receipts[name] = value[1]
+                    if name.startswith("page_"):
+                        page_names.append(name)
+                    else:
+                        static[name] = value
+                    return value
+
+                def validate_seed(body):
+                    ids = json.loads(body).get("objectIds")
+                    if (not isinstance(ids, list) or not ids
+                            or any(type(value) is not int for value in ids)
+                            or len(ids) != len(set(ids))):
+                        raise ValueError("ifph_initial_id_population_drift")
+                    return sorted(ids)
+
+                def roster(ids):
+                    return [(f"page_{start:05d}", _scope_query(f"page_{start:05d}", page_size))
+                            for start in range(0, len(ids), page_size)] + [
+                        (name, _scope_query(name, page_size))
+                        for name in ("count_after", "ids_after", "layer_after", "service_after")]
+
+                capture_layer(LAYER_URL, root, MAX_CAPTURE_BYTES, page_size, client=client,
+                    captures=RetainedCaptureView(root), discovery_documents=documents,
+                    validate_seed=validate_seed, roster=roster, fetch=fetch,
+                    on_validation_error=lambda view: _population(root, static, page_names, receipts, page_size))
             manifest = {"complete": True,
                         "captured_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         "artifact_names": sorted(receipts), "receipts": receipts}

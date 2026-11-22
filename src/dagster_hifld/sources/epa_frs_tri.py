@@ -26,8 +26,10 @@ from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources import capture_common
+from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, content_derived_version, processing_identity,
+    candidate_prefix, content_derived_version, processing_identity,
     quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
     write_immutable,
 )
@@ -342,41 +344,39 @@ def capture_epa_frs_tri(storage: StagingStorageResource, *, version: str,
     if ".." in capture_root.parts or any(parent.is_symlink() for parent in (capture_root, *capture_root.parents)):
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
-    captures: dict[str, tuple[bytes, dict]] = {}
+    captures = RetainedCaptureView(capture_root)
     current_capture_name = "ids_seed"
     current_capture_url = _query_url(where="1=1", returnIdsOnly="true", f="json")
     try:
         with httpx.Client(follow_redirects=False, timeout=90, headers={"User-Agent":"hifld-next-datasets/epa-frs-tri-draft"}) as client:
-            seed_body, seed_receipt = capture_get(client,
-                current_capture_url, capture_root, current_capture_name, max_bytes=MAX_BODY_BYTES)
-            seed = json.loads(seed_body).get("objectIds")
-            if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
-                raise ValueError("source_seed_id_roster_missing_or_invalid")
-            captures["ids_seed"] = (seed_body, seed_receipt)
-            total_captured_bytes = seed_receipt["bytes"] + seed_receipt["wire_bytes"]
-            for name, url in _source_metadata_urls():
+            total_captured_bytes = 0
+
+            def fetch(client, url, root, name):
+                nonlocal current_capture_name, current_capture_url, total_captured_bytes
                 current_capture_name, current_capture_url = name, url
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
+                value = capture_common.capture_get(client, url, root, name, max_bytes=MAX_BODY_BYTES)
+                captures[name] = value
+                receipt = value[1]
                 total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
-                if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
+                if name != "ids_seed" and total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
                     raise ValueError("source_capture_exceeds_scratch_budget")
-            layer_before = json.loads(captures["layer_before"][0])
-            _pagination_mode, page_plan = _page_plan(seed, layer_before)
-            for name, url, _page_ids in page_plan:
-                current_capture_name, current_capture_url = name, url
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
-                total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
-                if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
-            for name, url in _source_after_urls():
-                current_capture_name, current_capture_url = name, url
-                body, receipt = capture_get(client, url, capture_root, name, max_bytes=MAX_BODY_BYTES)
-                captures[name] = (body, receipt)
-                total_captured_bytes += receipt["bytes"] + receipt["wire_bytes"]
-                if total_captured_bytes > MAX_CAPTURE_TOTAL_BYTES:
-                    raise ValueError("source_capture_exceeds_scratch_budget")
+                return value
+
+            def validate_seed(body):
+                seed = json.loads(body).get("objectIds")
+                if not isinstance(seed, list) or not seed or any(type(value) is not int for value in seed):
+                    raise ValueError("source_seed_id_roster_missing_or_invalid")
+                return seed
+
+            def roster(seed):
+                layer_before = json.loads(captures["layer_before"][0])
+                _pagination_mode, page_plan = _page_plan(seed, layer_before)
+                return [(name, url) for name, url, _page_ids in page_plan] + _source_after_urls()
+
+            capture_layer(LAYER_URL, capture_root, MAX_CAPTURE_TOTAL_BYTES, PAGE_SIZE,
+                client=client, captures=captures, seed_name="ids_seed", seed_url=current_capture_url,
+                validate_seed=validate_seed, after_seed_documents=_source_metadata_urls(),
+                roster=roster, fetch=fetch, on_validation_error=_validate)
         layer, fields, features, audit = _validate(captures)
     except Exception as exc:
         receipts = {}
