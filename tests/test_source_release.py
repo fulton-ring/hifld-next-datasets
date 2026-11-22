@@ -202,21 +202,36 @@ class ArcgisReleaseTests(unittest.TestCase):
         return payloads
 
     def _capture(self, storage, root, payloads, fetched):
-        def fake_capture(_client, url, capture_root, name, *, max_bytes):
+        real_capture = rcra.capture_get
+        real_client = httpx.Client
+        metadata = dict(rcra._urls([]))
+        planned = [(name, metadata[name]) for name in
+                   ("epa_item", "service_before", "layer_before", "count_before", "ids_before")]
+        planned += [("ids_seed", metadata["ids_before"]), *rcra._urls([1, 2]),
+                    ("epa_item_after", rcra.EPA_ITEM_URL)]
+        responses = {}
+        for name, url in planned:
+            responses.setdefault(str(httpx.URL(url)), []).append(payloads[name])
+        request_counts = {}
+
+        def serve(request):
+            url = str(request.url)
+            choices = responses[url]
+            index = request_counts.get(url, 0)
+            request_counts[url] = index + 1
+            return httpx.Response(200, stream=httpx.ByteStream(choices[index % len(choices)]))
+
+        def client_factory(*args, **kwargs):
+            return real_client(*args, transport=httpx.MockTransport(serve), **kwargs)
+
+        def capture(_client, url, capture_root, name, *, max_bytes):
             fetched.append(name)
-            body = payloads[name]
-            capture_root.mkdir(parents=True, exist_ok=True)
-            (capture_root / f"{name}.wire").write_bytes(body)
-            receipt = {"method": "GET", "url": url, "final_url": url,
-                       "observed_at": "2026-11-16T00:00:00+00:00", "status": 200,
-                       "complete_body": True, "wire_bytes": len(body),
-                       "wire_sha256": hashlib.sha256(body).hexdigest(),
-                       "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
-            return body, receipt
+            return real_capture(_client, url, capture_root, name, max_bytes=max_bytes)
 
         identity = {"code_commit": "fixture", "files": {}, "python": "fixture"}
         original_validator = rcra.validate_capture_documents
-        with (patch.object(rcra, "capture_get", side_effect=fake_capture),
+        with (patch.object(rcra.httpx, "Client", side_effect=client_factory),
+              patch.object(rcra, "capture_get", side_effect=capture),
               patch.object(rcra, "validate_capture_documents",
                            side_effect=lambda captured: original_validator(captured, expected_schema_sha256=None)),
               patch.object(rcra, "_identity", return_value=identity),
