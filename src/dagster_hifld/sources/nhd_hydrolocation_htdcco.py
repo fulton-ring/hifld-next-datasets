@@ -54,7 +54,6 @@ from shapely.geometry import Point
 
 from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
@@ -68,6 +67,7 @@ from dagster_hifld.sources.capture_common import (
     verify_cached_candidate,
     write_immutable,
     reuse_sealed_candidate,
+    load_candidate_checkpoint,
     stage_candidate_objects,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -957,15 +957,9 @@ def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state
                              version: str, identity: Mapping[str, object],
                              audit: Mapping[str, object], current_parquet: bytes) \
         -> dict[str, object]:
-    fingerprint = _sha(_canonical(identity))
-    bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
-    payload = bundle.get("payload")
-    if (not isinstance(payload, dict) or set(payload) != {"processing_identity",
-            "source_record_sha256", "source_schema_sha256", "capture_receipts", "objects"}
-            or payload["processing_identity"] != identity
-            or payload["source_record_sha256"] != audit["source_record_sha256"]
-            or payload["source_schema_sha256"] != audit["source_schema_sha256"]):
-        raise NhdHydrolocationHtdccoError("cached_first_candidate_identity_or_source_changed")
+    fingerprint, payload = load_candidate_checkpoint(
+        storage, state_key, version, identity,
+        audit['source_record_sha256'], audit['source_schema_sha256'], NhdHydrolocationHtdccoError)
     expected_objects = {name: descriptor for name, descriptor in payload["objects"].items()}
     verify_cached_candidate(storage, REPO_ROOT, state_key, prefix, version,
                             fingerprint, identity, audit["source_record_sha256"],

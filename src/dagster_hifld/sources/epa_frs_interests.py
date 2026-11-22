@@ -31,7 +31,6 @@ import pyproj
 from shapely.geometry import Point
 
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
@@ -42,6 +41,7 @@ from dagster_hifld.sources.capture_common import (
     validate_capture_request_identity,
     write_immutable,
     reuse_sealed_candidate,
+    load_candidate_checkpoint,
     stage_candidate_objects,
 )
 from dagster_hifld.sources.arcgis_layer import (
@@ -532,15 +532,9 @@ def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
 def _verify_sealed_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
                              version: str, identity: Mapping[str, object], audit: Mapping[str, object],
                              current_parquet: bytes, *, dataset_slug: str) -> dict[str, object]:
-    fingerprint = _sha(_canonical(identity))
-    bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
-    payload = bundle.get("payload")
-    if (not isinstance(payload, dict) or set(payload) != {"processing_identity", "source_record_sha256",
-            "source_schema_sha256", "capture_receipts", "objects"}
-            or payload["processing_identity"] != identity
-            or payload["source_record_sha256"] != audit["source_record_sha256"]
-            or payload["source_schema_sha256"] != audit["source_schema_sha256"]):
-        raise EPAFRSInterestsError("cached_first_candidate_identity_or_source_changed")
+    fingerprint, payload = load_candidate_checkpoint(
+        storage, state_key, version, identity,
+        audit['source_record_sha256'], audit['source_schema_sha256'], EPAFRSInterestsError)
     expected_objects = {name: descriptor for name, descriptor in payload["objects"].items()}
     verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
                             fingerprint, identity, audit["source_record_sha256"],

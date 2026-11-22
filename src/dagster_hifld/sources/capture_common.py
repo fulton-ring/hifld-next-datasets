@@ -338,6 +338,29 @@ def reuse_sealed_candidate(storage: StagingStorageResource, state_key: str,
     return None
 
 
+def load_candidate_checkpoint(
+    storage: StagingStorageResource, state_key: str, version: str,
+    identity: Mapping[str, object], source_record_sha256: str,
+    source_schema_sha256: str, error_type: type[ValueError],
+) -> tuple[str, dict[str, object]]:
+    """Load a sealed construction checkpoint bound to the current source and code.
+
+    Keep the caller's error type while sharing the envelope contract. The
+    returned original receipts and inventory feed verify_cached_candidate;
+    source-native parquet and dataset result checks remain in the adapter.
+    """
+    fingerprint = _sha(_canonical(identity))
+    bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
+    payload = bundle.get("payload")
+    if (not isinstance(payload, dict) or set(payload) != {"processing_identity",
+            "source_record_sha256", "source_schema_sha256", "capture_receipts", "objects"}
+            or payload["processing_identity"] != identity
+            or payload["source_record_sha256"] != source_record_sha256
+            or payload["source_schema_sha256"] != source_schema_sha256):
+        raise error_type("cached_first_candidate_identity_or_source_changed")
+    return fingerprint, payload
+
+
 def upload_candidate_objects(
     storage: StagingStorageResource, prefix: str, outputs: Mapping[str, bytes],
     capture_root: Path, capture_names: Iterable[str],

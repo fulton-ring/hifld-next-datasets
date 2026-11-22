@@ -17,6 +17,7 @@ class CandidateLifecycleTests(unittest.TestCase):
         self.root = Path(temporary.name).resolve()
         self.capture = self.root / 'capture'
         self.capture.mkdir()
+        (self.root / 'staging').mkdir()
         self.storage = StagingStorageResource(local_dir=str(self.root / 'staging'))
         self.prefix = 'synthetic/source/v1'
         self.state = '_construction-state/synthetic/v1.json'
@@ -115,3 +116,26 @@ class CandidateLifecycleTests(unittest.TestCase):
                 self.storage, self.prefix, self.capture, self.receipts,
                 inventory, mutate, ValueError)
         self.assertEqual(inventory, {})
+
+    def test_checkpoint_preserves_original_receipts_and_rejects_different_source(self):
+        self.stage()
+        fingerprint, payload = common.load_candidate_checkpoint(
+            self.storage, self.state, 'v1', {'code_commit': 'synthetic'},
+            'a' * 64, 'b' * 64, ValueError)
+        self.assertEqual(fingerprint, common._sha(common._canonical({'code_commit': 'synthetic'})))
+        self.assertEqual(payload['capture_receipts'], self.receipts)
+        class SourceError(ValueError):
+            pass
+        with self.assertRaisesRegex(SourceError, 'cached_first_candidate_identity_or_source_changed'):
+            common.load_candidate_checkpoint(
+                self.storage, self.state, 'v1', {'code_commit': 'synthetic'},
+                'different source', 'b' * 64, SourceError)
+
+    def test_checkpoint_rejects_non_candidate_envelope(self):
+        identity = {'code_commit': 'synthetic'}
+        fingerprint = common._sha(common._canonical(identity))
+        common.seal_ready_candidate(self.storage, self.state, 'v1', fingerprint,
+                                    {'processing_identity': identity})
+        with self.assertRaisesRegex(ValueError, 'cached_first_candidate_identity_or_source_changed'):
+            common.load_candidate_checkpoint(
+                self.storage, self.state, 'v1', identity, 'a' * 64, 'b' * 64, ValueError)
