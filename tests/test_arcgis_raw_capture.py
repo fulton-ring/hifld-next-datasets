@@ -143,3 +143,44 @@ class RawCaptureTests(unittest.TestCase):
         ids = lambda: calls.append('ids') or [4, 9]
         self.assertEqual(population_snapshot(count, ids, ids_first=True), (2, [4, 9]))
         self.assertEqual(calls, ['ids', 'count'])
+
+    def test_oversized_wire_block_is_observed_but_never_staged_beyond_budget(self):
+        objects = {}
+        block = b'x' * 2_100_000
+        with httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(
+                200, stream=httpx.ByteStream(block)))) as client:
+            with self.assertRaisesRegex(ValueError, 'incomplete_source_response:page'):
+                request_raw(client, 'https://agency.test/query', {}, 'page', [0],
+                    write=objects.__setitem__, encode=lambda v: json.dumps(v).encode(),
+                    policy=RawCapturePolicy(4_000_000, 2_000_000))
+        receipt = json.loads(objects['raw/page.receipt.json'])
+        self.assertEqual(receipt['wire_bytes_received'], len(block))
+        self.assertEqual(receipt['wire_bytes'], 0)
+        self.assertEqual(receipt['bytes'], 0)
+        self.assertEqual(objects['raw/page.wire'], b'')
+        self.assertFalse(receipt['complete'])
+
+    def test_refused_retry_keeps_aggregate_retained_prefix_under_budget(self):
+        objects = {}
+        attempts = []
+        def serve(request):
+            attempts.append(request)
+            return httpx.Response(503 if len(attempts) == 1 else 200,
+                stream=httpx.ByteStream(b'busy' if len(attempts) == 1 else b'x' * 1_600_000))
+        budget = [0]
+        with httpx.Client(transport=httpx.MockTransport(serve)) as client, patch(
+                'dagster_hifld.sources.arcgis_raw_capture.time.sleep'):
+            with self.assertRaisesRegex(ValueError, 'incomplete_source_response:page'):
+                request_raw(client, 'https://agency.test/query', {}, 'page', budget,
+                    write=objects.__setitem__, encode=lambda v: json.dumps(v).encode(),
+                    policy=RawCapturePolicy(2_000_000, 2_000_000, attempts=3))
+        retained = sum(len(data) for key, data in objects.items() if key.endswith(('.json', '.wire'))
+                       and not key.endswith('.receipt.json'))
+        self.assertEqual(retained, budget[0])
+        self.assertLessEqual(retained, 2_000_000)
+        self.assertEqual(objects['raw/page.attempt_1.json'], b'busy')
+        receipt = json.loads(objects['raw/page.attempt_2.receipt.json'])
+        self.assertFalse(receipt['complete'])
+        self.assertEqual(receipt['wire_bytes_received'], 1_600_000)
+        self.assertEqual(receipt['wire_bytes'], 1_600_000)
+        self.assertEqual(receipt['bytes'], 0)

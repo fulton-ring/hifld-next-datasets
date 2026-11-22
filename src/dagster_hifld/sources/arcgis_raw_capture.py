@@ -101,6 +101,14 @@ def request_raw(client, url, params, name, budget, *, write, encode, policy,
     for attempt in range(policy.attempts):
         body_parts, wire_parts = [], []
         response_obj = None
+        retained_size = 0
+
+        def retain(parts, block):
+            nonlocal retained_size
+            reserve(retained_size + len(block))
+            parts.append(block)
+            retained_size += len(block)
+
         try:
             with client.stream(method, url, params=params if method == 'GET' else None,
                     data=params if method == 'POST' else None,
@@ -108,8 +116,10 @@ def request_raw(client, url, params, name, budget, *, write, encode, policy,
                 response_obj = response
                 capture = capture_http_response(response,
                     max_wire_bytes=policy.response_limit, max_decoded_bytes=policy.response_limit,
+                    max_wire_block_bytes=policy.response_limit,
                     reserve=lambda p: reserve(p.wire_bytes_retained + p.decoded_bytes_retained + p.reserve_bytes),
-                    retain_wire=wire_parts.append, retain_decoded=body_parts.append)
+                    retain_wire=lambda block: retain(wire_parts, block),
+                    retain_decoded=lambda block: retain(body_parts, block))
         except Exception as exc:
             if policy.preserve_transport:
                 body, wire = b''.join(body_parts), b''.join(wire_parts)
@@ -132,6 +142,11 @@ def request_raw(client, url, params, name, budget, *, write, encode, policy,
             'wire_bytes': len(wire), 'wire_sha256': _sha(wire),
             'content_type': response_obj.headers.get('content-type'), 'content_encoding': capture.content_encoding,
             'complete': capture.complete, 'error_code': capture.error_code}
+        if not capture.complete:
+            receipt.update(wire_bytes_received=capture.wire_bytes_received,
+                received_wire_sha256=capture.received_wire_sha256,
+                decoded_bytes_produced=capture.decoded_bytes_produced,
+                produced_decoded_sha256=capture.produced_decoded_sha256)
         if policy.attempts > 1:
             receipt['attempt'] = attempt + 1
         if policy.extended_receipt:
