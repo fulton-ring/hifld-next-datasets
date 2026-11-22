@@ -7,6 +7,10 @@ shared candidate-construction module is not part of this branch.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import (
+    quarantine_incomplete_capture, verify_cached_objects, verify_cached_capture_receipts,
+)
+
 
 from collections.abc import Mapping
 
@@ -418,30 +422,8 @@ def validate_processing_identity(repo_root: Path, identity: Mapping[str, object]
         raise ValueError("installed_processing_code_identity_changed")
 
 
-def quarantine_incomplete_capture(storage: StagingStorageResource, capture_root: Path,
-                                  dataset_slug: str, version: str,
-                                  captures: Mapping[str, tuple[bytes, Mapping[str, object]]],
-                                  reason_code: str) -> str:
-    """Retain all completed acquisition evidence under a unique quarantine key."""
-    if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource):
-        raise ValueError("explicit_staging_resource_required")
-    token = f"{version}-{uuid4().hex}"
-    base = f"_quarantine/{dataset_slug}/{token}"
-    for name, (body, receipt) in captures.items():
-        wire = (Path(capture_root) / f"{name}.wire").read_bytes()
-        write_immutable(storage, f"{base}/raw/{name}.body", body)
-        write_immutable(storage, f"{base}/raw/{name}.wire", wire)
-        write_immutable(storage, f"{base}/raw/{name}.receipt.json", _canonical(dict(receipt)) + b"\n")
-    write_immutable(storage, f"{base}/metadata/failure.json",
-                    _canonical({"reason_code": reason_code, "captured_names": sorted(captures)}) + b"\n")
-    return base
 
 
-def seal_ready_candidate(storage: StagingStorageResource, state_key: str, version: str,
-                         fingerprint: str, payload: Mapping[str, object]) -> None:
-    """CAS-seal the READY candidate using the shared construction registry."""
-    seal_first_construction(storage, state_key, version, fingerprint,
-                            canonical_construction_bundle(version, fingerprint, dict(payload)))
 
 
 def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, state_key: str,
@@ -483,31 +465,11 @@ def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, st
     if not expected_keys <= actual_keys or actual_keys - allowed_keys:
         raise ValueError("cached_candidate_storage_roster_changed")
     validate_staged_release_derivatives(storage, prefix, actual_keys)
-    for name in snapshot_names:
-        key = f"{prefix}/{name}"
-        if key not in actual_keys:
-            continue
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or manifest_descriptor != {
-                "bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_catalog_source_snapshot_changed:" + name)
+    verify_cached_objects(storage, prefix, {name: manifest_descriptor for name in snapshot_names
+        if f"{prefix}/{name}" in actual_keys}, error_prefix="cached_catalog_source_snapshot_changed:")
     _validate_cached_catalog_sidecars(storage, prefix, actual_keys)
-    for name, descriptor in expected_objects.items():
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_candidate_object_integrity_failed:" + name)
-    for name, receipt in capture_receipts.items():
-        body = storage.read_key(f"{prefix}/raw/{name}.body")
-        wire = storage.read_key(f"{prefix}/raw/{name}.wire")
-        receipt_body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
-        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt_body != _canonical(dict(receipt)) + b"\n"):
-            raise ValueError("cached_original_capture_changed:" + name)
+    verify_cached_objects(storage, prefix, expected_objects)
+    verify_cached_capture_receipts(storage, prefix, capture_receipts)
     validate_processing_identity(repo_root, identity)
     return {"version": version, "reused": True}
 

@@ -7,6 +7,8 @@ publication.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import verify_cached_objects, verify_cached_capture_receipts
+
 
 import base64
 import json
@@ -292,27 +294,13 @@ def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_
                             audit["source_schema_sha256"], objects, payload["capture_receipts"])
     if not isinstance(objects, dict) or set(objects) != expected_keys:
         raise ValueError("cached_candidate_roster_changed")
-    for name, descriptor in objects.items():
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if (not isinstance(descriptor, dict) or snapshot is None
-                or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_candidate_object_integrity_failed:" + name)
+    verify_cached_objects(storage, prefix, objects, descriptor_check="dict")
     parquet_key = f"{prefix}/geoparquet/{DATASET_SLUG}.parquet"
     if objects.get(f"geoparquet/{DATASET_SLUG}.parquet") != {"bytes": len(current_parquet), "sha256": _sha(current_parquet)}:
         raise ValueError("cached_native_candidate_changed")
     receipt_map = payload["capture_receipts"]
     if not isinstance(receipt_map, dict): raise ValueError("cached_capture_receipts_missing")
-    for name, receipt in receipt_map.items():
-        raw_key = f"{prefix}/raw/{name}.body"; wire_key = f"{prefix}/raw/{name}.wire"
-        body = storage.read_key(raw_key); wire = storage.read_key(wire_key)
-        receipt_body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
-        if (receipt.get("complete_body") is not True or receipt.get("status") != 200
-                or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-                or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
-                or receipt_body != _canonical(receipt)+b"\n"):
-            raise ValueError("cached_original_capture_changed:" + name)
+    verify_cached_capture_receipts(storage, prefix, receipt_map)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"])
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":audit["source_feature_count"],
             "capture_complete":True,"source_id_sha256":audit["source_id_sha256"],

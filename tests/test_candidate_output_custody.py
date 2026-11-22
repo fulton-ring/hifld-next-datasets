@@ -275,3 +275,76 @@ class CandidateOutputCustodyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'native_create_reserve'):
             common.write_immutable(storage, 'candidate/b', b'B', before_create=refuse)
         self.assertNotIn('candidate/b', storage.objects)
+
+    def test_filegdb_source_replacement_after_hash_is_not_admitted(self):
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources.arcgis_filegdb import stage_filegdb_archive
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            archive = root / 'source.zip'
+            archive.write_bytes(b'original')
+            gdb = root / 'native.gdb'
+            gdb.mkdir()
+            storage = StagingStorageResource(local_dir=str(root / 'stage'))
+            hash_file = common.sha256_file
+            def replace_after_hash(path):
+                digest = hash_file(path)
+                if path == archive:
+                    path.write_bytes(b'replaced')
+                return digest
+            with patch.object(common, 'sha256_file', replace_after_hash):
+                with self.assertRaisesRegex(ValueError, 'immutable_staged_object_changed:'):
+                    stage_filegdb_archive(storage, 'candidate', archive, gdb, 'native.gdb')
+            self.assertEqual(storage.list_prefix('candidate'), [])
+
+    def test_cache_descriptor_native_field_policy_and_error_class(self):
+        class NativeError(ValueError):
+            pass
+        storage = MemoryStorage()
+        storage.objects['candidate/a'] = b'A'
+        descriptor = {'bytes': 1, 'sha256': hashlib.sha256(b'A').hexdigest(), 'native_field': 'retained'}
+        common.verify_cached_objects(storage, 'candidate', {'a': descriptor},
+                                     descriptor_check='fields', error_type=NativeError)
+        with self.assertRaisesRegex(ValueError, 'cached_candidate_object_integrity_failed:a'):
+            common.verify_cached_objects(storage, 'candidate', {'a': descriptor})
+        with self.assertRaisesRegex(NativeError, 'cached_candidate_object_integrity_failed:a'):
+            common.verify_cached_objects(storage, 'candidate', {'a': None},
+                                         descriptor_check='fields', error_type=NativeError)
+
+    def test_cache_transport_keeps_exact_original_receipt_encoding(self):
+        storage = MemoryStorage()
+        storage.objects['candidate/raw/page.wire'] = b'wire'
+        raw_receipt = b'{ "original": "bytes" }\n'
+        receipt = {'raw_receipt_sha256': hashlib.sha256(raw_receipt).hexdigest()}
+        storage.objects['candidate/raw/page.receipt.json'] = raw_receipt
+        observed = []
+        common.verify_cached_transport_receipts(storage, 'candidate', {'page': receipt},
+            lambda wire, value, name: observed.append((wire, value, name)), receipt_encoding='sha256')
+        self.assertEqual(observed, [(b'wire', receipt, 'page')])
+        storage.objects['candidate/raw/page.receipt.json'] = b'changed'
+        with self.assertRaisesRegex(ValueError, 'cached_original_capture_changed:page'):
+            common.verify_cached_transport_receipts(storage, 'candidate', {'page': receipt},
+                lambda wire, value, name: None, receipt_encoding='sha256')
+
+    def test_ienc_quarantine_keeps_exact_evidence_and_native_prefix(self):
+        from types import SimpleNamespace
+        from dagster_hifld.resources import StagingStorageResource
+        from dagster_hifld.sources import (hf_areas_usace_ienc, land_region_areas_usace_ienc,
+                                          lock_basins_usace_ienc, lock_gate_lines_usace_ienc)
+        receipt = {'observed_at': 'original', 'source_note': 'retained ñ'}
+        for adapter in (hf_areas_usace_ienc, land_region_areas_usace_ienc,
+                        lock_basins_usace_ienc, lock_gate_lines_usace_ienc):
+            with self.subTest(adapter=adapter.__name__), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                (root / 'page.wire').write_bytes(b'wire')
+                storage = StagingStorageResource(local_dir=str(root / 'stage'))
+                with patch.object(common, 'uuid4', return_value=SimpleNamespace(hex='fixed')):
+                    prefix = adapter.quarantine_incomplete_capture(
+                        storage, root, 'native', 'v1', {'page': (b'body', receipt)}, 'native_failure')
+                self.assertEqual(prefix, '_quarantine/native/v1-fixed')
+                self.assertEqual(storage.read_key(prefix + '/raw/page.body'), b'body')
+                self.assertEqual(storage.read_key(prefix + '/raw/page.wire'), b'wire')
+                self.assertEqual(storage.read_key(prefix + '/raw/page.receipt.json'),
+                                 common._canonical(receipt) + b'\n')
+                self.assertEqual(json.loads(storage.read_key(prefix + '/metadata/failure.json')),
+                                 {'reason_code': 'native_failure', 'captured_names': ['page']})

@@ -6,6 +6,8 @@ all producer fields and polygon rings in an unapproved GeoParquet candidate.
 """
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import verify_cached_objects, verify_cached_transport_receipts
+
 from dagster_hifld.sources.capture_common import seal_candidate_objects
 
 from dagster_hifld.sources.capture_common import (
@@ -380,29 +382,15 @@ def capture_final_critical_habitat(storage: StagingStorageResource, *, version: 
             derived.add(f"metadata/source/version_{source_manifest['sha256']}_source_manifest.json")
         if not expected_keys <= actual_keys or actual_keys-expected_keys-{f"{prefix}/{x}" for x in derived}:
             raise ValueError("cached_candidate_storage_roster_changed")
-        for name,descriptor in first_objects.items():
-            key=f"{prefix}/{name}"; snapshot=storage.object_snapshot(key)
-            if snapshot is None or descriptor != {"bytes":snapshot.size,"sha256":storage.sha256_key(key)} or storage.object_snapshot(key)!=snapshot:
-                raise ValueError("cached_candidate_object_integrity_failed:"+name)
+        verify_cached_objects(storage, prefix, first_objects)
         validate_construction_code_identity(repo,identity["code_commit"],identity["files"])
         source_manifest=first_objects.get("metadata/source_manifest.json")
-        for snapshot_name in ("metadata/source/source_manifest.json",
-                              f"metadata/source/version_{source_manifest['sha256']}_source_manifest.json" if source_manifest else None):
-            if snapshot_name is None:
-                continue
-            key=f"{prefix}/{snapshot_name}"
-            if key in actual_keys:
-                snapshot=storage.object_snapshot(key)
-                if (snapshot is None or {"bytes":snapshot.size,"sha256":storage.sha256_key(key)} != source_manifest
-                        or storage.object_snapshot(key) != snapshot):
-                    raise ValueError("cached_catalog_source_snapshot_changed:"+snapshot_name)
-        for n,r in first_receipts.items():
-            if not isinstance(r,dict):
-                raise ValueError("cached_receipt_invalid:"+n)
-            wire=storage.read_key(f"{prefix}/raw/{n}.wire")
-            _verify_wire_replay(wire,r,n)
-            if storage.read_key(f"{prefix}/raw/{n}.receipt.json") != _canonical(r)+b"\n":
-                raise ValueError("cached_original_capture_changed:"+n)
+        verify_cached_objects(storage, prefix, {snapshot_name: source_manifest
+            for snapshot_name in ('metadata/source/source_manifest.json', f'metadata/source/version_{source_manifest['sha256']}_source_manifest.json' if source_manifest else None)
+            if snapshot_name is not None and f"{prefix}/{snapshot_name}" in actual_keys},
+            error_prefix="cached_catalog_source_snapshot_changed:")
+        verify_cached_transport_receipts(storage, prefix, first_receipts, _verify_wire_replay,
+            receipt_encoding="canonical")
         observation_root=Path(capture_directory).absolute().parent if capture_directory else ISSUE_EVIDENCE_ROOT
         observation = observation_root / "observations" / f"{candidate_version}-{uuid4().hex}.json"
         observation.parent.mkdir(parents=True,exist_ok=True)

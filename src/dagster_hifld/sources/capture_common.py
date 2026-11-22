@@ -594,6 +594,9 @@ def write_immutable_file(storage: StagingStorageResource, key: str, source: Path
         if recheck_snapshot:
             local = StagingStorageResource(use_local=True, local_dir=str(source.parent))
             source_snapshot = local.object_snapshot(source.name)
+            if (source_snapshot is None or source_snapshot.size != descriptor["bytes"]
+                    or source_snapshot.sha256 != descriptor["sha256"]):
+                raise ValueError("immutable_staged_object_changed:" + key)
             local.copy_key_to_if_unchanged(
                 storage, source.name, key, source_snapshot=source_snapshot, destination_snapshot=None)
         else:
@@ -792,14 +795,24 @@ def _validate_cached_catalog_sidecars(storage: StagingStorageResource, prefix: s
 
 
 def verify_cached_objects(storage, prefix, objects, *,
-                          error_prefix="cached_candidate_object_integrity_failed:"):
+                          error_prefix="cached_candidate_object_integrity_failed:",
+                          descriptor_check="equality", error_type=ValueError):
     """Check exact stored descriptors and stable object identities for reuse."""
     for name, descriptor in objects.items():
         key = f"{prefix}/{name}"
         snapshot = storage.object_snapshot(key)
-        if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError(error_prefix + name)
+        if ((descriptor_check in {"dict", "fields"} and not isinstance(descriptor, dict))
+                or snapshot is None):
+            raise error_type(error_prefix + str(name))
+        if descriptor_check == "fields":
+            changed = (snapshot.size != descriptor.get("bytes")
+                       or storage.sha256_key(key) != descriptor.get("sha256")
+                       or storage.object_snapshot(key) != snapshot)
+        else:
+            changed = (descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+                       or storage.object_snapshot(key) != snapshot)
+        if changed:
+            raise error_type(error_prefix + str(name))
 
 
 def verify_cached_capture_receipts(storage, prefix, capture_receipts):
@@ -813,6 +826,47 @@ def verify_cached_capture_receipts(storage, prefix, capture_receipts):
                 or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)
                 or receipt_body != _canonical(dict(receipt)) + b"\n"):
             raise ValueError("cached_original_capture_changed:" + name)
+
+
+def verify_cached_transport_receipts(storage, prefix, receipts, verify_wire, *, receipt_encoding="canonical"):
+    """Validate wire-only retained habitat evidence under its native receipt policy."""
+    for name, receipt in receipts.items():
+        if not isinstance(receipt, dict):
+            raise ValueError("cached_receipt_invalid:" + name)
+        wire = storage.read_key(f"{prefix}/raw/{name}.wire")
+        verify_wire(wire, receipt, name)
+        body = storage.read_key(f"{prefix}/raw/{name}.receipt.json")
+        valid = (_sha(body) == receipt.get("raw_receipt_sha256") if receipt_encoding == "sha256"
+                 else body == _canonical(receipt) + b"\n")
+        if not valid:
+            raise ValueError("cached_original_capture_changed:" + name)
+
+
+def verify_cached_source_snapshots(storage, prefix, names, source_manifest, *, error_prefix):
+    """Validate catalog source snapshots against native primary metadata, in order."""
+    for name in names:
+        key = f"{prefix}/{name}"
+        snapshot = storage.object_snapshot(key)
+        if name.endswith("source_manifest.json"):
+            expected = source_manifest
+        else:
+            primary_key = f"{prefix}/metadata/{name.removeprefix('metadata/source/')}"
+            primary = storage.object_snapshot(primary_key)
+            expected = ({"bytes": primary.size, "sha256": storage.sha256_key(primary_key)}
+                        if primary is not None else None)
+        if (snapshot is None or expected != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
+                or storage.object_snapshot(key) != snapshot):
+            raise ValueError(error_prefix + name)
+
+
+def verify_cached_raw_bodies(storage, prefix, receipts, *, skip_names=(), error_prefix):
+    """Bind body-only native FileGDB metadata evidence to original receipt hashes."""
+    for name, receipt in receipts.items():
+        if name in skip_names:
+            continue
+        body = storage.read_key(f"{prefix}/raw/{name}.body")
+        if receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body):
+            raise ValueError(error_prefix + name)
 
 
 def verify_cached_candidate(storage: StagingStorageResource, repo_root: Path, state_key: str,

@@ -1,6 +1,8 @@
 """FEMA State EOC native-source draft; preserves the exact public FeatureServer response."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import verify_cached_objects
+
 from dagster_hifld.sources.capture_common import (
     write_candidate_outputs, write_immutable, write_candidate_ready_state,
 )
@@ -396,12 +398,8 @@ def stage_state_eoc(storage: StagingStorageResource, *, version: str, capture_di
         objects = ready.get("objects")
         if ready.get("version") != version or ready.get("approved") is not False or not isinstance(objects, dict):
             raise EOCSourceError("cached_candidate_ready_identity_invalid")
-        for relative, expected in objects.items():
-            key = f"{version_prefix}/{relative}"
-            snapshot = storage.object_snapshot(key)
-            if (not isinstance(expected, dict) or snapshot is None or snapshot.size != expected.get("bytes")
-                    or storage.sha256_key(key) != expected.get("sha256") or storage.object_snapshot(key) != snapshot):
-                raise EOCSourceError("cached_candidate_bytes_changed:" + str(relative))
+        verify_cached_objects(storage, version_prefix, objects, descriptor_check="fields",
+            error_prefix="cached_candidate_bytes_changed:", error_type=EOCSourceError)
         # A mutable READY marker is not sufficient authority for reuse. Recheck
         # the immutable first-construction record and its full raw/native roster.
         identity = _strict_json(storage.read_key(f"{version_prefix}/metadata/processing_identity.json"))

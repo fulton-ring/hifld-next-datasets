@@ -1,6 +1,10 @@
 """Native, unapproved FileGDB candidate for BTS NTAD waterway network nodes."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import (
+    verify_cached_objects, verify_cached_source_snapshots, verify_cached_raw_bodies,
+)
+
 from dagster_hifld.sources.capture_common import write_candidate_outputs
 
 import hashlib
@@ -281,27 +285,11 @@ def _validate_cached_candidate(storage, prefix: str, state_key: str, version: st
     allowed = expected | set(extracted_cache) | {f"{prefix}/{name}" for name in allowed_sidecars}
     if not expected.issubset(actual) or actual - allowed:
         raise ValueError("cached_node_candidate_roster_changed")
-    for name, descriptor in objects.items():
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_node_candidate_object_integrity_failed:" + name)
+    verify_cached_objects(storage, prefix, objects,
+        error_prefix="cached_node_candidate_object_integrity_failed:")
     source_snapshots = {name for name in allowed_sidecars if name.startswith("metadata/source/")}
-    for name in source_snapshots & {key[len(prefix) + 1:] for key in actual}:
-        key = f"{prefix}/{name}"
-        snapshot = storage.object_snapshot(key)
-        if name.endswith("source_manifest.json"):
-            descriptor = source_manifest
-        else:
-            source_name = name.removeprefix("metadata/source/")
-            primary_key = f"{prefix}/metadata/{source_name}"
-            primary = storage.object_snapshot(primary_key)
-            descriptor = ({"bytes": primary.size, "sha256": storage.sha256_key(primary_key)}
-                          if primary is not None else None)
-        if (snapshot is None or descriptor != {"bytes": snapshot.size, "sha256": storage.sha256_key(key)}
-                or storage.object_snapshot(key) != snapshot):
-            raise ValueError("cached_node_catalog_source_snapshot_changed:" + name)
+    verify_cached_source_snapshots(storage, prefix, source_snapshots & {key[len(prefix) + 1:] for key in actual}, source_manifest,
+        error_prefix="cached_node_catalog_source_snapshot_changed:")
     resolved_key = f"{prefix}/metadata/resolved_provenance.json"
     if resolved_key in actual:
         resolved = json.loads(storage.read_key(resolved_key))

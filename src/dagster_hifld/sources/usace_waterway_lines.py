@@ -1,6 +1,10 @@
 """Unapproved, native FileGDB capture of the BTS NTAD waterway network lines."""
 from __future__ import annotations
 
+from dagster_hifld.sources.capture_common import (
+    verify_cached_objects, verify_cached_source_snapshots, verify_cached_raw_bodies,
+)
+
 from dagster_hifld.sources.capture_common import write_candidate_outputs
 import hashlib, json, subprocess, os
 from datetime import datetime, timezone
@@ -94,26 +98,12 @@ def _verify_cached_candidate(storage,prefix,state_key,version,fingerprint,identi
     allowed=expected_keys|{f"{prefix}/{name}" for name in derived|snapshots}|set(extracted_expected)
     actual=set(storage.list_prefix(prefix))
     if not expected_keys<=actual or actual-allowed:raise ValueError("cached_filegdb_candidate_storage_roster_changed")
-    for name in snapshots & {k[len(prefix)+1:] for k in actual}:
-        key=f"{prefix}/{name}";snap=storage.object_snapshot(key)
-        if name.endswith("source_manifest.json"):
-            descriptor=manifest
-        else:
-            source_name=name.removeprefix("metadata/source/")
-            primary=storage.object_snapshot(f"{prefix}/metadata/{source_name}")
-            descriptor=({"bytes":primary.size,"sha256":storage.sha256_key(f"{prefix}/metadata/{source_name}")}
-                        if primary is not None else None)
-        if snap is None or descriptor!={"bytes":snap.size,"sha256":storage.sha256_key(key)} or storage.object_snapshot(key)!=snap:
-            raise ValueError("cached_filegdb_catalog_source_snapshot_changed:"+name)
-    for name,descriptor in objects.items():
-        key=f"{prefix}/{name}";snap=storage.object_snapshot(key)
-        if snap is None or descriptor!={"bytes":snap.size,"sha256":storage.sha256_key(key)} or storage.object_snapshot(key)!=snap:
-            raise ValueError("cached_filegdb_candidate_object_integrity_failed:"+name)
-    for name,receipt in receipts.items():
-        if name=="filegdb_export":continue
-        body=storage.read_key(f"{prefix}/raw/{name}.body")
-        if receipt.get("bytes")!=len(body) or receipt.get("sha256")!=sha256(body):
-            raise ValueError("cached_filegdb_original_capture_changed:"+name)
+    verify_cached_source_snapshots(storage, prefix, snapshots & {k[len(prefix) + 1:] for k in actual}, manifest,
+        error_prefix="cached_filegdb_catalog_source_snapshot_changed:")
+    verify_cached_objects(storage, prefix, objects,
+        error_prefix="cached_filegdb_candidate_object_integrity_failed:")
+    verify_cached_raw_bodies(storage, prefix, receipts, skip_names={"filegdb_export"},
+        error_prefix="cached_filegdb_original_capture_changed:")
     validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
 
 def _reuse_first_candidate(storage,prefix,state_key,version,fingerprint,identity,archive_sha,native_objects,_fresh_receipts):
