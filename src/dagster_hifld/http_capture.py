@@ -31,6 +31,7 @@ class _RetentionBudget:
     root: Path
     limit: int
     exceeded: bool = False
+    parent: _RetentionBudget | None = None
 
     def response_charge(self):
         # Capture helpers unlink the current response slots before calling the
@@ -38,15 +39,26 @@ class _RetentionBudget:
         # slots are charged by their physical retained size exactly once.
         retained = sum(path.stat().st_size for path in self.root.iterdir()
                        if path.is_file() and path.name.endswith((".body", ".wire")))
-        if self.exceeded or retained > self.limit:
-            self.exceeded = True
+        applicable = []
+        ancestor = self
+        while ancestor is not None:
+            if ancestor.root == self.root:
+                applicable.append(ancestor)
+            ancestor = ancestor.parent
+        limit = min(budget.limit for budget in applicable)
+
+        def refuse() -> None:
+            for budget in applicable:
+                budget.exceeded = True
             raise ValueError("source_capture_budget_exceeded")
+
+        if any(budget.exceeded for budget in applicable) or retained > limit:
+            refuse()
 
         def charge(block: bytes) -> None:
             nonlocal retained
-            if self.exceeded or retained + len(block) > self.limit:
-                self.exceeded = True
-                raise ValueError("source_capture_budget_exceeded")
+            if any(budget.exceeded for budget in applicable) or retained + len(block) > limit:
+                refuse()
             retained += len(block)
         return charge
 
@@ -62,10 +74,12 @@ def capture_retention_budget(root: Path, limit: int):
     reservation callbacks retain their allocation/disk checks independently;
     speculative decoder allocation is not charged as retained disk evidence.
     A refused block stays fatal even if a callback retries or swallows its
-    incomplete result. Native capture helpers get to write truthful receipts
+    incomplete result. Nested scopes for the same physical directory also honor
+    every enclosing limit and latch refusals in each applicable scope. Native
+    capture helpers get to write truthful receipts
     before the acquisition boundary raises the budget refusal.
     """
-    budget = _RetentionBudget(Path(root), limit)
+    budget = _RetentionBudget(Path(root).resolve(), limit, parent=_retention_budget.get())
     token = _retention_budget.set(budget)
     try:
         yield
