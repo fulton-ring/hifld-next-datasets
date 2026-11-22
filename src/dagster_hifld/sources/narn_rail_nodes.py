@@ -563,7 +563,7 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
                     "license": "https://www.usa.gov/publicdomain/label/1.0/",
                     "attribution": "BTS NTAD; item metadata states the work is U.S. public domain; "
                                    "rights review remains pending."}
-                   for name, (_, receipt) in sorted(captures.items())],
+                   for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "source_fields": "all eleven source fields retained in "
@@ -624,7 +624,7 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
                     "source_record_sha256": audit["source_record_sha256"],
                     "source_geometry_sha256": audit["source_geometry_sha256"],
                     "artifact_roster": capture_roster_digests(capture_root, exclude={'capture_manifest.json'}),
-                    "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())}}) + b"\n")
+                    "receipts": {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))}}) + b"\n")
     state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
     outputs = {rel: parquet_body, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
                "metadata/source_audit.json": _canonical(audit) + b"\n",
@@ -694,6 +694,6 @@ def capture_narn_rail_nodes(storage: StagingStorageResource, *, version: str,
 
 
 def _page_receipts(captures: dict[str, tuple[bytes, dict[str, object]]]):
-    for name, (_, receipt) in sorted(captures.items()):
+    for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures)):
         if name.startswith("page_"):
             yield name, receipt

@@ -707,7 +707,7 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
                     "attribution": "BTS NTAD; item metadata states the work is a U.S. "
                                    "government work not protected by copyright, available for "
                                    "unrestricted public use; rights review remains pending."}
-                   for name, (_, receipt) in sorted(captures.items())],
+                   for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))],
         "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
                              "parameters": {"layer_id": LAYER_ID,
                                             "source_fields": "all forty-nine source fields "
@@ -804,7 +804,7 @@ def capture_railroad_grade_crossings(storage: StagingStorageResource, *, version
                     "source_record_sha256": audit["source_record_sha256"],
                     "source_geometry_sha256": audit["source_geometry_sha256"],
                     "capture_bytes_retained": ledger.retained,
-                    "receipts": {name: receipt for name, (_, receipt) in sorted(captures.items())},
+                    "receipts": {name: receipt for name, (_, receipt) in ((name, captures[name]) for name in sorted(captures))},
                     "evidence": {stem: {"kind": entry["kind"],
                                         "files": {suffix: {"bytes": len(body), "sha256": _sha(body)}
                                                   for suffix, body in sorted(entry["files"].items())}}
