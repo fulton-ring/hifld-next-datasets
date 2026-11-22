@@ -34,10 +34,11 @@ class ConstructionCodeIdentityError(ValueError):
         super().__init__(code)
 
 
-def _git(root: Path, args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess:
+def _git(root: Path, args: list[str], env: dict[str, str], *,
+         input: bytes | None = None) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(["git", "--no-replace-objects", "--literal-pathspecs", "-C", str(root), *args],
-                              env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              env=env, input=input, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                               timeout=_TIMEOUT, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ConstructionCodeIdentityError("construction_git_read_failed") from exc
@@ -146,23 +147,67 @@ def validate_construction_code_identity(repo_root: Path, code_commit: str,
         raise ConstructionCodeIdentityError("construction_invalid_git_tree") from exc
     if set(objects) != set(processing_files):
         raise ConstructionCodeIdentityError("construction_processing_blob_missing")
-    total = 0
-    for path, oid in sorted(objects.items()):
-        size_result = _git(root, ["cat-file", "-s", oid], env)
-        try:
-            size = int(size_result.stdout) if size_result.returncode == 0 else -1
-        except ValueError:
-            size = -1
-        total += size
+    _validate_blob_batches(root, sorted(objects.items()), processing_files, env)
+
+
+def _validate_blob_batches(root, objects, processing_files, env):
+    # Native Git batches avoid a pair of subprocesses for every processing file.
+    # Content batches hold at most the existing single-blob byte limit plus framing.
+    requested = b"".join(oid.encode("ascii") + b"\n" for _path, oid in objects)
+    result = _git(root, ["cat-file", "--batch-check"], env, input=requested)
+    lines = result.stdout.splitlines()
+    if result.returncode or len(lines) != len(objects):
+        raise ConstructionCodeIdentityError("construction_git_read_failed")
+    sizes = []
+    for (_path, oid), line in zip(objects, lines):
+        fields = line.split(b" ")
+        size = -1
+        if len(fields) == 3 and fields[:2] == [oid.encode("ascii"), b"blob"]:
+            try:
+                size = int(fields[2])
+            except ValueError:
+                pass
+        sizes.append(size)
+
+    def verify(batch):
+        if not batch:
+            return
+        request = b"".join(oid.encode("ascii") + b"\n" for _path, oid, _size in batch)
+        result = _git(root, ["cat-file", "--batch"], env, input=request)
+        if result.returncode:
+            raise ConstructionCodeIdentityError("construction_git_read_failed")
+        position = 0
+        for path, oid, size in batch:
+            header = f"{oid} blob {size}\n".encode("ascii")
+            if result.stdout[position:position + len(header)] != header:
+                raise ConstructionCodeIdentityError("construction_git_read_failed")
+            position += len(header)
+            end = position + size
+            if end >= len(result.stdout) or result.stdout[end:end + 1] != b"\n":
+                raise ConstructionCodeIdentityError("construction_git_read_failed")
+            if hashlib.sha256(memoryview(result.stdout)[position:end]).hexdigest() != processing_files[path]:
+                raise ConstructionCodeIdentityError("construction_processing_blob_hash_mismatch")
+            position = end + 1
+        if position != len(result.stdout):
+            raise ConstructionCodeIdentityError("construction_git_read_failed")
+
+    batch, batch_bytes, total = [], 0, 0
+    for (path, oid), size in zip(objects, sizes):
+        # Check earlier hashes before reporting a later path's failure, matching
+        # path-ordered admission: earlier hash failures take precedence.
         if size < 0:
+            verify(batch)
             raise ConstructionCodeIdentityError("construction_git_read_failed")
-        if size > _MAX_BLOB_BYTES or total > _MAX_TOTAL_BLOB_BYTES:
+        if size > _MAX_BLOB_BYTES or total + size > _MAX_TOTAL_BLOB_BYTES:
+            verify(batch)
             raise ConstructionCodeIdentityError("construction_processing_blob_size_limit")
-        blob = _git(root, ["cat-file", "blob", oid], env)
-        if blob.returncode or len(blob.stdout) != size:
-            raise ConstructionCodeIdentityError("construction_git_read_failed")
-        if hashlib.sha256(blob.stdout).hexdigest() != processing_files[path]:
-            raise ConstructionCodeIdentityError("construction_processing_blob_hash_mismatch")
+        if batch and batch_bytes + size > _MAX_BLOB_BYTES:
+            verify(batch)
+            batch, batch_bytes = [], 0
+        batch.append((path, oid, size))
+        batch_bytes += size
+        total += size
+    verify(batch)
 
 
 def _validate_packaged_identity(root: Path, code_commit: str,
