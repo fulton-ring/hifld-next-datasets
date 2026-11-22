@@ -65,17 +65,20 @@ class RawCaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'source_page_invalid'):
             capture_exact_id_population([2, 7], 1,
                 fetch_page=lambda o, ids: calls.append(('page', ids)) or {},
-                validate_page=invalid, close_witnesses=lambda: calls.append(('after',)))
+                validate_page=invalid, close_witnesses=lambda: calls.append(('after',)),
+                read_page=lambda offset: b'{}')
         self.assertEqual(calls, [('page', [2])])
 
     def test_population_uses_exact_slices_and_closes_after_last_page(self):
-        calls = []
+        calls, stored = [], {}
         def fetch(offset, ids):
+            stored[offset] = json.dumps({'features': [{'attributes': {'OBJECTID': i}} for i in ids]}).encode()
             calls.append(('page', ids))
             return {'features': [{'attributes': {'OBJECTID': i}} for i in ids]}
         features, pages, after = capture_exact_id_population([2, 7, 9], 2,
             fetch_page=fetch, validate_page=lambda o, ids, r: r['features'],
-            close_witnesses=lambda: calls.append(('after',)) or 'witness')
+            close_witnesses=lambda: calls.append(('after',)) or 'witness',
+            read_page=stored.__getitem__)
         self.assertEqual(calls, [('page', [2, 7]), ('page', [9]), ('after',)])
         self.assertEqual(pages[-1], {'offset': 2, 'requested_ids': [9], 'returned_ids': [9], 'count': 1})
         self.assertEqual(len(features), 3)

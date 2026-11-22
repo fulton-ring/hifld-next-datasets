@@ -502,7 +502,9 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
 
         features, pages, (count_after, after) = capture_exact_id_population(
             before, PAGE_SIZE, fetch_page=fetch_page, validate_page=validate_page,
-            close_witnesses=close_witnesses)
+            close_witnesses=close_witnesses,
+            read_page=lambda offset: staging.read_key(
+                f"{DATASET_SLUG}/{FILE_SLUG}/{version_key}/raw/page_{offset:07d}.json"))
         if distribution_chain:
             service_after = _request(client, {"f": "json"}, staging, version_key, "service_after", budget)
             if service_after != service_before:

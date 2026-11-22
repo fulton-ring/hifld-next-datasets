@@ -1,6 +1,9 @@
 """Native ArcGIS request custody and exact-ID acquisition into staged raw objects."""
 from __future__ import annotations
 
+from bisect import bisect_right
+from collections.abc import Sequence
+from operator import index as integer_index
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -170,21 +173,87 @@ def request_raw(client, url, params, name, budget, *, write, encode, policy,
     raise ValueError('source_retry_limit_exceeded:' + name)
 
 
-def capture_exact_id_population(ids, page_size, *, fetch_page, validate_page, close_witnesses):
-    """Acquire exact ID slices in order and only then acquire closing witnesses.
+class CapturedRows(Sequence):
+    """A re-iterable row view over hash-pinned, already admitted raw pages.
 
-    Validation callbacks contain source schema/geometry rules. Request selection,
-    page slicing, population aggregation and closing-witness ordering have one owner.
+    Reads load one page and never cache rows. Native capture validation runs
+    only during acquisition; a pure projection preserves declared row shaping
+    without repeating validation callbacks with candidate-building side effects.
     """
-    features, pages = [], []
-    for offset in range(0, len(ids), page_size):
-        requested = ids[offset:offset + page_size]
+    def __init__(self, pages, read_page, project_rows):
+        self._pages = tuple(pages)
+        self._read_page = read_page
+        self._project_rows = project_rows
+        self._ends = []
+        total = 0
+        for _offset, count, _digest in self._pages:
+            total += count
+            self._ends.append(total)
+        self._length = total
+
+    def _rows(self, page):
+        offset, count, digest = page
+        body = self._read_page(offset)
+        if _sha(body) != digest:
+            raise ValueError('retained_capture_page_changed:' + str(offset))
+        rows = list(self._project_rows(_parsed(body, 'page_' + str(offset))))
+        if len(rows) != count:
+            raise ValueError('retained_capture_page_changed:' + str(offset))
+        return rows
+
+    def __len__(self):
+        return self._length
+
+    def __iter__(self):
+        for page in self._pages:
+            rows = self._rows(page)
+            yield from rows
+            del rows
+
+    def __getitem__(self, position):
+        if isinstance(position, slice):
+            return [self[i] for i in range(*position.indices(len(self)))]
+        position = integer_index(position)
+        if position < 0:
+            position += len(self)
+        if not 0 <= position < len(self):
+            raise IndexError('captured row index out of range')
+        page_index = bisect_right(self._ends, position)
+        start = self._ends[page_index - 1] if page_index else 0
+        return self._rows(self._pages[page_index])[position - start]
+
+
+def capture_exact_id_population(ids, page_size, *, fetch_page, validate_page,
+                                close_witnesses, read_page, project_rows=None):
+    """Admit all exact-ID pages and closing witnesses before exposing row views.
+
+    ``read_page(offset)`` reads already durable raw JSON bytes. Each fetched
+    page is validated once and bound to those bytes before its rows are dropped.
+    ``project_rows`` is a pure native row projection; validation callbacks may
+    populate candidate geometry arrays and must never be called by row reads.
+    ``page_size`` is an integer or the native URL-bound sizing callback.
+    """
+    project = project_rows or (lambda document: document['features'])
+    pages, retained = [], []
+    offset = 0
+    while offset < len(ids):
+        size = page_size(offset, ids[offset:]) if callable(page_size) else page_size
+        if type(size) is not int or size < 1:
+            raise ValueError('source_page_size_invalid')
+        requested = ids[offset:offset + size]
         result = fetch_page(offset, requested)
         page = validate_page(offset, requested, result)
         returned = [feature.get('attributes', {}).get('OBJECTID') for feature in page]
-        features.extend(page)
+        body = read_page(offset)
+        projected = list(project(_parsed(body, 'page_' + str(offset))))
+        if json.dumps(projected, sort_keys=True) != json.dumps(page, sort_keys=True):
+            raise ValueError('retained_capture_page_changed:' + str(offset))
         pages.append({'offset': offset, 'requested_ids': requested, 'returned_ids': returned, 'count': len(page)})
-    return features, pages, close_witnesses()
+        retained.append((offset, len(page), _sha(body)))
+        offset += len(requested)
+        del result, page, projected, body
+    closing = close_witnesses()
+    return CapturedRows(retained, read_page, project), pages, closing
 
 
 def population_snapshot(count, ids, *, ids_first=False):

@@ -243,7 +243,9 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None) -> d
 
         features, pages, (count_after, after) = capture_exact_id_population(
             before, PAGE_SIZE, fetch_page=fetch_page, validate_page=validate_page,
-            close_witnesses=close_witnesses)
+            close_witnesses=close_witnesses,
+            read_page=lambda offset: staging.read_key(
+                f"{DATASET_SLUG}/{FILE_SLUG}/{version_key}/raw/page_{offset:07d}.json"))
         validate_population_snapshot(count_before, before, count_after, after, features)
         rows = [{"attributes": f["attributes"], "geometry": f["geometry"]} for f in features]
         row_digest = _digest(_json_bytes(rows))

@@ -236,7 +236,9 @@ def capture(staging, version, client=None, replay_version=None):
 
         features, pages, (after_count, after_ids) = capture_exact_id_population(
             ids, PAGE_SIZE, fetch_page=fetch_page, validate_page=validate_page,
-            close_witnesses=close_witnesses)
+            close_witnesses=close_witnesses,
+            read_page=lambda offset: staging.read_key(
+                f"{DATASET_SLUG}/{FILE_SLUG}/{version}/raw/page_{offset:07d}.body"))
         validate_capture_witness(before_count, before_ids, after_count, after_ids,
                                  [feature.get("attributes", {}).get("OBJECTID") for feature in features])
         source_capture_started_at = (
