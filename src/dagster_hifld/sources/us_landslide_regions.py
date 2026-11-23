@@ -87,7 +87,7 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.arcgis_adaptive import AdaptiveCaptureSpec, capture_adaptive_layer
+from dagster_hifld.sources.arcgis_adaptive import AdaptiveCaptureSpec, capture_adaptive_layer, page_matches_id_slice
 from dagster_hifld.sources.arcgis_layer import (
     _validate_offset_replay_refusal, load_replay, save_state as _save_state,
 )
@@ -666,24 +666,6 @@ def _witness_aside(capture_root: Path, name: str) -> None:
             source.replace(capture_root / f"{name}.error-{stamp}.{suffix}")
 
 
-def _page_matches_slice(body: bytes, offset: int, count: int,
-                        roster: list[int]) -> bool:
-    """Check a candidate page against its expected id slice before accepting it."""
-    try:
-        page = json.loads(body)
-    except ValueError:
-        return False
-    if not isinstance(page, dict) or "error" in page:
-        return False
-    rows = page.get("features")
-    if not isinstance(rows, list) or len(rows) != count:
-        return False
-    expected = roster[offset:offset + count]
-    actual = [row.get("attributes", {}).get("OBJECTID") for row in rows
-              if isinstance(row, dict)]
-    return actual == expected
-
-
 def fetch_us_landslide_regions_pages(
         capture_root: Path, *, client: httpx.Client | None = None) \
         -> dict[str, object]:
@@ -707,7 +689,7 @@ def _capture_spec() -> AdaptiveCaptureSpec:
         page_size=PAGE_START_RECORDS, page_pattern=_PAGE_NAME_PATTERN,
         page_name=_page_name, parse_page_name=_parse_page_name,
         page_url=lambda roster, offset, count: _segment_query(offset, count),
-        page_matches=_page_matches_slice, validate_roster=_validate_roster,
+        page_matches=page_matches_id_slice, validate_roster=_validate_roster,
         load_state=_load_state, save_state=_save_state,
         read_capture=_read_capture, witness_aside=_witness_aside,
         capture=partial(capture_with_retry, max_bytes=MAX_BODY_BYTES),

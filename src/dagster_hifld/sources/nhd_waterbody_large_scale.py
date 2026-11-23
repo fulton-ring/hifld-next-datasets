@@ -60,7 +60,7 @@ import shutil
 import time
 from array import array
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, Mapping
+from typing import Callable, Mapping
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -904,23 +904,6 @@ def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
             for name in _retained_input_names(capture_root)}
 
 
-class _RetainedCaptureViews(Mapping):
-    """Lazily materialize one capture view per access so quarantine stays bounded."""
-
-    def __init__(self, capture_root: Path, names: Iterable[str]):
-        self._capture_root = Path(capture_root)
-        self._names = tuple(names)
-
-    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
-        return _read_capture(self._capture_root, name)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._names)
-
-    def __len__(self) -> int:
-        return len(self._names)
-
-
 def _parquet_descriptor(path: Path) -> dict[str, object]:
     if not path.is_file():
         raise NhdWaterbodyLargeScaleError("native_candidate_parquet_missing")
@@ -1274,7 +1257,9 @@ def capture_nhd_waterbody_large_scale(storage: StagingStorageResource, *, versio
             valid_names.append(name)
         if valid_names:
             quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                           _RetainedCaptureViews(capture_root, valid_names),
+                                           arcgis_layer.RetainedCaptureViews(capture_root,
+                                                                             valid_names,
+                                                                             NhdWaterbodyLargeScaleError),
                                            getattr(exc, "code", type(exc).__name__)
                                            or type(exc).__name__)
         raise

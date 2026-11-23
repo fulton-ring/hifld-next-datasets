@@ -56,7 +56,7 @@ import struct
 from array import array
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator, Mapping
+from typing import Mapping
 from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
 
@@ -70,11 +70,12 @@ from dagster_hifld.construction_provenance import validate_construction_code_ide
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.arcgis_adaptive import AdaptiveCaptureSpec, capture_adaptive_layer
+from dagster_hifld.sources.arcgis_adaptive import AdaptiveCaptureSpec, capture_adaptive_layer, page_matches_id_slice
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
     capture_witness, capture_with_retry, load_receipt,
-    producer_error_doc, preserve_failed_attempt, read_capture, witness_aside,
+    producer_error_doc, preserve_failed_attempt, read_capture, RetainedCaptureViews,
+    witness_aside,
     save_state as _save_state,
 )
 from dagster_hifld.sources.capture_common import (
@@ -511,24 +512,6 @@ _producer_error_doc = producer_error_doc
 _preserve_failed_attempt = preserve_failed_attempt
 
 
-def _page_matches_slice(body: bytes, offset: int, count: int,
-                        roster: list[int]) -> bool:
-    """Check a candidate page against its expected id slice before accepting it."""
-    try:
-        page = json.loads(body)
-    except ValueError:
-        return False
-    if not isinstance(page, dict) or "error" in page:
-        return False
-    rows = page.get("features")
-    if not isinstance(rows, list) or len(rows) != count:
-        return False
-    expected = roster[offset:offset + count]
-    actual = [row.get("attributes", {}).get("OBJECTID") for row in rows
-              if isinstance(row, dict)]
-    return actual == expected
-
-
 def _capture_spec() -> AdaptiveCaptureSpec:
     return AdaptiveCaptureSpec(
         byte_budget=MAX_CAPTURE_BYTES,
@@ -538,7 +521,7 @@ def _capture_spec() -> AdaptiveCaptureSpec:
         page_size=PAGE_START_RECORDS, page_pattern=_PAGE_NAME_PATTERN,
         page_name=_page_name, parse_page_name=_parse_page_name,
         page_url=lambda roster, offset, count: _page_url(roster[offset:offset + count]),
-        page_matches=_page_matches_slice, validate_roster=_validate_roster,
+        page_matches=page_matches_id_slice, validate_roster=_validate_roster,
         load_state=_load_state, save_state=_save_state,
         read_capture=_read_capture, witness_aside=witness_aside,
         capture=partial(capture_with_retry, max_bytes=MAX_BODY_BYTES), producer_error=producer_error_doc,
@@ -846,23 +829,6 @@ def _load_receipt_map(capture_root: Path) -> dict[str, dict[str, object]]:
     return {name: _load_receipt(capture_root, name) for name in names}
 
 
-class _RetainedCaptureViews(Mapping):
-    """Lazily materialize one capture view per access so quarantine stays bounded."""
-
-    def __init__(self, capture_root: Path, names: Iterable[str]):
-        self._capture_root = Path(capture_root)
-        self._names = tuple(names)
-
-    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
-        return _read_capture(self._capture_root, name)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._names)
-
-    def __len__(self) -> int:
-        return len(self._names)
-
-
 def _seal_candidate(storage: StagingStorageResource, capture_root: Path,
                     extracted: Mapping[str, object], *, resumed_pages: int,
                     first_captured_at: str, last_captured_at: str) -> dict[str, object]:
@@ -1158,8 +1124,9 @@ def capture_unincorporated_places_census_gnis(
             valid_names.append(name)
         if valid_names:
             quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          _RetainedCaptureViews(capture_root,
-                                                                valid_names),
+                                          RetainedCaptureViews(capture_root,
+                                                               valid_names,
+                                                               UnincorporatedPlacesCensusError),
                                           getattr(exc, "code", type(exc).__name__)
                                           or type(exc).__name__)
         raise
