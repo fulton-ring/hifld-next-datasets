@@ -675,13 +675,13 @@ class UsLandslideRegionsSourceTests(unittest.TestCase):
         roster = list(FIXTURE_OBJECTIDS)
         rows = _fixture_rows()
         page = {"features": rows[:4]}
-        self.assertTrue(src._page_matches_slice(
+        self.assertTrue(arcgis_adaptive.page_matches_id_slice(
             json.dumps(page).encode(), 0, 4, roster))
-        self.assertFalse(src._page_matches_slice(
+        self.assertFalse(arcgis_adaptive.page_matches_id_slice(
             json.dumps({"error": {}}).encode(), 0, 4, roster))
-        self.assertFalse(src._page_matches_slice(
+        self.assertFalse(arcgis_adaptive.page_matches_id_slice(
             json.dumps({"features": rows[:2]}).encode(), 0, 4, roster))
-        self.assertFalse(src._page_matches_slice(
+        self.assertFalse(arcgis_adaptive.page_matches_id_slice(
             json.dumps({"features": list(reversed(rows[:4]))}).encode(), 0, 4,
             roster))
         self.assertEqual(src._page_name(0, 1000), "page_000000_01000")

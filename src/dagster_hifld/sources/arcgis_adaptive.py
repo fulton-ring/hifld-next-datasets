@@ -16,6 +16,24 @@ from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.http_capture import capture_retention_budget
 
 
+def page_matches_id_slice(body: bytes, offset: int, count: int,
+                          roster: list[int]) -> bool:
+    """Check a candidate page against its expected id slice before accepting it."""
+    try:
+        page = json.loads(body)
+    except ValueError:
+        return False
+    if not isinstance(page, dict) or "error" in page:
+        return False
+    rows = page.get("features")
+    if not isinstance(rows, list) or len(rows) != count:
+        return False
+    expected = roster[offset:offset + count]
+    actual = [row.get("attributes", {}).get("OBJECTID") for row in rows
+              if isinstance(row, dict)]
+    return actual == expected
+
+
 @dataclass(frozen=True, kw_only=True)
 class AdaptiveCaptureSpec:
     """Layer policy and retained-evidence operations for the shared acquisition."""

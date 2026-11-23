@@ -1,11 +1,12 @@
 """Document acquisition keeps receipt ledgers and native volume headroom."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from dagster_hifld.sources.arcgis_adaptive import capture_document_group
+from dagster_hifld.sources.arcgis_adaptive import capture_document_group, page_matches_id_slice
 from dagster_hifld.sources import pad_us_protection_mechanism_category as pad
 
 
@@ -96,3 +97,16 @@ class AdaptiveDocumentTests(unittest.TestCase):
             (root / "page_0_2.body").write_bytes(b"loaded from disk")
             self.assertEqual(captures["page_0_2"][0], b"loaded from disk")
             self.assertEqual(captures.receipts["page_2_2"], {"bytes": 8, "wire_bytes": 0})
+
+    def test_page_matches_id_slice_accepts_exact_roster_slice_and_rejects_mismatches(self):
+        roster = [10, 11, 12, 13, 14, 15]
+        rows = [{"attributes": {"OBJECTID": object_id}} for object_id in roster]
+
+        def page(row_slice):
+            return json.dumps({"features": row_slice}).encode()
+
+        self.assertTrue(page_matches_id_slice(page(rows[2:5]), 2, 3, roster))
+        self.assertFalse(page_matches_id_slice(page(rows[2:4]), 2, 3, roster))
+        self.assertFalse(page_matches_id_slice(b'{"error": {"code": 400}}', 2, 3, roster))
+        self.assertFalse(page_matches_id_slice(page(rows[:3]), 2, 3, roster))
+        self.assertFalse(page_matches_id_slice(b"not json", 2, 3, roster))
