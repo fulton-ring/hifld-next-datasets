@@ -43,11 +43,14 @@ from dagster_hifld.sources.capture_common import (
     reuse_sealed_candidate,
     load_candidate_checkpoint,
     stage_candidate_objects,
+    load_receipt,
+    read_capture,
+    RetainedCaptureViews,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
-    capture_witness, capture_with_retry, load_receipt,
-    producer_error_doc, preserve_failed_attempt, read_capture, RetainedCaptureViews,
+    capture_witness, capture_with_retry,
+    producer_error_doc, preserve_failed_attempt,
     witness_aside,
     save_state as _save_state,
 )
