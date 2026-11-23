@@ -7,6 +7,7 @@ from collections.abc import Mapping
 import json
 import math
 import shutil
+import tempfile
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,7 +46,7 @@ from dagster_hifld.sources.usace_ienc_common import (
     capture_identity,
     esri_polyline_wkb,
     load_capture,
-    polyline_parquet_bytes,
+    polyline_candidate_parquet,
 )
 
 
@@ -327,96 +328,100 @@ def capture_shoreline_construction_lines_usace_ienc(storage: StagingStorageResou
         "source_release_accepted": False, "source_freshness_accepted": False,
         "schema_contract_accepted": False, "id_contract_accepted": False, "coverage_accepted": False,
         "rights_accepted": False, "mapping_approved": False, "release_accepted": False, "baseline_accepted": False})
-    parquet = polyline_parquet_bytes(fields, features)
-    version = "v" + _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
-        "source_geometry_sha256": audit["source_geometry_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
-        "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
-    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    output_path = f"geoparquet/{FILE_SLUG}.parquet"
-    receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
-    inputs = [{"input_id": name, "producer": ("USDOT BTS IENC NTAD item" if name == "bts_item" else PUBLISHER),
-        "host": urlsplit(receipt["url"]).hostname, "role": "official_distributor" if name == "bts_item" else "producer_publication",
-        "canonical_url": BTS_ITEM_URL if name == "bts_item" else LAYER_URL, "retrieval_url": receipt["url"],
-        "observed_final_url": receipt["final_url"], "retrieved_at": receipt["observed_at"],
-        "http_status": receipt["status"], "bytes": receipt["bytes"], "sha256": receipt["sha256"],
-        "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
-        "release_date": None, "release_date_unknown_reason": "The BTS catalog item describes IENC update cadence but does not identify this layer's release date; the item succession does not establish the captured layer's edition date.",
-        "license": "Unresolved; rights review pending.", "attribution": "USACE IENC / BTS; attribution and rights review pending.",
-        **({"distributor": "USACE IENC Feature Classes service", "delegation_evidence": {
-            "bts_item_url": BTS_ITEM_URL, "bts_item_id": BTS_ITEM_ID, "bts_item_owner": "USDOT_BTS",
-            "official_service_directory": SERVICE_DIRECTORY_URL,
-            "linked_feature_classes_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
-            "prior_bts_item_id": PRIOR_BTS_ITEM_ID,
-            "succession_status": "unaccepted; the current public PDF catalog item links the producer service, while a prior draft cited a different BTS item; continuity of the catalog record and layer edition has not been approved",
-            "basis": "The captured BTS PDF record identifies the IENC program, describes USACE/Army Geospatial Center updates, and explicitly links the USACE IENC Feature Classes service and master file geodatabase. The queried layer's own service metadata identifies copyright USACE IENC; the direct service response, not the PDF item, supplies the captured geometry and attributes."}}
-           if name == "bts_item" else {})}
-        for name, receipt in sorted(receipts.items())]
-    manifest = {"schema_version": 1, "approved": False, "title": "Shoreline Construction Lines (USACE IENC)",
-        "description": "Complete observed USACE IENC SHORELINE_CONSTRUCTION_LINE layer; catalog-item succession, layer edition, historical continuity, and release remain unaccepted.",
-        "publisher": PUBLISHER, "agency": "US Army Corps of Engineers", "source_url": LAYER_URL,
-        "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
-        "processor": "HIFLD Next", "code_commit": identity["code_commit"],
-        "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
-        "transformations": [{"operation": "Esri XY Polyline to GeoParquet WKB candidate", "parameters": {
-            "source_fields": "all declared attributes retained in source order and declared types",
-            "source_ids": "OBJECTID and Feature_ID retained unchanged, including any duplicates",
-            "source_crs": "EPSG:4326",
-            "geometry": "2D path order and vertex sequences preserved; no reprojection, repair, or simplification",
-            "raw_evidence": "complete decoded response and wire bodies retained with checksummed receipts",
-            "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
-        "lineage": f"Current public BTS IENC PDF item {BTS_ITEM_ID} links the USACE IENC Feature Classes service and master geodatabase. A prior draft cited BTS map-service item {PRIOR_BTS_ITEM_ID}, which now returns an anonymous-access permission error; the relationship between the records and continuity of the layer edition remain unapproved. This candidate captures the complete directly queried service layer {LAYER_ID} SHORELINE_CONSTRUCTION_LINE only; the service describes the features as a fixed (not afloat) artificial structure between the water and the land, i.e. a man-made coastline. The historical HIFLD inventory row's DataLumos archive (project 240648) and the DHS crosswalk DOI (10.3886/E241367V1) both return HTTP 403 anonymously, so archive crosswalk identity and historical continuity are unverified. It makes no claim of nationwide shoreline coverage.",
-        "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Native attributes, IDs and 2D paths are retained in a typed candidate.",
-            "objects": [{"path": output_path, "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
-        "unsupported_output_formats": {"geopackage": "No format-specific mapping has been approved.",
-            "pmtiles": "No display generalization or release policy has been approved."}}
-    validate_release_provenance(manifest); validate_output_policy(manifest); provenance_projection(manifest)
-    audit.update({"source_fields": fields, "official_layer_name": "SHORELINE_CONSTRUCTION_LINE", "official_layer_id": LAYER_ID,
-                  "official_source_item": "USDOT_BTS " + BTS_ITEM_ID,
-                  "prior_bts_catalog_item_id": PRIOR_BTS_ITEM_ID,
-                  "bts_catalog_item_successor_review_pending": True,
-                  "source_population_complete": True})
-    outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
-        "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
-    for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
-        _body, wire, _receipt = load_capture(root, name)
-        outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
-    ready = {"approved": False, "version": version,
-        "objects": {output_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
-        "source_population_complete": True, "source_record_sha256": audit["source_record_sha256"],
-        "source_schema_sha256": audit["source_schema_sha256"], "source_release_accepted": False,
-        "freshness_accepted": False, "schema_contract_accepted": False, "id_contract_accepted": False,
-        "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
-    outputs["metadata/candidate_ready.json"] = _canonical(ready) + b"\n"
-    fingerprint = _sha(_canonical({"identity": identity, "source_record_sha256": audit["source_record_sha256"],
-        "source_schema_sha256": audit["source_schema_sha256"], "source_capture_sha256": capture_hash}))
-    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
-        original = json.loads(load_first_construction(storage, state_key, version, fingerprint)).get("payload")
-        if not isinstance(original, dict) or not isinstance(original.get("capture_receipts"), dict):
-            raise ValueError("cached_first_candidate_receipts_missing")
-        original_receipts = original["capture_receipts"]
-        if set(original_receipts) != set(captures):
-            raise ValueError("cached_candidate_capture_roster_changed")
-        for name in captures:
-            body, wire, _receipt = load_capture(root, name)
-            if (storage.read_key(f"{prefix}/raw/{name}.body") != body
-                    or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
-                raise ValueError("cached_source_evidence_changed:" + name)
-        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version, fingerprint,
-            identity, audit["source_record_sha256"], audit["source_schema_sha256"],
-            original.get("objects", {}), original_receipts)
-        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": len(features), "source_reported_count": len(features), "source_population_complete": True,
-            "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
-            "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
-            "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
-            "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
-            "geometry_invalid_count": audit["geometry_invalid_count"], "geometry_empty_count": audit["geometry_empty_count"],
-            "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
-            "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
-            "mapping_approved": False, "release_accepted": False, "capture_directory": str(root)}
-    descriptors = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content")
+    with tempfile.TemporaryDirectory(prefix="hifld-polyline-candidate-") as candidate_dir:
+        parquet_path, parquet_sha, parquet_rows = polyline_candidate_parquet(fields, features, 4326, Path(candidate_dir))
+        if parquet_rows != len(features):
+            raise ValueError("candidate_row_count_drift")
+        parquet_size = parquet_path.stat().st_size
+        version = "v" + _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
+            "source_geometry_sha256": audit["source_geometry_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
+            "source_capture_sha256": capture_hash, "processing_identity": identity}))[:32]
+        prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+        output_path = f"geoparquet/{FILE_SLUG}.parquet"
+        receipts = {name: receipt for name, (_body, receipt) in ((name, captures[name]) for name in sorted(captures))}
+        inputs = [{"input_id": name, "producer": ("USDOT BTS IENC NTAD item" if name == "bts_item" else PUBLISHER),
+            "host": urlsplit(receipt["url"]).hostname, "role": "official_distributor" if name == "bts_item" else "producer_publication",
+            "canonical_url": BTS_ITEM_URL if name == "bts_item" else LAYER_URL, "retrieval_url": receipt["url"],
+            "observed_final_url": receipt["final_url"], "retrieved_at": receipt["observed_at"],
+            "http_status": receipt["status"], "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+            "wire_bytes": receipt["wire_bytes"], "wire_sha256": receipt["wire_sha256"],
+            "release_date": None, "release_date_unknown_reason": "The BTS catalog item describes IENC update cadence but does not identify this layer's release date; the item succession does not establish the captured layer's edition date.",
+            "license": "Unresolved; rights review pending.", "attribution": "USACE IENC / BTS; attribution and rights review pending.",
+            **({"distributor": "USACE IENC Feature Classes service", "delegation_evidence": {
+                "bts_item_url": BTS_ITEM_URL, "bts_item_id": BTS_ITEM_ID, "bts_item_owner": "USDOT_BTS",
+                "official_service_directory": SERVICE_DIRECTORY_URL,
+                "linked_feature_classes_service": "https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
+                "prior_bts_item_id": PRIOR_BTS_ITEM_ID,
+                "succession_status": "unaccepted; the current public PDF catalog item links the producer service, while a prior draft cited a different BTS item; continuity of the catalog record and layer edition has not been approved",
+                "basis": "The captured BTS PDF record identifies the IENC program, describes USACE/Army Geospatial Center updates, and explicitly links the USACE IENC Feature Classes service and master file geodatabase. The queried layer's own service metadata identifies copyright USACE IENC; the direct service response, not the PDF item, supplies the captured geometry and attributes."}}
+               if name == "bts_item" else {})}
+            for name, receipt in sorted(receipts.items())]
+        manifest = {"schema_version": 1, "approved": False, "title": "Shoreline Construction Lines (USACE IENC)",
+            "description": "Complete observed USACE IENC SHORELINE_CONSTRUCTION_LINE layer; catalog-item succession, layer edition, historical continuity, and release remain unaccepted.",
+            "publisher": PUBLISHER, "agency": "US Army Corps of Engineers", "source_url": LAYER_URL,
+            "license": None, "source_modified": None, "date_issued": None, "date_modified": None,
+            "processor": "HIFLD Next", "code_commit": identity["code_commit"],
+            "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
+            "transformations": [{"operation": "Esri XY Polyline to GeoParquet WKB candidate", "parameters": {
+                "source_fields": "all declared attributes retained in source order and declared types",
+                "source_ids": "OBJECTID and Feature_ID retained unchanged, including any duplicates",
+                "source_crs": "EPSG:4326",
+                "geometry": "2D path order and vertex sequences preserved; no reprojection, repair, or simplification",
+                "raw_evidence": "complete decoded response and wire bodies retained with checksummed receipts",
+                "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
+            "lineage": f"Current public BTS IENC PDF item {BTS_ITEM_ID} links the USACE IENC Feature Classes service and master geodatabase. A prior draft cited BTS map-service item {PRIOR_BTS_ITEM_ID}, which now returns an anonymous-access permission error; the relationship between the records and continuity of the layer edition remain unapproved. This candidate captures the complete directly queried service layer {LAYER_ID} SHORELINE_CONSTRUCTION_LINE only; the service describes the features as a fixed (not afloat) artificial structure between the water and the land, i.e. a man-made coastline. The historical HIFLD inventory row's DataLumos archive (project 240648) and the DHS crosswalk DOI (10.3886/E241367V1) both return HTTP 403 anonymously, so archive crosswalk identity and historical continuity are unverified. It makes no claim of nationwide shoreline coverage.",
+            "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Native attributes, IDs and 2D paths are retained in a typed candidate.",
+                "objects": [{"path": output_path, "bytes": parquet_size, "sha256": parquet_sha}]}}},
+            "unsupported_output_formats": {"geopackage": "No format-specific mapping has been approved.",
+                "pmtiles": "No display generalization or release policy has been approved."}}
+        validate_release_provenance(manifest); validate_output_policy(manifest); provenance_projection(manifest)
+        audit.update({"source_fields": fields, "official_layer_name": "SHORELINE_CONSTRUCTION_LINE", "official_layer_id": LAYER_ID,
+                      "official_source_item": "USDOT_BTS " + BTS_ITEM_ID,
+                      "prior_bts_catalog_item_id": PRIOR_BTS_ITEM_ID,
+                      "bts_catalog_item_successor_review_pending": True,
+                      "source_population_complete": True})
+        outputs = {output_path: parquet_path, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
+            "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
+        for name, (body, receipt) in ((name, captures[name]) for name in sorted(captures)):
+            _body, wire, _receipt = load_capture(root, name)
+            outputs[f"raw/{name}.body"] = body; outputs[f"raw/{name}.wire"] = wire
+            outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
+        ready = {"approved": False, "version": version,
+            "objects": {output_path: {"bytes": parquet_size, "sha256": parquet_sha}},
+            "source_population_complete": True, "source_record_sha256": audit["source_record_sha256"],
+            "source_schema_sha256": audit["source_schema_sha256"], "source_release_accepted": False,
+            "freshness_accepted": False, "schema_contract_accepted": False, "id_contract_accepted": False,
+            "coverage_accepted": False, "rights_accepted": False, "mapping_approved": False, "release_accepted": False}
+        outputs["metadata/candidate_ready.json"] = _canonical(ready) + b"\n"
+        fingerprint = _sha(_canonical({"identity": identity, "source_record_sha256": audit["source_record_sha256"],
+            "source_schema_sha256": audit["source_schema_sha256"], "source_capture_sha256": capture_hash}))
+        state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+        if storage.object_snapshot(state_key) is not None:
+            original = json.loads(load_first_construction(storage, state_key, version, fingerprint)).get("payload")
+            if not isinstance(original, dict) or not isinstance(original.get("capture_receipts"), dict):
+                raise ValueError("cached_first_candidate_receipts_missing")
+            original_receipts = original["capture_receipts"]
+            if set(original_receipts) != set(captures):
+                raise ValueError("cached_candidate_capture_roster_changed")
+            for name in captures:
+                body, wire, _receipt = load_capture(root, name)
+                if (storage.read_key(f"{prefix}/raw/{name}.body") != body
+                        or storage.read_key(f"{prefix}/raw/{name}.wire") != wire):
+                    raise ValueError("cached_source_evidence_changed:" + name)
+            verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version, fingerprint,
+                identity, audit["source_record_sha256"], audit["source_schema_sha256"],
+                original.get("objects", {}), original_receipts)
+            return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
+                "feature_count": len(features), "source_reported_count": len(features), "source_population_complete": True,
+                "source_id_sha256": audit["source_id_sha256"], "source_id_min": audit["source_id_min"], "source_id_max": audit["source_id_max"],
+                "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
+                "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
+                "source_capture_evidence_sha256": capture_hash, "geometry_valid_count": audit["geometry_valid_count"],
+                "geometry_invalid_count": audit["geometry_invalid_count"], "geometry_empty_count": audit["geometry_empty_count"],
+                "source_release_accepted": False, "source_freshness_accepted": False, "schema_contract_accepted": False,
+                "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
+                "mapping_approved": False, "release_accepted": False, "capture_directory": str(root)}
+        descriptors = write_candidate_outputs(storage, prefix, dict(sorted(outputs.items())), snapshot_check="content")
     seal_candidate_objects(
         storage, state_key, version,
         identity, receipts, descriptors,

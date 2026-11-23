@@ -1,8 +1,14 @@
+import hashlib
+import io
+import json
 import struct
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+import pyarrow.parquet as pq
+import pyproj
 
 from dagster_hifld.sources import usace_ienc_common as ienc_common
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -55,6 +61,66 @@ class UsaceIencCommonTests(unittest.TestCase):
             for x, y in path:
                 expected.extend(struct.pack("<dd", x, y))
         self.assertEqual(ienc_common.esri_polyline_wkb(geometry), bytes(expected))
+
+
+class PolylineCandidateTests(unittest.TestCase):
+    FIELDS = [
+        {"name": "OBJECTID", "type": "esriFieldTypeOID", "alias": "OBJECTID", "domain": None},
+        {"name": "SHAPE", "type": "esriFieldTypeGeometry", "alias": "SHAPE", "domain": None},
+        {"name": "Object_Name", "type": "esriFieldTypeString", "alias": "Object_Name",
+         "length": 254, "domain": None},
+        {"name": "Scale_Minimum", "type": "esriFieldTypeInteger", "alias": "Scale_Minimum",
+         "domain": None},
+    ]
+
+    def _features(self, count: int):
+        return [{"attributes": {"OBJECTID": oid, "Object_Name": f"line-{oid}",
+                                 "Scale_Minimum": 30000},
+                 "geometry": {"paths": [[[-88.0 + oid / 1000, 37.0], [-87.9 + oid / 1000, 37.1]]]}}
+                for oid in range(1, count + 1)]
+
+    def test_candidate_streams_all_rows_with_geo_metadata(self):
+        features = self._features(300)
+        with tempfile.TemporaryDirectory() as tmp:
+            path, digest, rows = ienc_common.polyline_candidate_parquet(
+                self.FIELDS, features, 4326, Path(tmp))
+            table = pq.read_table(path)
+            candidate_bytes = path.read_bytes()
+        self.assertEqual(rows, 300)
+        self.assertEqual(table.num_rows, 300)
+        self.assertEqual([f.name for f in table.schema],
+                         ["OBJECTID", "Object_Name", "Scale_Minimum", "geometry"])
+        self.assertEqual(table.column("OBJECTID").to_pylist(), list(range(1, 301)))
+        self.assertEqual(hashlib.sha256(candidate_bytes).hexdigest(), digest)
+        metadata = json.loads(table.schema.metadata[b"geo"].decode())
+        self.assertEqual(metadata["version"], "1.1.0")
+        self.assertEqual(metadata["primary_column"], "geometry")
+        column = metadata["columns"]["geometry"]
+        self.assertEqual(column["encoding"], "WKB")
+        self.assertEqual(column["geometry_types"], ["MultiLineString"])
+        self.assertEqual(column["crs"]["id"], {"authority": "EPSG", "code": 4326})
+        self.assertEqual(pyproj.CRS.from_json_dict(column["crs"]).to_epsg(), 4326)
+
+    def test_non_4326_source_crs_is_not_mislabeled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _digest, _rows = ienc_common.polyline_candidate_parquet(
+                self.FIELDS, self._features(10), 4269, Path(tmp))
+            table = pq.read_table(path)
+        column = json.loads(table.schema.metadata[b"geo"].decode())["columns"]["geometry"]
+        self.assertEqual(column["crs"]["id"], {"authority": "EPSG", "code": 4269})
+        self.assertEqual(pyproj.CRS.from_json_dict(column["crs"]).to_epsg(), 4269)
+        self.assertNotIn("WGS 84", json.dumps(column["crs"]))
+
+    def test_legacy_bytes_wrapper_delegates_to_streamed_candidate(self):
+        features = self._features(600)
+        legacy = ienc_common.polyline_parquet_bytes(self.FIELDS, features)
+        with tempfile.TemporaryDirectory() as tmp:
+            path, digest, rows = ienc_common.polyline_candidate_parquet(
+                self.FIELDS, features, 4326, Path(tmp))
+            streamed = pq.read_table(path)
+        self.assertEqual(rows, 600)
+        self.assertEqual(hashlib.sha256(legacy).hexdigest(), digest)
+        self.assertTrue(pq.read_table(io.BytesIO(legacy)).equals(streamed))
 
 
 if __name__ == "__main__":

@@ -14,14 +14,16 @@ from __future__ import annotations
 
 import json
 import struct
+import tempfile
 from pathlib import Path
+from typing import Iterator
 
 import httpx
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 from dagster_hifld.sources.capture_common import capture_get
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.geoparquet_candidate import stream_geoparquet_candidate
 
 PAGE_MAX_BYTES = 8_000_000
 
@@ -78,22 +80,51 @@ def _arrow_type(field: dict) -> pa.DataType:
             "esriFieldTypeString":pa.string()}[field["type"]]
 
 
-def polyline_parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
+GEOMETRY_COLUMN = "geometry"
+POLYLINE_BATCH_SIZE = 250
+
+
+def polyline_candidate_parquet(fields: list[dict], features: list[dict], source_crs: int | str,
+                               capture_root: Path) -> tuple[Path, str, int]:
+    """Stream one captured Esri polyline layer to a local GeoParquet candidate.
+
+    Attribute columns keep declared physical types and source order; paths
+    encode to WKB with source order preserved. The GeoParquet 1.1 ``geo``
+    metadata comes from the shared candidate writer, which builds the source
+    CRS PROJJSON from the actual source CRS. Returns the candidate path under
+    ``capture_root``, its sha256 digest and its row count.
+    """
     properties = [field for field in fields if field["name"] != "SHAPE"]
-    arrays = [pa.array([row["attributes"][field["name"]] for row in features], type=_arrow_type(field))
-              for field in properties]
-    arrays.append(pa.array([esri_polyline_wkb(row["geometry"]) for row in features], type=pa.binary()))
-    table = pa.Table.from_arrays(arrays, names=[field["name"] for field in properties] + ["geometry"])
-    crs = {"$schema":"https://proj.org/schemas/v0.7/projjson.schema.json", "type":"GeographicCRS", "name":"WGS 84",
-           "datum":{"type":"GeodeticReferenceFrame","name":"World Geodetic System 1984",
-                    "ellipsoid":{"name":"WGS 84","semi_major_axis":6378137,"inverse_flattening":298.257223563},
-                    "id":{"authority":"EPSG","code":6326}},
-           "coordinate_system":{"subtype":"ellipsoidal","axis":[{"name":"Geodetic latitude","abbreviation":"Lat","direction":"north","unit":"degree"},
-                                                                        {"name":"Geodetic longitude","abbreviation":"Lon","direction":"east","unit":"degree"}]},
-           "id":{"authority":"EPSG","code":4326}}
-    metadata={b"geo":_canonical({"version":"1.1.0","primary_column":"geometry",
-                                  "columns":{"geometry":{"encoding":"WKB","geometry_types":["MultiLineString"],"crs":crs}}})}
-    import io
-    sink=io.BytesIO()
-    pq.write_table(table.replace_schema_metadata(metadata),sink,compression="zstd",use_dictionary=False)
-    return sink.getvalue()
+    names = [field["name"] for field in properties] + [GEOMETRY_COLUMN]
+    schema = pa.schema(
+        [pa.field(field["name"], _arrow_type(field), nullable=True) for field in properties]
+        + [pa.field(GEOMETRY_COLUMN, pa.binary(), nullable=True)])
+
+    def batches() -> Iterator[pa.RecordBatch]:
+        for start in range(0, len(features), POLYLINE_BATCH_SIZE):
+            chunk = features[start:start + POLYLINE_BATCH_SIZE]
+            arrays = [pa.array([row["attributes"][field["name"]] for row in chunk],
+                               type=_arrow_type(field)) for field in properties]
+            arrays.append(pa.array([esri_polyline_wkb(row["geometry"]) for row in chunk],
+                                   type=pa.binary()))
+            yield pa.record_batch(arrays, names=names)
+
+    return stream_geoparquet_candidate(
+        schema, source_crs, batches(), Path(capture_root) / "candidate.parquet",
+        geometry_column=GEOMETRY_COLUMN, geometry_types=["MultiLineString"])
+
+
+def polyline_parquet_bytes(fields: list[dict], features: list[dict]) -> bytes:
+    """Render polyline features to GeoParquet bytes through the shared writer.
+
+    Transitional interface for the adapters not yet migrated to
+    ``polyline_candidate_parquet``: the candidate streams to a private
+    temporary directory and is read back whole, so the GeoParquet 1.1
+    metadata and compression/dictionary policy stay with the shared writer.
+    The source CRS is pinned to EPSG:4326, which every current caller
+    validates before calling.
+    """
+    with tempfile.TemporaryDirectory(prefix="hifld-polyline-candidate-") as candidate_dir:
+        path, _digest, _rows = polyline_candidate_parquet(fields, features, 4326,
+                                                          Path(candidate_dir))
+        return path.read_bytes()
