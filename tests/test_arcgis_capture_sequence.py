@@ -87,7 +87,7 @@ class CaptureSequenceTests(unittest.TestCase):
     def test_ordinary_adapters_use_owned_request_drivers(self):
         import ast
         source_root = Path(common.__file__).parent
-        names = ('bts_marine_roro', 'bts_pipeline_terminals', 'bts_rail_tofc_cofc',
+        names = ('bts_intermodal_family', 'bts_pipeline_terminals',
                  'epa_tsca', 'final_critical_habitat', 'proposed_critical_habitat',
                  'national_transit_map_agencies', 'national_transit_map_routes',
                  'national_transit_map_stops', 'fema_nss_shelter_locations',

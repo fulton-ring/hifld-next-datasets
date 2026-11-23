@@ -3,7 +3,10 @@
 This is the FRS-maintained TRI facility relationship layer, not the annual
 chemical-release reporting map.  All producer responses are retained verbatim;
 the GeoParquet is an unapproved preservation candidate with explicit physical
-type proposals pending contract review.
+type proposals pending contract review. The query URL builder, ObjectID
+chunking, page planning and first-candidate verification are shared with
+``bts_intermodal_family`` (4269 outSR); the portal, pin and CRS checks stay
+local because they differ.
 """
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -24,16 +27,16 @@ from shapely.geometry import Point
 
 from dagster_hifld.http_capture import CaptureDocuments
 from dagster_hifld.construction_provenance import validate_construction_code_identity
-from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
+from dagster_hifld.sources import bts_intermodal_family
 from dagster_hifld.sources import capture_common
 from dagster_hifld.sources.arcgis_capture_sequence import LayerCaptureFetch
 from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    quarantine_incomplete_capture, seal_ready_candidate,
     write_immutable,
     seal_candidate_objects,
     write_candidate_outputs,
@@ -82,7 +85,7 @@ def _arrow_type(field: Mapping[str, object]) -> pa.DataType:
 
 
 def _query_url(**params: object) -> str:
-    return LAYER_URL + "/query?" + urlencode(params)
+    return bts_intermodal_family.query_url(LAYER_URL, **params)
 
 
 def _source_metadata_urls() -> list[tuple[str, str]]:
@@ -105,61 +108,17 @@ def _source_after_urls() -> list[tuple[str, str]]:
     ]
 
 
-def _supports_ordered_pagination(layer: Mapping[str, object]) -> bool:
-    capabilities = layer.get("advancedQueryCapabilities")
-    return (isinstance(capabilities, dict)
-            and capabilities.get("supportsPagination") is True
-            and capabilities.get("supportsOrderBy") is True)
-
-
 def _object_id_chunks(ids: list[int]) -> list[list[int]]:
     """Split fallback ObjectID GET requests below the server URL limit."""
-    chunks: list[list[int]] = []
-    current: list[int] = []
-    for object_id in ids:
-        candidate = [*current, object_id]
-        params = {"objectIds": ",".join(map(str, candidate)), "outFields": "*",
-                  "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-                  "outSR": "4269", "orderByFields": "OBJECTID ASC", "f": "json"}
-        if len(_query_url(**params)) >= MAX_OBJECT_ID_URL_LENGTH:
-            if not current:
-                raise ValueError("single_object_id_exceeds_get_url_limit")
-            chunks.append(current)
-            current = [object_id]
-        else:
-            current = candidate
-    if current:
-        chunks.append(current)
-    return chunks
+    return bts_intermodal_family.object_id_chunks(ids, layer_url=LAYER_URL, out_sr=4269,
+                                                  max_url_length=MAX_OBJECT_ID_URL_LENGTH)
 
 
 def _page_plan(ids: list[int], layer: Mapping[str, object]) -> tuple[str, list[tuple[str, str, list[int]]]]:
     """Plan deterministic source pages with expected ordered IDs."""
-    ordered_ids = sorted(ids)
-    pages: list[tuple[str, str, list[int]]] = []
-    if _supports_ordered_pagination(layer):
-        mode = "ordered_offset"
-        for offset in range(0, len(ordered_ids), PAGE_SIZE):
-            page_ids = ordered_ids[offset:offset + PAGE_SIZE]
-            url = _query_url(where="1=1", outFields="*", returnGeometry="true", returnZ="true",
-                returnM="true", outSR="4269", orderByFields="OBJECTID ASC",
-                resultOffset=offset, resultRecordCount=PAGE_SIZE, f="json")
-            if len(url) >= MAX_OBJECT_ID_URL_LENGTH:
-                raise ValueError("pagination_get_url_exceeds_safe_limit")
-            pages.append((f"page_{len(pages):03d}", url, page_ids))
-    else:
-        mode = "bounded_object_ids"
-        for page_ids in _object_id_chunks(ordered_ids):
-            params = {"objectIds": ",".join(map(str, page_ids)), "outFields": "*",
-                      "returnGeometry": "true", "returnZ": "true", "returnM": "true",
-                      "outSR": "4269", "orderByFields": "OBJECTID ASC", "f": "json"}
-            url = _query_url(**params)
-            if len(url) >= MAX_OBJECT_ID_URL_LENGTH:
-                raise ValueError("object_id_get_url_exceeds_safe_limit")
-            pages.append((f"page_{len(pages):03d}", url, page_ids))
-    if not pages:
-        raise ValueError("source_page_plan_empty")
-    return mode, pages
+    return bts_intermodal_family.page_plan(ids, layer, layer_url=LAYER_URL, out_sr=4269,
+                                           page_size=PAGE_SIZE,
+                                           max_url_length=MAX_OBJECT_ID_URL_LENGTH)
 
 
 def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]) -> tuple[dict, list[dict], list[dict], dict]:
@@ -309,26 +268,9 @@ def _code_identity() -> dict:
 def _verify_first_candidate(storage: StagingStorageResource, prefix: str, state_key: str,
                             version: str, fingerprint: str, identity: Mapping[str, object],
                             audit: Mapping[str, object], expected_names: set[str]) -> dict:
-    import json as _json
-    bundle = _json.loads(load_first_construction(storage, state_key, version, fingerprint))
-    payload = bundle.get("payload")
-    if (not isinstance(payload, dict) or set(payload) != {"processing_identity", "source_record_sha256",
-            "source_schema_sha256", "capture_receipts", "objects"}
-            or payload["processing_identity"] != identity
-            or payload["source_record_sha256"] != audit["source_record_sha256"]
-            or payload["source_schema_sha256"] != audit["source_schema_sha256"]):
-        raise ValueError("cached_first_candidate_identity_or_source_changed")
-    verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version, fingerprint,
-        identity, audit["source_record_sha256"], audit["source_schema_sha256"], payload["objects"], payload["capture_receipts"])
-    if set(payload["objects"]) != expected_names:
-        raise ValueError("cached_candidate_roster_changed")
-    return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-        "feature_count":audit["source_feature_count"],"source_population_complete":True,
-        "source_null_geometry_count":audit["source_null_geometry_count"],
-        "source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json",
-        "reused":True,"source_release_accepted":False,"schema_contract_accepted":False,
-        "id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,
-        "mapping_approved":False,"release_accepted":False}
+    return bts_intermodal_family.verify_first_candidate(
+        DATASET_SLUG, FILE_SLUG, storage, prefix, state_key, version, fingerprint, identity, audit,
+        expected_names)
 
 
 def capture_epa_frs_tri(storage: StagingStorageResource, *, version: str,
