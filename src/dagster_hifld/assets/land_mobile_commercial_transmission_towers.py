@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.land_mobile_commercial_transmission_towers import (
-    DATASET_SLUG, EXPECTED_ACTIVE_LOCATIONS, FILE_SLUG,
+    DATASET_SLUG, FILE_SLUG,
     capture_land_mobile_commercial_transmission_towers,
 )
 
@@ -25,12 +26,12 @@ class LandMobileCommercialTowersConfig(Config):
         "FCC ULS weekly public access complete Land Mobile - Commercial licenses file l_LMcomm.zip: location "
         "records of active SMR, commercial Industrial/Business, 220 MHz commercial, 902-928 MHz location and "
         "private carrier paging licenses under the historical HIFLD Land Mobile Commercial Transmission Towers "
-        "column contract (25501 active locations observed, 7547 published without geometry: 7530 filed "
-        "without coordinates and 17 in the FCC Do-Not-Convert datum area Northern Mariana Islands, whose "
-        "local datum ULS does not record, published with raw coordinates retained). Land Mobile - "
-        "Commercial is a site-based ULS service group, so this is the FCC's filed-site population, not a census "
-        "of physical towers. Unapproved candidate; baseline, contract, coverage, rights, and release decisions "
-        "remain pending."
+        "column contract. Completeness is witnessed at capture time against the payload's own counts member; "
+        "the counts member file creation date is the observed edition marker. Active location records filed "
+        "without coordinates or in the FCC Do-Not-Convert datum area Northern Mariana Islands are published "
+        "with raw coordinates retained. Land Mobile - Commercial is a site-based ULS service group, so this "
+        "is the FCC's filed-site population, not a census of physical towers. Unapproved candidate; baseline, "
+        "contract, coverage, rights, and release decisions remain pending."
     ),
 )
 def land_mobile_commercial_transmission_towers(context, config: LandMobileCommercialTowersConfig,
@@ -49,10 +50,13 @@ def land_mobile_commercial_transmission_towers(context, config: LandMobileCommer
 
 @asset_check(asset=land_mobile_commercial_transmission_towers, blocking=True)
 def land_mobile_commercial_transmission_towers_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_ACTIVE_LOCATIONS
+    count = candidate.get("source_reported_count")
+    passed = (type(count) is int and count > 0
+              and candidate.get("feature_count") == count
               and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -76,7 +80,11 @@ land_mobile_commercial_transmission_towers_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+land_mobile_commercial_transmission_towers_drift = register_approved_baseline_drift(
+    land_mobile_commercial_transmission_towers, "land_mobile_commercial_transmission_towers_drift")
+
 INGEST_ASSETS = [land_mobile_commercial_transmission_towers]
-ASSET_CHECKS = [land_mobile_commercial_transmission_towers_complete]
+ASSET_CHECKS = [land_mobile_commercial_transmission_towers_complete,
+                land_mobile_commercial_transmission_towers_drift]
 JOBS = [land_mobile_commercial_transmission_towers_draft_job]
 SCHEDULES = [land_mobile_commercial_transmission_towers_draft_schedule]

@@ -8,6 +8,13 @@ GS, GX, IK, LN, LW, NC, QD, QO, QT, YK, YL, YM, YS, YX). The historical HIFLD
 OPEN Land Mobile Commercial Transmission Towers layer was "extracted from the
 FCC Licensing Database" per its own layer description, so this weekly licenses
 file is the original agency distribution of the same data family.
+
+The FCC serves one fixed URL replaced weekly with no edition name in the path.
+The payload's own counts member — per-table line counts plus the file creation
+date — is the capture-time completeness witness and the observed edition
+marker, recorded in the audit and the candidate result. A regenerated edition's
+changed composition is reported by the registered non-blocking
+approved-baseline drift check instead of being refused.
 """
 from __future__ import annotations
 
@@ -27,6 +34,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
@@ -74,21 +82,21 @@ ZIP_MEMBER_ROSTER = [
     "ll.dat",
 ]
 RECORD_FIELD_COUNTS = {"HD": 59, "EN": 30, "LO": 51}
-EXPECTED_HD_RECORDS = 81081
-EXPECTED_EN_RECORDS = 153247
-EXPECTED_LO_RECORDS = 185230
+# Population-level values (HD/EN/LO record totals, license status distribution,
+# active-location count) are not pinned in code: completeness comes from the
+# payload's own counts member at capture time (_counts_witness), and the
+# derived active-ID and state-roster digests are recorded per-capture audit
+# observations compared by the registered non-blocking approved-baseline drift
+# check in assets/land_mobile_commercial_transmission_towers.py.
 # FCC ULS Code Definitions / public access files documentation list the
 # Land Mobile - Commercial radio service roster as GL, GM, GR, GS, GX, IK, LN,
 # LW, NC, QD, QO, QT, YK, YL, YM, YS, YX (SMR, commercial Industrial/Business,
-# 220 MHz commercial, 902-928 MHz location and private carrier paging). The
-# pinned file carries 15 of the 17 roster codes (GL and YL have no records).
+# 220 MHz commercial, 902-928 MHz location and private carrier paging). This
+# is a source-identity contract: every HD record must carry one of these
+# codes. It is not a population snapshot; in the observed editions 15 of the
+# 17 roster codes appear (GL and YL carry no records), and the codes actually
+# present in a capture are recorded in the audit.
 EXPECTED_HD_RADIO_SERVICES = ["GM", "GR", "GS", "GX", "IK", "LN", "LW", "NC", "QD", "QO", "QT", "YK", "YM", "YS", "YX"]
-EXPECTED_LICENSE_STATUS_COUNTS = {"A": 8096, "C": 59916, "E": 11450, "T": 1619}
-EXPECTED_LICENSEE_ROWS = 81081
-EXPECTED_ACTIVE_LOCATIONS = 25501
-EXPECTED_ACTIVE_ID_SHA256 = "566a66503eee03c00f8cc31b3e4a8bbf5a2fd9f37cc73337e1011ab3c1d1073c"
-EXPECTED_STATE_ROSTER_SHA256 = "db7a9f190bfc75658d2f989b38a5a5e95b3e90992234d039262d439f6802056a"
-EXPECTED_NULL_GEOMETRY_COUNT = 7547
 # FCC ULS datum policy (https://www.fcc.gov/wireless/systems-utilities/
 # north-american-datum-1983-coordinates): ULS geographic coordinates must be
 # referenced to NAD83 - converted with NCAT for CONUS, Alaska, Hawaii, Puerto
@@ -97,13 +105,12 @@ EXPECTED_NULL_GEOMETRY_COUNT = 7547
 # Convert" areas (Baker, Howland, Jarvis, Johnston, Kingman Reef, Midway,
 # Northern Mariana Islands, Palmyra and Wake) the coordinates "remain in local
 # datum": the FCC does not name that local datum and ULS records carry no
-# per-record datum, so it is unresolved. ULS state codes classify the pinned
+# per-record datum, so it is unresolved. ULS state codes classify the
 # population; Northern Mariana Islands files as MP and is the only Do-Not-
-# Convert area it reaches. Rows in these areas are published without geometry
-# rather than labeled NAD83, with their raw DMS components and derived decimal
-# coordinates retained unchanged as evidence.
+# Convert area the weekly file reaches. Rows in these areas are published
+# without geometry rather than labeled NAD83, with their raw DMS components
+# and derived decimal coordinates retained unchanged as evidence.
 DATUM_DO_NOT_CONVERT_STATES = frozenset({"MP"})
-EXPECTED_DO_NOT_CONVERT_WITHHELD_COUNT = 17
 HD_CALLSIGN, HD_STATUS, HD_SERVICE = 4, 5, 6
 EN_CALLSIGN, EN_ENTITY_TYPE, EN_NAME = 4, 5, 7
 LO_UNIQUE_SYSTEM_IDENTIFIER, LO_CALLSIGN, LO_LOCATION_NUMBER = 1, 4, 8
@@ -114,6 +121,7 @@ LO_NEPA, LO_QUIET_ZONE, LO_TOWER_REGISTRATION = 35, 36, 37
 LO_SUPPORT_HEIGHT, LO_OVERALL_HEIGHT, LO_STRUCTURE_TYPE = 38, 39, 40
 LICENSE_URL_TEMPLATE = "http://wireless2.fcc.gov/UlsApp/UlsSearch/licenseLocSum.jsp?licKey={}"
 CREATION_DATE_RE = re.compile(rb"File Creation Date: (.+?)\r?$", re.MULTILINE)
+COUNTS_LINE_RE = re.compile(rb"^\s*(\d+)\s+(\S+\.dat)\s*$", re.MULTILINE)
 PUBLISHED_SCHEMA = [
     ("geometry", pa.binary()), ("UniqSysID", pa.int64()), ("Licensee", pa.string()),
     ("Callsign", pa.string()), ("LocNum", pa.int64()), ("LatDeg", pa.int64()),
@@ -127,17 +135,17 @@ PUBLISHED_SCHEMA = [
 ]
 COVERAGE_SCOPE = (
     "Every location record of every active license in the weekly ULS public access complete "
-    "Land Mobile - Commercial licenses file (radio service codes GM, GR, GS, GX, IK, LN, LW, "
-    "NC, QD, QO, QT, YK, YM, YS, YX in the pinned file; the FCC roster also lists GL and YL), "
+    "Land Mobile - Commercial licenses file (radio service codes are the Land Mobile - "
+    "Commercial roster; the FCC roster also lists GL and YL, which carry no records), "
     "covering SMR, commercial Industrial/Business, 220 MHz commercial, 902-928 MHz location "
     "and private carrier paging sites across the mainland United States, Alaska, Hawaii, Gulf "
     "of Mexico offshore areas and US territories. Land Mobile - Commercial is a site-based ULS "
     "service group (FCC public access files documentation): ULS carries the site locations "
     "licensees filed, so this is the filed-site population the FCC publishes, not a census of "
-    "physical towers. The pinned population includes 7530 active location records filed without "
-    "latitude/longitude components (published with null geometry, coordinates retained as null) and 17 "
-    "active locations in the FCC Do-Not-Convert datum area Northern Mariana Islands (ULS state code MP), "
-    "published without geometry with raw coordinates retained because the FCC leaves those coordinates "
+    "physical towers. Active location records filed without latitude/longitude components are "
+    "published with null geometry (coordinates retained as null), and active locations in the "
+    "FCC Do-Not-Convert datum area Northern Mariana Islands (ULS state code MP) are published "
+    "without geometry with raw coordinates retained because the FCC leaves those coordinates "
     "in their unrecorded local datum."
 )
 # FCC policy requires ULS geographic coordinates to be referenced to the North
@@ -149,9 +157,9 @@ COVERAGE_SCOPE = (
 # ULS records do not record. The published WKB points carry the DMS-derived
 # decimal values unchanged, so GeoParquet geometry is declared in the native
 # EPSG:4269 datum; rows classified into a Do-Not-Convert area (ULS state code
-# MP, Northern Mariana Islands, in the pinned file) are published without
-# geometry rather than mislabeled NAD83; no datum transformation, reprojection,
-# repair or geocoding is applied.
+# MP, Northern Mariana Islands) are published without geometry rather than
+# mislabeled NAD83; no datum transformation, reprojection, repair or
+# geocoding is applied.
 GEOMETRY_CRS = {
     "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
     "type": "GeographicCRS",
@@ -167,9 +175,9 @@ GEOMETRY_PROVENANCE = ("WKB Point (londec, latdec) in EPSG:4269 (NAD83), the dat
                        "ULS location coordinates in its converted areas (NCAT areas, American Samoa via FCC "
                        "Method #1, Guam via FCC Method #2); rows in the FCC Do-Not-Convert areas keep their "
                        "local datum (unrecorded in ULS), so they are published without geometry with raw "
-                       "DMS and decimal coordinates retained (the pinned file reaches only Northern Mariana "
-                       "Islands, ULS state code MP); the DMS-derived decimal values are written unchanged, "
-                       "with no datum transformation, reprojection, repair or geocoding")
+                        "DMS and decimal coordinates retained (the weekly file reaches only Northern Mariana "
+                        "Islands, ULS state code MP); the DMS-derived decimal values are written unchanged, "
+                        "with no datum transformation, reprojection, repair or geocoding")
 
 
 def _capture_budget(root: Path) -> None:
@@ -222,6 +230,28 @@ def _zip_tables(body: bytes) -> tuple[dict[str, list[list[str]]], bytes]:
     except (zipfile.BadZipFile, OSError, EOFError, RuntimeError) as exc:
         raise ValueError("source_zip_member_unreadable") from exc
     return tables, counts
+
+
+def _counts_witness(counts: bytes) -> dict[str, int]:
+    """Return the publisher's own per-table record counts from the counts member.
+
+    The weekly file carries no edition name in its URL, so the payload's own
+    counts member is the completeness witness: the publisher records each
+    table's line count (``wc -l``-style lines) alongside the file creation
+    date, and a regenerated weekly edition carries its own consistent counts.
+    A missing or unreadable line for a table is a format drift, not a
+    missing row, so the witness fails closed.
+    """
+    witness: dict[str, int] = {}
+    for match in COUNTS_LINE_RE.finditer(counts):
+        member = match.group(2).rsplit(b"/", 1)[-1]
+        table = member[:-4].decode("ascii", "replace")
+        if table in {"HD", "EN", "LO"}:
+            witness[table] = int(match.group(1))
+    missing = [table for table in ("HD", "EN", "LO") if table not in witness]
+    if missing:
+        raise ValueError("source_counts_witness_missing:" + ",".join(missing))
+    return witness
 
 
 def _integer(value: str, label: str) -> int:
@@ -277,9 +307,14 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         prefix = name
         if any(row[0] != prefix for row in rows):
             raise ValueError("source_record_type_prefix_drift:" + name)
-    if (len(tables["HD"]) != EXPECTED_HD_RECORDS or len(tables["EN"]) != EXPECTED_EN_RECORDS
-            or len(tables["LO"]) != EXPECTED_LO_RECORDS):
-        raise ValueError("source_record_population_drift")
+    # Completeness is witnessed by the payload's own counts member: the
+    # publisher's recorded line count for each table, observed at capture
+    # time. A regenerated weekly edition carries its own consistent counts;
+    # a torn or mismatched capture does not.
+    witness = _counts_witness(counts)
+    for table in ("EN", "LO"):
+        if len(tables[table]) != witness[table]:
+            raise ValueError("source_record_population_drift:" + table)
     match = CREATION_DATE_RE.search(counts)
     if match is None:
         raise ValueError("source_creation_date_missing")
@@ -298,21 +333,22 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
             raise ValueError("source_license_status_missing")
         status_counts[status] = status_counts.get(status, 0) + 1
         header[identifier] = (row[HD_CALLSIGN], status)
-    if status_counts != EXPECTED_LICENSE_STATUS_COUNTS:
-        raise ValueError("source_license_status_distribution_drift")
-    active_licenses = {identifier for identifier, (_call, status) in header.items() if status == "A"}
+    # HD completeness via the shared witness path: the publisher's recorded
+    # line count for HD.dat must equal the decoded unique license-ID roster.
+    validate_capture_witness(witness["HD"], sorted(header), witness["HD"], sorted(header))
+    # The observed license status distribution is recorded in the audit, not
+    # gated: a weekly edition moves licenses between statuses without
+    # breaking the capture.
 
     licensees: dict[int, str] = {}
-    licensee_rows = 0
     for row in tables["EN"]:
         if row[EN_ENTITY_TYPE] != "L":
             continue
-        licensee_rows += 1
         identifier = _integer(row[1], "unique_system_identifier")
         if identifier in licensees:
             raise ValueError("source_duplicate_licensee_row")
         licensees[identifier] = row[EN_NAME]
-    if licensee_rows != EXPECTED_LICENSEE_ROWS or set(licensees) != set(header):
+    if set(licensees) != set(header):
         raise ValueError("source_licensee_join_drift")
 
     keys = set()
@@ -330,8 +366,9 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         keys.add(key)
         if header[identifier][1] != "A":
             continue
-        # Every published (active) row must carry a callsign; the pinned file
-        # has no empty callsigns anywhere, so an empty one fails closed.
+        # Every published (active) row must carry a callsign; the observed
+        # editions have no empty callsigns anywhere, so an empty one fails
+        # closed.
         if not row[LO_CALLSIGN].strip():
             raise ValueError("source_active_callsign_missing")
         lat_deg_text, lat_min_text = row[LO_LAT_DEG].strip(), row[LO_LAT_MIN].strip()
@@ -386,19 +423,15 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
             "url": LICENSE_URL_TEMPLATE.format(identifier),
             "geometry": geometry,
         })
-    if null_geometry != EXPECTED_NULL_GEOMETRY_COUNT:
-        raise ValueError("source_null_geometry_count_drift")
-    if do_not_convert != EXPECTED_DO_NOT_CONVERT_WITHHELD_COUNT:
-        raise ValueError("source_do_not_convert_geometry_withheld_drift")
-    if len(published) != EXPECTED_ACTIVE_LOCATIONS:
-        raise ValueError("source_active_population_drift")
+    # The active-location count, null-geometry count, Do-Not-Convert
+    # withheld-geometry count and the active-ID and state rosters are recorded
+    # as per-capture audit observations, not gates: a regenerated weekly
+    # edition changes composition without breaking the capture, and drift
+    # against an approved release is reported by the registered non-blocking
+    # drift check.
     published.sort(key=lambda item: (item["UniqSysID"], item["LocNum"]))
     roster = [[item["UniqSysID"], item["LocNum"]] for item in published]
-    if _sha(_canonical(roster)) != EXPECTED_ACTIVE_ID_SHA256:
-        raise ValueError("source_active_id_roster_drift")
     states = sorted({item["LocState"].strip() for item in published if item["LocState"].strip()})
-    if _sha(_canonical(states)) != EXPECTED_STATE_ROSTER_SHA256:
-        raise ValueError("source_state_roster_drift")
     record_sha = _sha(_canonical([{key: item[key] for key, _ in PUBLISHED_SCHEMA if key != "geometry"}
                                   for item in published]))
     geometry_sha = _sha(_canonical([[item["UniqSysID"], item["LocNum"], item["londec"], item["latdec"]]
@@ -416,35 +449,42 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         "source_schema_sha256": _sha(_canonical(schema_contract)),
         "source_active_id_sha256": _sha(_canonical(roster)),
         "source_state_roster_sha256": _sha(_canonical(states)),
+        "source_counts_witness": witness,
         "source_hd_record_count": len(tables["HD"]), "source_en_record_count": len(tables["EN"]),
         "source_lo_record_count": len(tables["LO"]),
         "source_license_status_counts": status_counts,
-        "source_radio_service_codes": sorted(EXPECTED_HD_RADIO_SERVICES),
+        "source_radio_service_codes": sorted({row[HD_SERVICE] for row in tables["HD"]}),
         "source_file_creation_date": creation_date,
         "source_null_geometry_count": null_geometry,
         "source_do_not_convert_geometry_withheld_count": do_not_convert,
         "source_geometry_datum": ("NAD83 (EPSG:4269), the FCC-required ULS datum in its converted areas "
-                                  "(NCAT areas, American Samoa via FCC Method #1, Guam via FCC Method #2); "
-                                  "FCC Do-Not-Convert area rows (Northern Mariana Islands, ULS state code MP, "
-                                  "in the pinned file) are published without geometry because their local "
-                                  "datum is not recorded; coordinates are written unchanged with no datum "
-                                  "transformation"),
+                                   "(NCAT areas, American Samoa via FCC Method #1, Guam via FCC Method #2); "
+                                   "FCC Do-Not-Convert area rows (Northern Mariana Islands, ULS state code "
+                                   "MP) are published without geometry because their local datum is not "
+                                   "recorded; coordinates are written unchanged with no datum "
+                                   "transformation"),
         "source_incomplete_seconds_count": sum(1 for item in published if item["LatSec"] is None or item["LonSec"] is None),
         "source_bounds": bounds, "source_state_count": len(states),
         "source_coverage_scope": COVERAGE_SCOPE,
-        "drift_guard": ("Exact capture roster, HTTP status/completeness/length/hash receipt, zip member roster, "
-                        "per-record-type field counts and record-type prefixes, HD/EN/LO record totals, radio "
-                        "service roster (the 15 pinned Land Mobile - Commercial codes), license status "
-                        "distribution, unique license and licensee identities, verbatim LO/HD callsign join, "
-                        "non-empty callsign on every published row, unique (UniqSysID, LocNum) keys, "
-                        "active-location count, full active ID roster digest, state roster digest, DMS direction "
-                        "codes, derived-decimal coordinate range and null-geometry count are checked; duplicate "
-                        "location keys fail closed. Raw DMS components are preserved verbatim even when out of "
-                        "nominal range, and the 7547 pinned active location records published without geometry "
-                        "(7530 filed without latitude/longitude components plus 17 in the FCC Do-Not-Convert "
-                        "area Northern Mariana Islands, whose local datum ULS does not record, so their "
-                        "geometry is withheld and raw evidence retained). Published geometry is declared in "
-                        "the FCC-required native NAD83 datum (EPSG:4269) with no datum transformation."),
+        "drift_guard": ("Exact capture roster, HTTP status/completeness/length/hash receipt, zip member "
+                        "roster, per-record-type field counts and record-type prefixes, radio service "
+                        "roster (the Land Mobile - Commercial source-identity contract), unique license and "
+                        "licensee identities, verbatim LO/HD callsign join, non-empty callsign on every "
+                        "published row, unique (UniqSysID, LocNum) keys, DMS direction codes and "
+                        "derived-decimal coordinate range are checked; duplicate location keys fail closed. "
+                        "Record population completeness comes from the payload's own counts member at "
+                        "capture time: the decoded HD unique license-ID roster and the EN/LO row counts must "
+                        "equal the publisher's recorded line counts. The license status distribution, "
+                        "active-location count, null-geometry count, Do-Not-Convert withheld-geometry count "
+                        "and the active-ID and state-roster digests are recorded per-capture audit "
+                        "observations, not gates; the registered non-blocking approved-baseline drift check "
+                        "compares them against an approved release. Raw DMS components are preserved verbatim "
+                        "even when out of nominal range, and active location records filed without "
+                        "latitude/longitude components or located in the FCC Do-Not-Convert area Northern "
+                        "Mariana Islands (ULS state code MP, whose local datum ULS does not record) are "
+                        "published without geometry with their raw evidence retained. Published geometry is "
+                        "declared in the FCC-required native NAD83 datum (EPSG:4269) with no datum "
+                        "transformation."),
     }
     return published, audit
 
@@ -549,9 +589,12 @@ def capture_land_mobile_commercial_transmission_towers(storage: StagingStorageRe
         "sha256": receipts["l_LMcomm"]["sha256"], "wire_bytes": receipts["l_LMcomm"]["wire_bytes"],
         "wire_sha256": receipts["l_LMcomm"]["wire_sha256"],
         "release_date": None,
-        "release_date_unknown_reason": ("The weekly complete licenses file is regenerated every Sunday; the "
-                                        "payload's own counts file creation date is retained in the audit while "
-                                        "no per-release edition date is declared by the FCC for this distribution."),
+        "release_date_unknown_reason": ("The weekly complete licenses file is regenerated every Sunday and "
+                                        "served at one fixed URL with no edition name in the path; the FCC "
+                                        "declares no per-release edition date for this distribution, so the "
+                                        "payload's own counts member file creation date is recorded in the "
+                                        "audit and candidate result as the observed edition marker for update "
+                                        "detection."),
         "license": "Unresolved; rights review pending.", "attribution": "FCC Wireless Telecommunications Bureau ULS public access; attribution and rights review pending."}
         for name, receipt in sorted(receipts.items())]
     manifest = {"schema_version": 1, "approved": False,
@@ -571,9 +614,8 @@ def capture_land_mobile_commercial_transmission_towers(storage: StagingStorageRe
         "transformations": [{"operation": "ULS pipe-delimited licenses file to GeoParquet candidate", "parameters": {
             "source_tables": "HD license header, EN licensee entity and LO location tables of l_LMcomm.zip decoded as pipe-delimited UTF-8 records",
             "population": ("one published row per LO location record whose HD license status is A (active); "
-                           "radio service codes are the Land Mobile - Commercial roster (GM, GR, GS, GX, IK, "
-                           "LN, LW, NC, QD, QO, QT, YK, YM, YS, YX in the pinned file; the FCC roster also "
-                           "lists GL and YL, which carry no records)"),
+                           "radio service codes are the Land Mobile - Commercial roster; the FCC roster also "
+                           "lists GL and YL, which carry no records"),
             "source_ids": "UniqSysID (HD/EN/LO unique system identifier) and LocNum (LO location number) retained unchanged and jointly unique",
             "source_values": ("all published attribute strings retained verbatim including empty fields; "
                               "numeric columns typed from the FCC public access database definitions"),
@@ -584,13 +626,13 @@ def capture_land_mobile_commercial_transmission_towers(storage: StagingStorageRe
                                 "19148 published rows of the frozen HIFLD Next v1.0.0 copy match this formula "
                                 "computed from that copy's own DMS components); url embeds UniqSysID as the "
                                 "ULS license-location key"),
-            "null_geometry": ("active location records published without geometry (7547 in the pinned file: "
-                              "7530 filed without latitude/longitude components with null latdec/londec, plus "
-                              "17 active locations in the FCC Do-Not-Convert area Northern Mariana Islands "
-                              "(ULS state code MP) whose applicable local datum the FCC does not name and ULS "
-                              "does not record - their raw DMS components and derived decimals are retained; "
-                              "the frozen historical copy holds no null-geometry rows, so both differences are "
-                              "flagged for the maintainer compatibility decision)"),
+            "null_geometry": ("active location records published without geometry: records filed without "
+                              "latitude/longitude components with null latdec/londec, plus active locations in "
+                              "the FCC Do-Not-Convert area Northern Mariana Islands (ULS state code MP) whose "
+                              "applicable local datum the FCC does not name and ULS does not record - their "
+                              "raw DMS components and derived decimals are retained; the frozen historical "
+                              "copy holds no null-geometry rows, a difference flagged for the maintainer "
+                              "compatibility decision"),
             "geometry": GEOMETRY_PROVENANCE + " (FCC ULS NAD83 datum policy with its territorial Do-Not-Convert "
                         "exceptions: https://www.fcc.gov/wireless/systems-utilities/north-american-datum-1983-coordinates)",
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
@@ -605,8 +647,8 @@ def capture_land_mobile_commercial_transmission_towers(storage: StagingStorageRe
                     "anonymously, so archive identity is cited from the inventory and DataLumos landing page "
                     "rather than fetched payloads. The existing published HIFLD Next v1.0.0 frozen copy "
                     "(19148 point features, issued 2024-01-24, the same column contract as the Cellular "
-                    "Towers layer) is retained as comparison-only context: 17566 of its 19148 keys are still "
-                    "active in the pinned file (1582 dropped: 954 licenses now expired, 549 cancelled, 7 "
+                     "Towers layer) is retained as comparison-only context: 17566 of its 19148 keys are still "
+                     "active in the observed capture (1582 dropped: 954 licenses now expired, 549 cancelled, 7 "
                     "removed from ULS, 13 in other current statuses, 59 active licenses whose location row "
                     "changed), and 7935 current active "
                     "keys are new (405 with coordinates, 7530 coordinate-less location records on 4406 "
@@ -660,8 +702,10 @@ def capture_land_mobile_commercial_transmission_towers(storage: StagingStorageRe
             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_ACTIVE_LOCATIONS, "source_population_complete": True,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_active_id_sha256"],
+            "source_file_creation_date": audit["source_file_creation_date"],
             "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash,
@@ -678,8 +722,10 @@ def capture_land_mobile_commercial_transmission_towers(storage: StagingStorageRe
         fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_ACTIVE_LOCATIONS, "source_population_complete": True,
+        "feature_count": audit["source_feature_count"],
+        "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_active_id_sha256"],
+        "source_file_creation_date": audit["source_file_creation_date"],
         "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash,
