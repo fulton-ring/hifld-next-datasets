@@ -1,4 +1,14 @@
-"""Complete native capture of the FCC ULS weekly microwave public-access licenses file."""
+"""Complete native capture of the FCC ULS weekly microwave public-access licenses file.
+
+The FCC serves one fixed URL replaced weekly with no edition name in the path.
+The payload's own counts member — per-table line counts plus the file creation
+date — is the capture-time completeness witness and the observed edition
+marker, recorded in the audit and the candidate result. A regenerated edition's
+changed composition is reported by the registered non-blocking
+approved-baseline drift check instead of being refused. The source's own
+duplicate (UniqSysID, LocNum) location rows are published verbatim rather than
+dropped.
+"""
 from __future__ import annotations
 
 
@@ -18,6 +28,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
@@ -59,36 +70,28 @@ ZIP_MEMBER_ROSTER = [
     "f3.dat", "f5.dat", "f6.dat", "ir.dat", "lc.dat", "ll.dat", "p2.dat", "tp.dat",
 ]
 RECORD_FIELD_COUNTS = {"HD": 59, "EN": 30, "LO": 51}
-EXPECTED_HD_RECORDS = 367714
-EXPECTED_EN_RECORDS = 708208
-EXPECTED_LO_RECORDS = 926693
-EXPECTED_LICENSEE_ROWS = 367714
-# The pinned 2026-11-08 weekly edition carries the complete ULS Microwave
-# service-group radio service roster: Part 101 fixed microwave (CF common
-# carrier, MG operational-fixed, MM/NN multiple address, PF private fixed,
-# CT local television transmission) plus the co-located ULS broadcast
-# auxiliary codes (AB, AI, AS, MW, TB, TI, TP, TS, TT) and WA/PE.
+# Population-level values (HD/EN/LO record totals, license status distribution,
+# active-location count, service-row distribution, duplicate-key roster,
+# null-geometry and invalid-direction counts) are not pinned in code:
+# completeness comes from the payload's own counts member at capture time
+# (_counts_witness), and the active-ID, state-roster and duplicate-key digests
+# are recorded per-capture audit observations compared by the registered
+# non-blocking approved-baseline drift check in
+# assets/microwave_service_towers.py. Duplicate (UniqSysID, LocNum) location
+# rows present in the source are published verbatim rather than dropped or
+# de-duplicated; that policy is a contract, while the observed duplicate-key
+# roster is an audit observation, not a gate.
+# The weekly l_micro file is the ULS publication for the Microwave service
+# group, so its HD radio service codes form a service-group contract rather
+# than an edition snapshot: Part 101 fixed microwave (CF common carrier, MG
+# operational-fixed, MM/NN multiple address, PF private fixed, CT local
+# television transmission) plus the co-located ULS broadcast auxiliary codes
+# (AB, AI, AS, CE, MW, TB, TI, TP, TS, TT) and WA/PE. An unknown code is a
+# service-group membership drift and fails closed.
 EXPECTED_HD_RADIO_SERVICES = [
     "AB", "AI", "AS", "CE", "CF", "CT", "MG", "MM", "MW", "NN", "PE", "PF", "TB",
     "TI", "TP", "TS", "TT", "WA",
 ]
-EXPECTED_LICENSE_STATUS_COUNTS = {"A": 165339, "C": 133569, "P": 516, "E": 48979, "T": 19311}
-EXPECTED_ACTIVE_LOCATIONS = 422808
-EXPECTED_ACTIVE_ID_SHA256 = "0cd9dcf48276480d7050d20d3525ccbeb92ed7b27e50384f8772dca004d6275b"
-EXPECTED_STATE_ROSTER_SHA256 = "87db4904970d966a96dcda07f1fe4c46e3b838c10a25a13b1a9be985f6657a8f"
-EXPECTED_NULL_GEOMETRY_COUNT = 449
-# The source itself carries duplicate (UniqSysID, LocNum) location rows
-# (re-filed coordinates for one location number); they are published verbatim
-# rather than dropped or de-duplicated. The 16-key roster is pinned so any
-# change fails closed for review.
-EXPECTED_DUPLICATE_LOCATION_KEYS = 16
-EXPECTED_DUPLICATE_KEY_SHA256 = "3446a607b62c6fbcd3a30c2bfc68ab83b6d77f86c30e5fa59e3d5beabe99d929"
-EXPECTED_ACTIVE_SERVICE_ROW_COUNTS = {
-    "AB": 10, "AI": 1394, "AS": 18744, "CF": 139508, "CT": 175, "MG": 143695,
-    "MM": 20, "MW": 90425, "PF": 13365, "TB": 2, "TI": 7810, "TP": 2830,
-    "TS": 4220, "TT": 600, "WA": 10,
-}
-EXPECTED_INVALID_DIRECTION_COUNT = 3
 HD_CALLSIGN, HD_STATUS, HD_SERVICE = 4, 5, 6
 EN_CALLSIGN, EN_ENTITY_TYPE, EN_NAME = 4, 5, 7
 LO_UNIQUE_SYSTEM_IDENTIFIER, LO_CALLSIGN, LO_LOCATION_NUMBER = 1, 4, 8
@@ -99,6 +102,7 @@ LO_NEPA, LO_QUIET_ZONE, LO_TOWER_REGISTRATION = 35, 36, 37
 LO_SUPPORT_HEIGHT, LO_OVERALL_HEIGHT, LO_STRUCTURE_TYPE = 38, 39, 40
 LICENSE_URL_TEMPLATE = "http://wireless2.fcc.gov/UlsApp/UlsSearch/licenseLocSum.jsp?licKey={}"
 CREATION_DATE_RE = re.compile(rb"File Creation Date: (.+?)\r?$", re.MULTILINE)
+COUNTS_LINE_RE = re.compile(rb"^\s*(\d+)\s+(\S+\.dat)\s*$", re.MULTILINE)
 PUBLISHED_SCHEMA = [
     ("geometry", pa.binary()), ("UniqSysID", pa.int64()), ("Licensee", pa.string()),
     ("Callsign", pa.string()), ("LocNum", pa.int64()), ("LatDeg", pa.int64()),
@@ -208,6 +212,28 @@ def _member_texts(body: bytes) -> tuple[dict[str, str], bytes]:
     return texts, counts
 
 
+def _counts_witness(counts: bytes) -> dict[str, int]:
+    """Return the publisher's own per-table record counts from the counts member.
+
+    The weekly file carries no edition name in its URL, so the payload's own
+    counts member is the completeness witness: the publisher records each
+    table's line count (``wc -l``-style lines) alongside the file creation
+    date, and a regenerated weekly edition carries its own consistent counts.
+    A missing or unreadable line for a table is a format drift, not a
+    missing row, so the witness fails closed.
+    """
+    witness: dict[str, int] = {}
+    for match in COUNTS_LINE_RE.finditer(counts):
+        member = match.group(2).rsplit(b"/", 1)[-1]
+        table = member[:-4].decode("ascii", "replace")
+        if table in {"HD", "EN", "LO"}:
+            witness[table] = int(match.group(1))
+    missing = [table for table in ("HD", "EN", "LO") if table not in witness]
+    if missing:
+        raise ValueError("source_counts_witness_missing:" + ",".join(missing))
+    return witness
+
+
 def _integer(value: str, label: str) -> int:
     try:
         return int(value.strip())
@@ -252,6 +278,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
             or receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)):
         raise ValueError("source_capture_status_length_hash_or_completeness_drift")
     texts, counts = _member_texts(body)
+    # Completeness is witnessed by the payload's own counts member: the
+    # publisher's recorded line count for each table, observed at capture
+    # time. A regenerated weekly edition carries its own consistent counts;
+    # a torn or mismatched capture does not.
+    witness = _counts_witness(counts)
     match = CREATION_DATE_RE.search(counts)
     if match is None:
         raise ValueError("source_creation_date_missing")
@@ -259,6 +290,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
 
     header = {}
     status_counts = {}
+    observed_services = set()
     hd_records = 0
     for row in _iter_rows(texts["HD"], "HD"):
         hd_records += 1
@@ -271,27 +303,28 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         if not status:
             raise ValueError("source_license_status_missing")
         status_counts[status] = status_counts.get(status, 0) + 1
+        observed_services.add(row[HD_SERVICE])
         header[identifier] = (row[HD_CALLSIGN], status, row[HD_SERVICE])
-    if hd_records != EXPECTED_HD_RECORDS:
-        raise ValueError("source_record_population_drift")
-    if status_counts != EXPECTED_LICENSE_STATUS_COUNTS:
-        raise ValueError("source_license_status_distribution_drift")
+    # HD completeness via the shared witness path: the publisher's recorded
+    # line count for HD.dat must equal the decoded unique license-ID roster.
+    validate_capture_witness(witness["HD"], sorted(header), witness["HD"], sorted(header))
+    # The observed license status distribution is recorded in the audit, not
+    # gated: a weekly edition moves licenses between statuses without
+    # breaking the capture.
 
     licensees: dict[int, str] = {}
-    licensee_rows = 0
     en_records = 0
     for row in _iter_rows(texts["EN"], "EN"):
         en_records += 1
         if row[EN_ENTITY_TYPE] != "L":
             continue
-        licensee_rows += 1
         identifier = _integer(row[1], "unique_system_identifier")
         if identifier in licensees:
             raise ValueError("source_duplicate_licensee_row")
         licensees[identifier] = row[EN_NAME]
-    if en_records != EXPECTED_EN_RECORDS:
-        raise ValueError("source_record_population_drift")
-    if licensee_rows != EXPECTED_LICENSEE_ROWS or set(licensees) != set(header):
+    if en_records != witness["EN"]:
+        raise ValueError("source_record_population_drift:EN")
+    if set(licensees) != set(header):
         raise ValueError("source_licensee_join_drift")
 
     keys = Counter()
@@ -356,28 +389,20 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
             "url": LICENSE_URL_TEMPLATE.format(identifier),
             "geometry": None if not lat_deg_text else _point_wkb(lon_dec, lat_dec),
         })
+    if lo_records != witness["LO"]:
+        raise ValueError("source_record_population_drift:LO")
+    # The source itself carries duplicate (UniqSysID, LocNum) location rows
+    # (re-filed coordinates for one location number); the verbatim-publish
+    # policy is a contract and they are published rather than dropped. The
+    # observed duplicate-key roster, the null-geometry, invalid-direction and
+    # service-row distributions and the active-location count are recorded
+    # per-capture audit observations, not gates: a regenerated weekly edition
+    # changes composition without breaking the capture, and drift against an
+    # approved release is reported by the registered non-blocking drift check.
     duplicates = sorted([list(key) for key, count in keys.items() if count > 1])
-    if lo_records != EXPECTED_LO_RECORDS:
-        raise ValueError("source_record_population_drift")
-    if len(duplicates) != EXPECTED_DUPLICATE_LOCATION_KEYS:
-        raise ValueError("source_duplicate_location_key_count_drift")
-    if _sha(_canonical(duplicates)) != EXPECTED_DUPLICATE_KEY_SHA256:
-        raise ValueError("source_duplicate_key_roster_drift")
-    if null_geometry != EXPECTED_NULL_GEOMETRY_COUNT:
-        raise ValueError("source_null_geometry_count_drift")
-    if invalid_directions != EXPECTED_INVALID_DIRECTION_COUNT:
-        raise ValueError("source_invalid_direction_count_drift")
-    if service_row_counts != Counter(EXPECTED_ACTIVE_SERVICE_ROW_COUNTS):
-        raise ValueError("source_service_row_distribution_drift")
-    if len(published) != EXPECTED_ACTIVE_LOCATIONS:
-        raise ValueError("source_active_population_drift")
     published.sort(key=lambda item: (item["UniqSysID"], item["LocNum"]))
     roster = [[item["UniqSysID"], item["LocNum"]] for item in published]
-    if _sha(_canonical(roster)) != EXPECTED_ACTIVE_ID_SHA256:
-        raise ValueError("source_active_id_roster_drift")
     states = sorted({item["LocState"].strip() for item in published if item["LocState"].strip()})
-    if _sha(_canonical(states)) != EXPECTED_STATE_ROSTER_SHA256:
-        raise ValueError("source_state_roster_drift")
     record_sha = _sha(_canonical([{key: item[key] for key, _ in PUBLISHED_SCHEMA if key != "geometry"}
                                   for item in published]))
     geometry_sha = _sha(_canonical([[item["UniqSysID"], item["LocNum"], item["londec"], item["latdec"]]
@@ -395,10 +420,11 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
         "source_schema_sha256": _sha(_canonical(schema_contract)),
         "source_active_id_sha256": _sha(_canonical(roster)),
         "source_state_roster_sha256": _sha(_canonical(states)),
+        "source_counts_witness": witness,
         "source_hd_record_count": hd_records, "source_en_record_count": en_records,
         "source_lo_record_count": lo_records,
         "source_license_status_counts": status_counts,
-        "source_radio_service_codes": sorted(EXPECTED_HD_RADIO_SERVICES),
+        "source_radio_service_codes": sorted(observed_services),
         "source_service_row_counts": dict(sorted(service_row_counts.items())),
         "source_duplicate_location_key_count": len(duplicates),
         "source_duplicate_key_roster_sha256": _sha(_canonical(duplicates)),
@@ -409,17 +435,22 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[dict], dict
                                  "coordinates are written unchanged with no datum transformation",
         "source_bounds": bounds, "source_state_count": len(states),
         "source_coverage_scope": COVERAGE_SCOPE,
-        "drift_guard": ("Exact capture roster, HTTP status/completeness/length/hash receipt, zip member roster, "
-                        "per-record-type field counts and record-type prefixes, HD/EN/LO record totals, radio "
-                        "service roster, license status distribution, unique license and licensee identities, "
-                        "LO/HD callsign join, active-location count, full active ID roster digest, service-row "
-                        "distribution, duplicate (UniqSysID, LocNum) key count and roster digest, state roster "
-                        "digest, DMS direction preservation count, derived-decimal coordinate range and "
-                        "null-geometry count are checked. Duplicate source location rows are published verbatim "
-                        "rather than dropped; direction letters outside the nominal set are preserved and "
-                        "converted by the plain formula without sign flip; fully empty DMS rows stay null "
-                        "geometry, and one-sided empty DMS rows fail closed. Published geometry is declared in "
-                        "the FCC-required native NAD83 datum (EPSG:4269) with no datum transformation."),
+        "drift_guard": ("Exact capture roster, HTTP status/completeness/length/hash receipt, zip member "
+                        "roster, per-record-type field counts and record-type prefixes, radio service "
+                        "roster, unique license and licensee identities, LO/HD callsign join, derived-decimal "
+                        "coordinate range and partial-DMS fail-closed are checked. Record population "
+                        "completeness comes from the payload's own counts member at capture time: the decoded "
+                        "HD unique license-ID roster and the EN/LO row counts must equal the publisher's "
+                        "recorded line counts. Duplicate source (UniqSysID, LocNum) location rows are "
+                        "published verbatim rather than dropped. The license status distribution, "
+                        "active-location count, service-row distribution, duplicate-key roster, null-geometry "
+                        "count, invalid-direction count and the active-ID and state-roster digests are "
+                        "recorded per-capture audit observations, not gates; the registered non-blocking "
+                        "approved-baseline drift check compares them against an approved release. Direction "
+                        "letters outside the nominal set are preserved and converted by the plain formula "
+                        "without sign flip; fully empty DMS rows stay null geometry, and one-sided empty DMS "
+                        "rows fail closed. Published geometry is declared in the FCC-required native NAD83 "
+                        "datum (EPSG:4269) with no datum transformation."),
     }
     return published, audit
 
@@ -524,9 +555,11 @@ def capture_microwave_service_towers(storage: StagingStorageResource, *, version
         "sha256": receipts["l_micro"]["sha256"], "wire_bytes": receipts["l_micro"]["wire_bytes"],
         "wire_sha256": receipts["l_micro"]["wire_sha256"],
         "release_date": None,
-        "release_date_unknown_reason": ("The weekly complete file is regenerated every Sunday; the payload's own "
-                                        "counts file creation date is retained in the audit while no per-release "
-                                        "edition date is declared by the FCC for this distribution."),
+        "release_date_unknown_reason": ("The weekly complete file is regenerated every Sunday and served at one "
+                                        "fixed URL with no edition name in the path; the FCC declares no per-release "
+                                        "edition date for this distribution, so the payload's own counts member "
+                                        "file creation date is recorded in the audit and candidate result as the "
+                                        "observed edition marker for update detection."),
         "license": "Unresolved; rights review pending.", "attribution": "FCC Wireless Telecommunications Bureau ULS public access; attribution and rights review pending."}
         for name, receipt in sorted(receipts.items())]
     manifest = {"schema_version": 1, "approved": False, "title": "Microwave Service Towers (FCC ULS)",
@@ -608,8 +641,10 @@ def capture_microwave_service_towers(storage: StagingStorageResource, *, version
             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_ACTIVE_LOCATIONS, "source_population_complete": True,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_active_id_sha256"],
+            "source_file_creation_date": audit["source_file_creation_date"],
             "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash,
@@ -626,8 +661,10 @@ def capture_microwave_service_towers(storage: StagingStorageResource, *, version
         fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_ACTIVE_LOCATIONS, "source_population_complete": True,
+        "feature_count": audit["source_feature_count"],
+        "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_active_id_sha256"],
+        "source_file_creation_date": audit["source_file_creation_date"],
         "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash,
