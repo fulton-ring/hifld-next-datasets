@@ -222,5 +222,60 @@ class EiaEthanolPlantsSourceContractTest(unittest.TestCase):
                 _load_capture("unknown", root)
 
 
+class _EmptyClient:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+
+class EiaEthanolPlantsFailureRetentionTest(unittest.TestCase):
+    def test_failed_capture_retains_good_capture_and_records_bad_receipt(self):
+        import dagster_hifld.sources.eia_ethanol_plants as src
+
+        body = (b"U.S. Fuel Ethanol Plant Production Capacity EIA-819, Monthly "
+                b"Report of Biofuels, Fuels from Non-Biogenic Wastes")
+        wire = b"capacity page wire"
+        receipt = {"method": "GET", "url": CAPACITY_REPORT_URL, "final_url": CAPACITY_REPORT_URL,
+                   "observed_at": "2026-11-23T00:00:00+00:00", "status": 200, "complete_body": True,
+                   "wire_bytes": len(wire), "wire_sha256": _sha(wire),
+                   "bytes": len(body), "sha256": _sha(body),
+                   "content_encoding": None, "content_length": None, "error_code": None}
+
+        def fake_capture_get(_client, _url, capture_root, name, *, max_bytes):
+            if name == "capacity_page":
+                (capture_root / f"{name}.body").write_bytes(body)
+                (capture_root / f"{name}.wire").write_bytes(wire)
+                (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+                return body, receipt
+            (capture_root / f"{name}.body").write_bytes(b"partial zip")
+            (capture_root / f"{name}.wire").write_bytes(b"partial zip")
+            (capture_root / f"{name}.receipt.json").write_bytes(b'{"method": "GET"')
+            raise OSError("connection reset")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            storage = src.StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            with patch.object(src, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(src.httpx, "Client", side_effect=lambda *args, **kwargs: _EmptyClient()):
+                with self.assertRaises(OSError) as raised:
+                    src._capture(root / "captures", storage, "vfixture")
+            self.assertEqual(str(raised.exception), "connection reset")
+            failure_keys = [key for key in storage.list_prefix("_quarantine")
+                            if key.endswith("metadata/failure.json")]
+            self.assertEqual(len(failure_keys), 1)
+            base = failure_keys[0][: -len("metadata/failure.json")]
+            failure = json.loads(storage.read_key(failure_keys[0]))
+            self.assertEqual(failure["reason_code"], "OSError")
+            self.assertEqual(failure["captured_names"], ["capacity_page"])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "eia_zip",
+                               "reason": "retained_capture_receipt_unreadable:eia_zip"}])
+            self.assertEqual(storage.read_key(base + "raw/capacity_page.body"), body)
+            self.assertEqual(storage.read_key(base + "raw/capacity_page.wire"), wire)
+            self.assertFalse((root / "captures" / "capture_manifest.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

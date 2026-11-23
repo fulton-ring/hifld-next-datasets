@@ -18,7 +18,7 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.capture_common import candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable
+from dagster_hifld.sources.capture_common import candidate_prefix, capture_get, processing_identity, retain_failed_capture, seal_ready_candidate, verify_cached_candidate, write_immutable
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "natural-gas-processing-plants-1"
@@ -186,21 +186,18 @@ def _capture(root,storage,version):
         if receipt!=m["receipts"]["eia_zip"]: raise ValueError("capture_manifest_receipt_drift")
         return body,wire,receipt
     if any(root.glob("*.body")) or any(root.glob("*.wire")) or any(root.glob("*.receipt.json")): raise ValueError("unsealed_capture_attempt")
-    root.mkdir(parents=True,exist_ok=True);caps={}
+    root.mkdir(parents=True,exist_ok=True)
     try:
         with httpx.Client(follow_redirects=False,timeout=httpx.Timeout(60,connect=15),headers={"User-Agent":"hifld-next-datasets/natural-gas-processing-plants-draft"}) as client: body,receipt=capture_get(client,SOURCE_URL,root,"eia_zip",max_bytes=10_000_000)
         if receipt.get("method")!="GET" or receipt.get("url")!=SOURCE_URL or receipt.get("final_url")!=SOURCE_URL: raise ValueError("source_request_identity_mismatch")
-        caps["eia_zip"]=(body,receipt)
         with tempfile.TemporaryDirectory(dir=root) as tmp: _decode(body,Path(tmp))
         mp.write_bytes(_canonical({"complete":True,"captured_at":datetime.now(timezone.utc).isoformat(),"receipts":{"eia_zip":receipt},"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
         return body,(root/"eia_zip.wire").read_bytes(),receipt
     except Exception as exc:
-        rec={}
-        for p in root.glob("*.receipt.json"):
-            try: rec[p.name.removesuffix(".receipt.json")]=json.loads(p.read_bytes());caps.setdefault("eia_zip",((root/"eia_zip.body").read_bytes(),rec[p.name.removesuffix(".receipt.json")]))
-            except Exception: pass
-        mp.write_bytes(_canonical({"complete":False,"captured_at":datetime.now(timezone.utc).isoformat(),"error_code":type(exc).__name__,"receipts":rec})+b"\n")
-        if caps: quarantine_incomplete_capture(storage,root,DATASET_SLUG,version,caps,type(exc).__name__)
+        # This manifest is the local attempt seal; the retained/not-retained
+        # roster is written by retain_failed_capture into the quarantine.
+        mp.write_bytes(_canonical({"complete":False,"captured_at":datetime.now(timezone.utc).isoformat(),"error_code":type(exc).__name__,"receipts":{}})+b"\n")
+        retain_failed_capture(storage,root,DATASET_SLUG,version,exc,error=ValueError)
         raise
 
 def capture_natural_gas_processing_plants(storage:StagingStorageResource,*,version:str,capture_directory:str|None=None)->dict:

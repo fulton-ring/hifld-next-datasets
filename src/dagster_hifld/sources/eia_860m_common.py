@@ -30,7 +30,7 @@ from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, validate_capture_request_identity,
+    retain_failed_capture, seal_ready_candidate, validate_capture_request_identity,
     verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical, sha
@@ -276,11 +276,7 @@ def capture_workbook_documents(storage: StagingStorageResource, *, dataset_slug:
         sheets,layout=read_existing_workbook(captures['workbook'][0],period)
         generators,plants,audit=normalize_existing(sheets)
     except Exception as exc:
-        for receipt_path in root.glob('*.receipt.json'):
-            name=receipt_path.name.removesuffix('.receipt.json')
-            try: captures.setdefault(name,((root/f'{name}.body').read_bytes(),json.loads(receipt_path.read_bytes())))
-            except (OSError,ValueError): pass
-        if captures: quarantine_incomplete_capture(storage,root,dataset_slug,'current',captures,type(exc).__name__)
+        retain_failed_capture(storage,root,dataset_slug,'current',exc,error=ValueError)
         raise
     finally:
         if owned: active.close()

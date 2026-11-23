@@ -26,7 +26,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, capture_get, processing_identity, retain_failed_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -261,20 +261,7 @@ def _capture(root, storage, version):
         return {name: (caps[name][0], (root / f"{name}.wire").read_bytes(), caps[name][1])
                 for name in _EXPECTED_URLS}
     except Exception as exc:
-        rec = {}
-        for p in root.glob("*.receipt.json"):
-            name = p.name.removesuffix(".receipt.json")
-            try:
-                rec[name] = json.loads(p.read_bytes())
-                body_path = root / f"{name}.body"
-                if body_path.exists():
-                    caps.setdefault(name, (body_path.read_bytes(), rec[name]))
-            except Exception:
-                pass
-        mp.write_bytes(_canonical({"complete": False, "captured_at": datetime.now(timezone.utc).isoformat(),
-                                   "error_code": type(exc).__name__, "receipts": rec}) + b"\n")
-        if caps:
-            quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, caps, type(exc).__name__)
+        retain_failed_capture(storage, root, DATASET_SLUG, version, exc, error=ValueError)
         raise
 
 
