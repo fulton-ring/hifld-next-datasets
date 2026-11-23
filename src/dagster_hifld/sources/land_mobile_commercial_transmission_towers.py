@@ -156,10 +156,10 @@ COVERAGE_SCOPE = (
 # coordinates in their applicable local datum, which the FCC does not name and
 # ULS records do not record. The published WKB points carry the DMS-derived
 # decimal values unchanged, so GeoParquet geometry is declared in the native
- # EPSG:4269 datum; rows classified into a Do-Not-Convert area (ULS state code
- # MP, Northern Mariana Islands) are published without geometry rather than
- # mislabeled NAD83; no datum transformation, reprojection, repair or
- # geocoding is applied.
+# EPSG:4269 datum; rows classified into a Do-Not-Convert area (ULS state code
+# MP, Northern Mariana Islands) are published without geometry rather than
+# mislabeled NAD83; no datum transformation, reprojection, repair or
+# geocoding is applied.
 GEOMETRY_CRS = {
     "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
     "type": "GeographicCRS",
