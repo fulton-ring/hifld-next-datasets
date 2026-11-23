@@ -6,13 +6,14 @@ at `https://data.fcc.gov/download/pub/uls/complete/l_LMpriv.zip`, the official
 bulk distribution to which the FCC moved ULS downloads in July 2021. The
 published population is every location (`LO`) record whose license header (`HD`)
 status is `A` (active) and whose LO record carries both latitude and longitude
-degree components — 603775 coordinate-bearing locations of 861663 licenses
-(925853 active location rows; 322063 active filed locations without a complete
-coordinate pair are excluded, matching the historical layer, whose 605297 rows
-all carry geometry; a further 15 active coordinate-bearing filings in the FCC
-do-not-convert local-datum territories (12 MP, 3 UM) are excluded from the
-published coordinate-bearing population and preserved in the audit, see the
-datum paragraph below) — under the historical HIFLD Land Mobile Private
+degree components (603775 coordinate-bearing locations of 861663 licenses in
+the pinned weekly file: 925853 active location rows; 322063 active filed
+locations without a complete coordinate pair are excluded, matching the
+historical layer, whose 605297 rows all carry geometry; a further 15 active
+coordinate-bearing filings in the FCC do-not-convert local-datum territories
+(12 MP, 3 UM) are excluded from the published coordinate-bearing population
+and preserved in the audit, see the datum paragraph below) — under the
+historical HIFLD Land Mobile Private
 Transmission Towers column contract (`UniqSysID`, `Licensee`, `Callsign`,
 `LocNum`, DMS coordinates, address fields, `Nepa`, `QZone`, `TowReg`,
 `SupStruc`, `AllStruc`, `StrucType`, `LicStatus`, derived `latdec`/`londec`,
@@ -25,21 +26,32 @@ population, not a census of physical towers.
 
 The capture retains the complete zip body (425978433 bytes in the pinned
 edition, sha256 `73670d67b85cb66c66d81bd4ea4228aa6ef659b7eb1ebf55cbf8bc11b8cba428`),
-wire body and request receipt; the payload's own `counts` file creation date
-(Sun Nov  8 09:16:00 EST 2026) and the HTTP receipt provide dated freshness
-evidence distinct from fetch time, and the counts file's per-member record
-totals are cross-checked against the parsed HD/EN/LO records (861663 / 1528207 /
-2008597). Validation fails closed on capture roster and receipt drift, zip
-member roster, per-record-type field counts and record-type prefixes (only the
-pinned empty-trailing-field artifact rows — one HD, two EN — are tolerated, and
-LO anomalies fail closed), the full 35-member counts-file map, radio service
-distribution (30 codes, IG 609503 … SP 2) and license status distribution
-(A 332080, E 420397, C 66936, T 42250), unique license and licensee identities,
-LO/HD callsign join, the coordinate-bearing population count, the full active ID
-roster digest, state roster digest (58 values, including the verbatim `$`,
-`US` and lowercase `ca` source values), DMS direction codes, bounds,
+wire body and request receipt. The FCC serves the weekly file at one fixed URL
+and replaces it in place, with no edition name in the path; the payload's own
+`counts` member is therefore the completeness witness and its file creation
+date (Sun Nov  8 09:16:00 EST 2026 in the pinned edition) the observed edition
+marker, both recorded in the audit and the candidate result, and the HTTP
+receipt provides dated fetch-time evidence. Record population completeness is
+checked against the publisher's own `counts` member at capture time: the
+decoded HD unique license-ID roster (via the shared `validate_capture_witness`
+path) and the EN/LO row counts must equal the line counts the publisher
+recorded for those members. Validation fails closed on capture roster and
+receipt drift, zip
+member roster, per-record-type field counts and record-type prefixes (a single trailing empty field is tolerated and dropped, anything else
+fails), unique license and licensee identities, licensee join, LO/HD callsign
+join, and the bounds envelope of the published coordinates (the nominal degree
+system, admitting the documented as-filed latitude excursion). The radio
+service distribution (30 codes in the pinned edition, IG 609503 … SP 2),
+license status distribution (A 332080, E 420397, C 66936, T 42250),
+active-location count, missing-coordinate count, duplicate-key counts,
 empty-callsign rows (2, one license with no callsign filed), out-of-range
-derived coordinates (1) and extra-field row counts. Raw DMS components are
+derived coordinates (1), extra-field row counts, latitude/longitude direction
+distributions, the full active ID roster digest, state roster digest (58
+values, including the verbatim `$`, `US` and lowercase `ca` source values) and
+the observed bounds are recorded as per-capture audit observations rather than
+gates, so a regenerated weekly edition is adopted and its drift against an
+approved release is reported by the registered non-blocking approved-baseline
+drift check. Raw DMS components are
 preserved verbatim; the pinned edition contains one filed latitude (93 degrees,
 Grundy County MO) whose derived decimal leaves the nominal range and 16 rows
 whose direction components are empty or non-canonical (`''`, `0`, `3`, lowercase
@@ -47,7 +59,7 @@ whose direction components are empty or non-canonical (`''`, `0`, `3`, lowercase
 historical extract's hemisphere convention (only `S` marks southern latitude
 and only `E` marks eastern longitude, so missing or non-canonical direction
 components default to north/west, exactly as the frozen layer's own rows for
-the same keys show), and pinned by count instead of being clamped or dropped,
+the same keys show), and counted instead of being clamped or dropped,
 because the FCC's own layer description anticipates exactly such errors ("It is
 known that there are some errors in the licensing information - Latitude,
 Longitude and Ground Elevation data"). The weekly refresh schedule is stopped.
@@ -73,7 +85,7 @@ published coordinate-bearing population — 15 rows in the pinned edition (12
 `MP`, 3 `UM`: Palmyra Atoll and Wake Island) — and preserved in full (all filed
 attributes plus their derived
 `latdec`/`londec`) in the source audit (`source_local_datum_quarantined_records`,
-pinned by count and record digest), never silently removed, shifted or
+recorded by count and record digest per edition), never silently removed, shifted or
 mislabeled NAD83; they are not re-labeled NAD83 in the geometry column.
 
 Column contract relative to the frozen copy: the published HIFLD Next v1.0.0

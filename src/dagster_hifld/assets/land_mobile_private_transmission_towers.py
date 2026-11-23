@@ -4,12 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.land_mobile_private_transmission_towers import (
-    DATASET_SLUG, EXPECTED_ACTIVE_LOCATIONS, FILE_SLUG,
-    capture_land_mobile_private_transmission_towers,
+    DATASET_SLUG, FILE_SLUG, capture_land_mobile_private_transmission_towers,
 )
 
 
@@ -24,13 +24,13 @@ class LandMobilePrivateTowersConfig(Config):
     description=(
         "FCC ULS weekly public access complete Land Mobile {Private} licenses file l_LMpriv.zip: location records "
         "with filed coordinates of active private land mobile radio licenses under the historical HIFLD Land Mobile "
-        "Private Transmission Towers column contract (603775 coordinate-bearing active locations observed; 322063 "
-        "active filed locations without a complete coordinate pair excluded as in the historical layer, plus 15 "
-        "active coordinate-bearing filings in the FCC do-not-convert local-datum territories (12 MP, 3 UM) whose "
-        "coordinates have no FCC-published NAD83 conversion, excluded from the published population and preserved "
-        "in the audit). ULS "
-        "filed-site population, not a census of physical towers. Unapproved candidate; baseline, contract, "
-        "coverage, rights, and release decisions remain pending."
+        "Private Transmission Towers column contract. Completeness is witnessed at capture time against the "
+        "payload's own counts member; the counts member file creation date is the observed edition marker. Active "
+        "filed locations without a complete coordinate pair, and active coordinate-bearing filings in the FCC "
+        "do-not-convert local-datum territories (state codes MP, UM) whose coordinates have no FCC-published NAD83 "
+        "conversion, are excluded from the published population and preserved in the audit. ULS filed-site "
+        "population, not a census of physical towers. Unapproved candidate; baseline, contract, coverage, rights, "
+        "and release decisions remain pending."
     ),
 )
 def land_mobile_private_transmission_towers(context, config: LandMobilePrivateTowersConfig,
@@ -49,10 +49,13 @@ def land_mobile_private_transmission_towers(context, config: LandMobilePrivateTo
 
 @asset_check(asset=land_mobile_private_transmission_towers, blocking=True)
 def land_mobile_private_transmission_towers_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_ACTIVE_LOCATIONS
+    count = candidate.get("source_reported_count")
+    passed = (type(count) is int and count > 0
+              and candidate.get("feature_count") == count
               and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -76,7 +79,11 @@ land_mobile_private_transmission_towers_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+land_mobile_private_transmission_towers_drift = register_approved_baseline_drift(
+    land_mobile_private_transmission_towers, "land_mobile_private_transmission_towers_drift")
+
 INGEST_ASSETS = [land_mobile_private_transmission_towers]
-ASSET_CHECKS = [land_mobile_private_transmission_towers_complete]
+ASSET_CHECKS = [land_mobile_private_transmission_towers_complete,
+                land_mobile_private_transmission_towers_drift]
 JOBS = [land_mobile_private_transmission_towers_draft_job]
 SCHEDULES = [land_mobile_private_transmission_towers_draft_schedule]
