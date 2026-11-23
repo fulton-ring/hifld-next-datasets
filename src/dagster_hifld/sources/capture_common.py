@@ -407,7 +407,9 @@ def quarantine_incomplete_capture(storage: StagingStorageResource, capture_root:
     token = f"{version}-{uuid4().hex}"
     base = f"_quarantine/{dataset_slug}/{token}"
     captured_names: list[str] = []
-    skipped = [dict(entry) for entry in not_retained]
+    # not_retained is omitted while empty so adapters not yet migrated on
+    # issue #1225 keep their existing failure.json contract.
+    skipped: list[dict[str, str]] = [dict(entry) for entry in not_retained]
     for name in captures:
         try:
             body, receipt = captures[name]
@@ -427,12 +429,10 @@ def quarantine_incomplete_capture(storage: StagingStorageResource, capture_root:
         write_immutable(storage, f"{base}/raw/{name}.wire", wire)
         write_immutable(storage, f"{base}/raw/{name}.receipt.json", _canonical(dict(receipt)) + b"\n")
         captured_names.append(str(name))
-    write_immutable(storage, f"{base}/metadata/failure.json",
-                    _canonical({"reason_code": reason_code,
-                                "captured_names": sorted(captured_names),
-                                "not_retained": sorted(skipped,
-                                                       key=lambda entry: str(entry.get("name")))})
-                    + b"\n")
+    failure = {"reason_code": reason_code, "captured_names": sorted(captured_names)}
+    if skipped:
+        failure["not_retained"] = sorted(skipped, key=lambda entry: str(entry.get("name")))
+    write_immutable(storage, f"{base}/metadata/failure.json", _canonical(failure) + b"\n")
     return base
 
 

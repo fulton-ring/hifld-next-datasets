@@ -121,7 +121,9 @@ class RetainFailedCaptureTest(unittest.TestCase):
                                             OSError("connection reset"), error=ValueError)
         doc = json.loads(self.storage.read_key(base + "/metadata/failure.json"))
         self.assertEqual(doc["captured_names"], ["partial"])
-        self.assertEqual(doc["not_retained"], [])
+        # An empty not_retained list is omitted to keep the pre-migration
+        # failure.json contract for adapters not yet on issue #1225.
+        self.assertNotIn("not_retained", doc)
 
     def test_helper_failure_is_recorded_and_does_not_replace_original(self):
         _write_capture(self.capture, "good")
@@ -146,9 +148,7 @@ class RetainFailedCaptureTest(unittest.TestCase):
                                             ValueError("source_capture_incomplete"),
                                             error=ValueError)
         doc = json.loads(self.storage.read_key(base + "/metadata/failure.json"))
-        self.assertEqual(doc["reason_code"], "ValueError")
-        self.assertEqual(doc["captured_names"], [])
-        self.assertEqual(doc["not_retained"], [])
+        self.assertEqual(doc, {"reason_code": "ValueError", "captured_names": []})
 
     def test_missing_capture_root_is_recorded_not_raised(self):
         base = common.retain_failed_capture(self.storage, self.root / "absent", "dataset", "v1",
