@@ -168,7 +168,6 @@ def _candidate_parquet(fields: list[dict[str, object]], features: list[dict[str,
                         for f in attr_fields]
                        + [pa.field("source_geometry", source_type, nullable=True),
                           pa.field("geometry", pa.binary(), nullable=True)])
-    names = [f["name"] for f in attr_fields] + ["source_geometry", "geometry"]
 
     def _attribute_column(field: dict, chunk: list) -> pa.Array:
         values = [row["attributes"].get(field["name"]) for row in chunk]
@@ -200,7 +199,7 @@ def _candidate_parquet(fields: list[dict[str, object]], features: list[dict[str,
                 projected.append((Point(geom["x"], geom["y"], geom.get("z")).wkb if "z" in geom else Point(geom["x"], geom["y"]).wkb) if valid else None)
             arrays.append(pa.array(native, type=source_type))
             arrays.append(pa.array(projected, type=pa.binary()))
-            yield pa.record_batch(arrays, names=names)
+            yield pa.record_batch(arrays, schema=schema)
 
     return stream_geoparquet_candidate(
         schema, 4326, batches(), Path(capture_dir) / "candidate.parquet",

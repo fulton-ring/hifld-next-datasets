@@ -97,7 +97,6 @@ def _native_candidate(fields: list[dict], features: list[dict],
     # SHAPE is returned through the Esri geometry member. Other attributes,
     # including nullable BLOB values, retain their declared source types.
     attr_fields = [f for f in fields if f["type"] != "esriFieldTypeGeometry"]
-    names = [f["name"] for f in attr_fields] + ["geometry"]
     schema = pa.schema([pa.field(f["name"], _arrow_type(f), nullable=f.get("nullable", True))
                         for f in attr_fields] + [pa.field("geometry", pa.binary(), nullable=False)])
 
@@ -108,7 +107,7 @@ def _native_candidate(fields: list[dict], features: list[dict],
                       for f in attr_fields]
             arrays.append(pa.array([_esri_polygon(x["geometry"]).wkb for x in chunk],
                                    type=pa.binary()))
-            yield pa.record_batch(arrays, names=names)
+            yield pa.record_batch(arrays, schema=schema)
 
     return stream_geoparquet_candidate(
         schema, 4326, batches(), Path(capture_dir) / "candidate.parquet",

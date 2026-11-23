@@ -84,7 +84,6 @@ def _esri_polygon(geometry: dict) -> MultiPolygon:
 
 def _native_candidate(fields: list[dict], source_fields: list[dict], features: list[dict],
                       capture_dir: Path) -> tuple[Path, str, int]:
-    names = [f["name"] for f in fields] + ["geometry"]
     schema = pa.schema([pa.field(
         f["name"], _arrow_type(f), nullable=f.get("nullable", True),
         metadata={b"esri:source_field": _canonical(f)},
@@ -99,7 +98,7 @@ def _native_candidate(fields: list[dict], source_fields: list[dict], features: l
                       for f in fields]
             arrays.append(pa.array([_esri_polygon(x["geometry"]).wkb for x in chunk],
                                    type=pa.binary()))
-            yield pa.record_batch(arrays, names=names)
+            yield pa.record_batch(arrays, schema=schema)
 
     return stream_geoparquet_candidate(
         schema, 4326, batches(), Path(capture_dir) / "candidate.parquet",
