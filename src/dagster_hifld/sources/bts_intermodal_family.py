@@ -618,4 +618,4 @@ def capture_bts_intermodal(spec: BtsIntermodalSpec, storage: StagingStorageResou
         "source_null_geometry_count":audit["source_null_geometry_count"],
         "source_invalid_geometry_count":audit["source_invalid_geometry_count"],"candidate_ready":prefix+"/metadata/candidate_ready.json",
         "capture_directory":str(capture_root),"source_release_accepted":False,"schema_contract_accepted":False,
-        "id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"release_accepted":False}
+        "id_contract_accepted":False,"freshness_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
