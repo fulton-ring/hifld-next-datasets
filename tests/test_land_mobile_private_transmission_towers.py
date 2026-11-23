@@ -5,16 +5,17 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from unittest import mock
 
-from dagster import DefaultScheduleStatus
+from dagster import AssetCheckSeverity, DefaultScheduleStatus
 import pyarrow.parquet as pq
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
 from dagster_hifld.assets.land_mobile_private_transmission_towers import (
     land_mobile_private_transmission_towers,
     land_mobile_private_transmission_towers_complete,
     land_mobile_private_transmission_towers_draft_schedule,
+    land_mobile_private_transmission_towers_drift,
 )
+from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import land_mobile_private_transmission_towers as source
 from dagster_hifld.sources.esri_common import canonical as _canonical
@@ -83,7 +84,8 @@ def _documents():
     return hd, en, lo
 
 
-def _members(hd, en, lo, extra=()):
+def _members(hd, en, lo, extra=(), counts=None,
+             creation_date="Sun Nov  8 09:16:00 EST 2026"):
     content = {}
     for name in source.ZIP_MEMBER_ROSTER:
         if name == "HD.dat":
@@ -93,13 +95,12 @@ def _members(hd, en, lo, extra=()):
         elif name == "LO.dat":
             content[name] = ("\r\n".join(lo) + "\r\n").encode()
         elif name == "counts":
-            total = len(hd) + len(en) + len(lo)
-            content[name] = ("\r\n".join([
-                "File Creation Date: Sun Nov  8 09:16:00 EST 2026",
-                f"{len(hd):4d} /home/pubacc/scripts/licweekzipdata/HD.dat",
-                f"{len(en):4d} /home/pubacc/scripts/licweekzipdata/EN.dat",
-                f"{len(lo):4d} /home/pubacc/scripts/licweekzipdata/LO.dat",
-                f"{total:4d} total"]) + "\r\n").encode()
+            declared = counts if counts is not None else {"HD": len(hd), "EN": len(en), "LO": len(lo)}
+            total = sum(declared.values())
+            content[name] = ("File Creation Date: " + creation_date + "\r\n"
+                             + "\r\n".join(f"{count} /home/pubacc/scripts/licweekzipdata/{table}.dat"
+                                           for table, count in sorted(declared.items()))
+                             + f"\r\n{total:4d} total\r\n").encode()
         else:
             content[name] = b""
     stream = io.BytesIO()
@@ -110,55 +111,37 @@ def _members(hd, en, lo, extra=()):
 
 
 def _capture(body):
-    return {"l_LMpriv": (body, {"method": "GET", "url": source.L_LMPRIV_URL, "final_url": source.L_LMPRIV_URL,
-                                "status": 200, "complete_body": True, "bytes": len(body), "sha256": _sha(body)})}
+    return {"l_LMpriv": (body, {"method": "GET", "url": source.L_LMPRIV_URL,
+                                "final_url": source.L_LMPRIV_URL, "status": 200,
+                                "complete_body": True, "bytes": len(body), "sha256": _sha(body)})}
 
 
 class LandMobilePrivateTowersTests(unittest.TestCase):
-    def _pins(self, hd, en, lo):
-        roster = sorted([[101, 1], [101, 1], [103, 1], [103, 2], [104, 1], [104, 2]])
-        states = sorted({"CA", "MO", "NV", "GU"})
-        return {
-            "EXPECTED_COUNTS_FILE": {"HD.dat": len(hd), "EN.dat": len(en), "LO.dat": len(lo)},
-            "EXPECTED_HD_RECORDS": len(hd), "EXPECTED_EN_RECORDS": len(en), "EXPECTED_LO_RECORDS": len(lo),
-            "EXPECTED_RADIO_SERVICE_COUNTS": {"IG": 2, "PW": 1, "YG": 1},
-            "EXPECTED_LICENSE_STATUS_COUNTS": {"A": 3, "C": 1}, "EXPECTED_LICENSEE_ROWS": 4,
-            "EXPECTED_ACTIVE_LOCATION_ROWS": 7, "EXPECTED_MISSING_COORDINATE_ROWS": 1,
-            "EXPECTED_ACTIVE_LOCATIONS": 6, "EXPECTED_DUPLICATE_LOCATION_KEY_COUNT": 1,
-            "EXPECTED_PUBLISHED_DUPLICATE_LOCATION_KEY_COUNT": 1,
-            "EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS": 0,
-            "EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256": _sha(_canonical([])),
-            "EXPECTED_EMPTY_CALLSIGN_ROWS": 2, "EXPECTED_OUT_OF_RANGE_COORDINATE_ROWS": 1,
-            "EXPECTED_LAT_DIRECTION_COUNTS": {"N": 4, "S": 1, "": 1},
-            "EXPECTED_LON_DIRECTION_COUNTS": {"W": 4, "E": 1, "": 1},
-            "EXPECTED_EXTRA_FIELD_ROWS": {"HD": 0, "EN": 0, "LO": 0},
-            "EXPECTED_ACTIVE_ID_SHA256": _sha(_canonical(roster)),
-            "EXPECTED_STATE_ROSTER_SHA256": _sha(_canonical(states)),
-            "EXPECTED_BOUNDS": [-123.0, -14.0, 145.333333333, 93.0],
-        }
-
-    def _validate(self, hd, en, lo, pins=None):
-        patches = [mock.patch.object(source, name, value)
-                   for name, value in (pins or self._pins(hd, en, lo)).items()]
-        for patch in patches:
-            patch.start()
-        try:
-            return source._validate(_capture(_members(hd, en, lo)))
-        finally:
-            for patch in patches:
-                patch.stop()
+    def _validate(self, hd, en, lo, counts=None):
+        return source._validate(_capture(_members(hd, en, lo, counts=counts)))
 
     def test_registered_stopped_asset_and_unapproved_blocking_check(self):
         self.assertIn(land_mobile_private_transmission_towers, hifld_ingest_assets)
         self.assertEqual(land_mobile_private_transmission_towers_draft_schedule.default_status,
                          DefaultScheduleStatus.STOPPED)
         check = land_mobile_private_transmission_towers_complete(
-            {"feature_count": source.EXPECTED_ACTIVE_LOCATIONS, "source_population_complete": True})
+            {"feature_count": 6, "source_reported_count": 6, "source_population_complete": True})
         self.assertTrue(check.passed)
         self.assertFalse(check.metadata["release_accepted"].value)
         failed = land_mobile_private_transmission_towers_complete(
-            {"feature_count": source.EXPECTED_ACTIVE_LOCATIONS + 1, "source_population_complete": True})
+            {"feature_count": 7, "source_reported_count": 6, "source_population_complete": True})
         self.assertFalse(failed.passed)
+        inconsistent = land_mobile_private_transmission_towers_complete(
+            {"feature_count": 6, "source_population_complete": True})
+        self.assertFalse(inconsistent.passed)
+        drift = land_mobile_private_transmission_towers_drift(
+            {"dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+             "feature_count": 6, "source_reported_count": 6,
+             "source_population_complete": True, "source_id_sha256": _sha(b"roster")})
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+        self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+        self.assertFalse(list(land_mobile_private_transmission_towers_drift.check_specs)[0].blocking)
 
     def test_complete_native_population_and_published_contract(self):
         hd, en, lo = _documents()
@@ -167,6 +150,11 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
                          [(101, 1), (101, 1), (103, 1), (103, 2), (104, 1), (104, 2)])
         self.assertTrue(all(row["LicStatus"] == "A" for row in published))
         self.assertEqual(audit["source_feature_count"], 6)
+        self.assertEqual(audit["source_counts_witness"], {"HD": 4, "EN": 5, "LO": 8})
+        self.assertEqual(audit["source_hd_record_count"], 4)
+        self.assertEqual(audit["source_en_record_count"], 5)
+        self.assertEqual(audit["source_lo_record_count"], 8)
+        self.assertEqual(audit["source_licensee_rows"], 4)
         self.assertEqual(audit["source_license_status_counts"], {"A": 3, "C": 1})
         self.assertEqual(audit["source_radio_service_codes"], ["IG", "PW", "YG"])
         self.assertEqual(audit["source_state_count"], 4)
@@ -179,7 +167,6 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
         self.assertEqual(audit["source_duplicate_location_key_count"], 1)
         self.assertEqual(audit["source_published_duplicate_location_key_count"], 1)
         self.assertEqual(audit["source_file_creation_date"], "Sun Nov  8 09:16:00 EST 2026")
-        self.assertEqual(audit["source_counts_file"], {"HD.dat": 4, "EN.dat": 5, "LO.dat": 8})
         self.assertEqual(audit["source_bounds"], [-123.0, -14.0, 145.333333333, 93.0])
         self.assertIn("not a census of physical towers", audit["source_coverage_scope"])
         duplicate_rows = [row for row in published if (row["UniqSysID"], row["LocNum"]) == (101, 1)]
@@ -261,22 +248,69 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
         self.assertEqual(audit["source_coordinate_datum"]["crs"], "EPSG:4269")
         self.assertIn("north-american-datum-1983-coordinates", audit["source_coordinate_datum"]["fcc_policy_url"])
         self.assertIn("no datum transformation", audit["source_coordinate_datum"]["statement"])
-        # The declared-NAD83 WKB coordinates are the DMS-to-decimal conversion of the
-        # filed values exactly (38°30'15"N, 121°45'30"W), with no datum shift applied.
         self.assertEqual(struct.unpack("<BIdd", table.to_pylist()[0]["geometry"]),
                          (1, 1, -121.758333333, 38.5041666667))
 
-    def test_do_not_convert_local_datum_filings_are_quarantined_fail_closed(self):
+    def test_upstream_edition_with_added_active_license_witnesses_and_warns(self):
         hd, en, lo = _documents()
-        hd = [*hd, _hd(105, "KNKA105", "A", service="PA")]
-        en = [*en, _en(105, "KNKA105", "L", "Licensee Five")]
-        # A Northern Mariana Islands (MP) filing: FCC do-not-convert territory, so
-        # the filed coordinates remain in the applicable local datum with no
-        # FCC-published conversion to NAD83.
+        base_audit = self._validate(hd, en, lo)[1]
+        # The publisher's next weekly edition adds one active license with one
+        # filed location; the counts member in the same file witnesses it, and
+        # every retired snapshot pin (record totals, status and service
+        # distributions, active-location count, roster digests, bounds) is
+        # different in the new edition — the capture must still succeed.
+        hd2 = [*hd, _hd(105, "KNKD105", "A", service="PA")]
+        en2 = [*en, _en(105, "KNKD105", "L", "Licensee Five")]
+        lo2 = [*lo, _lo(105, "KNKD105", 1, state="OR")]
+        published, audit = self._validate(hd2, en2, lo2)
+        self.assertEqual(audit["source_feature_count"], 7)
+        self.assertEqual(audit["source_counts_witness"], {"HD": 5, "EN": 6, "LO": 9})
+        self.assertEqual(audit["source_hd_record_count"], 5)
+        self.assertEqual(audit["source_licensee_rows"], 5)
+        self.assertEqual(audit["source_license_status_counts"], {"A": 4, "C": 1})
+        self.assertEqual(audit["source_radio_service_codes"], ["IG", "PA", "PW", "YG"])
+        self.assertEqual([(row["UniqSysID"], row["LocNum"]) for row in published],
+                         [(101, 1), (101, 1), (103, 1), (103, 2), (104, 1), (104, 2), (105, 1)])
+        # The composition drift is recorded, not refused.
+        self.assertNotEqual(audit["source_active_id_sha256"], base_audit["source_active_id_sha256"])
+        self.assertNotEqual(audit["source_state_roster_sha256"], base_audit["source_state_roster_sha256"])
+        candidate = {"dataset_slug": source.DATASET_SLUG, "file_slug": source.FILE_SLUG,
+                     "feature_count": audit["source_feature_count"],
+                     "source_reported_count": audit["source_feature_count"],
+                     "source_population_complete": True,
+                     "source_id_sha256": audit["source_active_id_sha256"]}
+        self.assertTrue(land_mobile_private_transmission_towers_complete(candidate).passed)
+        drift = land_mobile_private_transmission_towers_drift(candidate)
+        self.assertFalse(drift.passed)
+        self.assertEqual(drift.metadata["comparison_status"].value, "skipped_no_approved_baseline")
+        self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
+        self.assertFalse(list(land_mobile_private_transmission_towers_drift.check_specs)[0].blocking)
+        baseline = {**candidate, "version": "v-approved", "release_accepted": True,
+                    "feature_count": base_audit["source_feature_count"],
+                    "source_id_sha256": base_audit["source_active_id_sha256"]}
+        compared = approved_baseline_drift(candidate, baseline)
+        self.assertFalse(compared.passed)
+        self.assertEqual(compared.severity, AssetCheckSeverity.WARN)
+        self.assertEqual(compared.metadata["comparison_status"].value, "compared_approved_release")
+        self.assertEqual(compared.metadata["feature_count_delta"].value, 1)
+        self.assertTrue(compared.metadata["native_id_roster_changed"].value)
+
+    def test_do_not_convert_local_datum_filings_are_quarantined(self):
+        hd, en, lo = _documents()
+        hd = [*hd, _hd(105, "KNKA105", "A", service="PA"), _hd(106, "KNKA106", "A", service="PA")]
+        en = [*en, _en(105, "KNKA105", "L", "Licensee Five"), _en(106, "KNKA106", "L", "Licensee Six")]
+        # Northern Mariana Islands (MP) and US Minor Outlying Islands (UM)
+        # filings: FCC do-not-convert territories, so the filed coordinates
+        # remain in the applicable local datum with no FCC-published
+        # conversion to NAD83. A count of two (not the retired 15-row pin)
+        # must ingest: the quarantine is a policy, its count and digest are
+        # observations.
         mp_row = _lo(105, "KNKA105", 1, lat_deg="15", lat_min="7", lat_sec="25.6",
                      lon_deg="179", lon_min="43", lon_sec="28.9", state="MP")
-        lo = [*lo, mp_row]
-        quarantined = {
+        um_row = _lo(106, "KNKA106", 1, lat_deg="14", lat_min="10", lat_sec="0",
+                     lon_deg="162", lon_min="12", lon_sec="0", lon_dir="W", state="UM")
+        lo = [*lo, mp_row, um_row]
+        mp_record = {
             "UniqSysID": 105, "Licensee": "Licensee Five", "Callsign": "KNKA105", "LocNum": 1,
             "LatDeg": 15.0, "LatMin": 7.0, "LatSec": 25.6, "LatDir": "N",
             "LonDeg": 179.0, "LonMin": 43.0, "LonSec": 28.9, "LonDir": "W",
@@ -287,81 +321,56 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
             "londec": source._decimal_degrees(179.0, 43.0, 28.9, -1),
             "url": source.LICENSE_URL_TEMPLATE.format(105),
         }
-        pins = self._pins(hd, en, lo)
-        pins.update({
-            "EXPECTED_RADIO_SERVICE_COUNTS": {"IG": 2, "PW": 1, "YG": 1, "PA": 1},
-            "EXPECTED_LICENSE_STATUS_COUNTS": {"A": 4, "C": 1},
-            "EXPECTED_LICENSEE_ROWS": 5,
-            "EXPECTED_ACTIVE_LOCATION_ROWS": 8,
-            "EXPECTED_ACTIVE_LOCATIONS": 6,
-            "EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS": 1,
-            "EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256": _sha(_canonical([quarantined])),
-        })
-        published, audit = self._validate(hd, en, lo, pins)
-        self.assertNotIn((105, 1), [(row["UniqSysID"], row["LocNum"]) for row in published])
+        um_record = {
+            "UniqSysID": 106, "Licensee": "Licensee Six", "Callsign": "KNKA106", "LocNum": 1,
+            "LatDeg": 14.0, "LatMin": 10.0, "LatSec": 0.0, "LatDir": "N",
+            "LonDeg": 162.0, "LonMin": 12.0, "LonSec": 0.0, "LonDir": "W",
+            "LocAdd": "1 TOWER ROAD", "LocCity": "TOWNSVILLE", "LocCounty": "EXAMPLE",
+            "LocState": "UM", "Nepa": "N", "QZone": "", "TowReg": "1023448",
+            "SupStruc": 91.4, "AllStruc": 99.0, "StrucType": "TOWER", "LicStatus": "A",
+            "latdec": source._decimal_degrees(14.0, 10.0, 0.0, 1),
+            "londec": source._decimal_degrees(162.0, 12.0, 0.0, -1),
+            "url": source.LICENSE_URL_TEMPLATE.format(106),
+        }
+        published, audit = self._validate(hd, en, lo)
+        # Both do-not-convert rows are excluded from the published layer...
+        published_keys = [(row["UniqSysID"], row["LocNum"]) for row in published]
+        self.assertNotIn((105, 1), published_keys)
+        self.assertNotIn((106, 1), published_keys)
         self.assertEqual(audit["source_feature_count"], 6)
-        self.assertEqual(audit["source_local_datum_quarantined_rows"], 1)
-        self.assertEqual(audit["source_local_datum_quarantined_state_codes"], ["MP"])
-        self.assertEqual(audit["source_local_datum_quarantined_records"], [quarantined])
-        # The MP filing does not join the published state roster or bounds pin
-        # (its 179.7E longitude would otherwise extend the published bounds).
+        # ...but preserved in the audit with all filed attributes, at the
+        # observed count and digest.
+        self.assertEqual(audit["source_local_datum_quarantined_rows"], 2)
+        self.assertEqual(audit["source_local_datum_quarantined_state_codes"], ["MP", "UM"])
+        self.assertEqual(audit["source_local_datum_quarantined_records"], [mp_record, um_record])
+        self.assertEqual(audit["source_local_datum_quarantined_sha256"],
+                         _sha(_canonical([mp_record, um_record])))
+        # The quarantined filings do not join the published state roster or
+        # extend the published bounds.
         self.assertEqual(audit["source_state_count"], 4)
         self.assertEqual(audit["source_bounds"], [-123.0, -14.0, 145.333333333, 93.0])
         parquet = pq.read_table(io.BytesIO(source._parquet_bytes(published)))
         self.assertEqual(parquet.num_rows, 6)
         self.assertTrue(all(row["geometry"] is not None for row in parquet.to_pylist()))
-        pins = self._pins(hd, en, lo)
-        pins.update({
-            "EXPECTED_RADIO_SERVICE_COUNTS": {"IG": 2, "PW": 1, "YG": 1, "PA": 1},
-            "EXPECTED_LICENSE_STATUS_COUNTS": {"A": 4, "C": 1},
-            "EXPECTED_LICENSEE_ROWS": 5,
-            "EXPECTED_ACTIVE_LOCATION_ROWS": 8,
-            "EXPECTED_ACTIVE_LOCATIONS": 6,
-            "EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS": 2,
-            "EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256": _sha(_canonical([quarantined])),
-        })
-        with self.assertRaisesRegex(ValueError, "source_local_datum_quarantined_row_count_drift"):
-            self._validate(hd, en, lo, pins)
-        pins = self._pins(hd, en, lo)
-        pins.update({
-            "EXPECTED_RADIO_SERVICE_COUNTS": {"IG": 2, "PW": 1, "YG": 1, "PA": 1},
-            "EXPECTED_LICENSE_STATUS_COUNTS": {"A": 4, "C": 1},
-            "EXPECTED_LICENSEE_ROWS": 5,
-            "EXPECTED_ACTIVE_LOCATION_ROWS": 8,
-            "EXPECTED_ACTIVE_LOCATIONS": 6,
-            "EXPECTED_LOCAL_DATUM_QUARANTINED_ROWS": 1,
-            "EXPECTED_LOCAL_DATUM_QUARANTINED_SHA256": "0" * 64,
-        })
-        with self.assertRaisesRegex(ValueError, "source_local_datum_quarantined_records_drift"):
-            self._validate(hd, en, lo, pins)
 
-    def test_trailing_extra_field_quirk_rows_are_pinned(self):
+    def test_trailing_extra_field_policy_rows_are_tolerated(self):
         hd, en, lo = _documents()
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_EXTRA_FIELD_ROWS"] = {"HD": 1, "EN": 0, "LO": 0}
-        quirky_hd = [hd[0] + "|", *hd[1:]]
-        published, audit = self._validate(quirky_hd, en, lo, pins)
+        # One extra empty trailing field is a tolerated ULS artifact: dropped,
+        # published fields unaffected, observed count recorded in the audit.
+        published, audit = self._validate([hd[0] + "|", *hd[1:]], en, lo)
         self.assertEqual(audit["source_extra_field_rows"], {"HD": 1, "EN": 0, "LO": 0})
         self.assertEqual(audit["source_feature_count"], 6)
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_EXTRA_FIELD_ROWS"] = {"HD": 0, "EN": 2, "LO": 0}
-        quirky_en = [en[0] + "|", en[1] + "|", *en[2:]]
-        published, audit = self._validate(hd, quirky_en, lo, pins)
+        published, audit = self._validate(hd, [en[0] + "|", en[1] + "|", *en[2:]], lo)
         self.assertEqual(audit["source_extra_field_rows"], {"HD": 0, "EN": 2, "LO": 0})
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_EXTRA_FIELD_ROWS"] = {"HD": 0, "EN": 0, "LO": 1}
-        quirky_lo = [lo[0] + "|", *lo[1:]]
-        published, audit = self._validate(hd, en, quirky_lo, pins)
+        published, audit = self._validate(hd, en, [lo[0] + "|", *lo[1:]])
         self.assertEqual(audit["source_extra_field_rows"], {"HD": 0, "EN": 0, "LO": 1})
-        uncounted = self._pins(hd, en, lo)
-        with self.assertRaisesRegex(ValueError, "source_extra_field_row_count_drift"):
-            self._validate(quirky_hd, en, lo, uncounted)
-        with self.assertRaisesRegex(ValueError, "source_extra_field_row_count_drift:LO"):
-            self._validate(hd, en, quirky_lo, uncounted)
+        # Anything other than the single trailing empty field fails closed.
         with self.assertRaisesRegex(ValueError, "source_record_field_count_drift:HD"):
-            self._validate([hd[0] + "|X", *hd[1:]], en, lo, uncounted)
+            self._validate([hd[0] + "|X", *hd[1:]], en, lo)
+        with self.assertRaisesRegex(ValueError, "source_record_field_count_drift:EN"):
+            self._validate(hd, [en[0] + "|X", *en[1:]], lo)
         with self.assertRaisesRegex(ValueError, "source_record_field_count_drift:LO"):
-            self._validate(hd, en, [lo[0] + "|X", *lo[1:]], uncounted)
+            self._validate(hd, en, [lo[0] + "||", *lo[1:]])
 
     def test_drift_guards_fail_closed(self):
         cases = [
@@ -369,11 +378,6 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
              "source_record_field_count_drift:LO"),
             ("record prefix", lambda hd, en, lo: ([hd[0], hd[1].replace("HD|", "XX|", 1), *hd[2:]], en, lo),
              "source_record_type_prefix_drift:HD"),
-            ("record totals", lambda hd, en, lo: (hd[:3], en, lo), "source_record_population_drift"),
-            ("radio service", lambda hd, en, lo: ([hd[0], hd[1], hd[2].replace("|YG|", "|CX|"), hd[3]], en, lo),
-             "source_radio_service_roster_drift"),
-            ("status distribution", lambda hd, en, lo: ([hd[0].replace("|A|", "|E|"), *hd[1:]], en, lo),
-             "source_license_status_distribution_drift"),
             ("licensee join", lambda hd, en, lo: (hd, [_en(101, "KNKA101", "CL", "Contact Two"), *en[1:]], lo),
              "source_licensee_join_drift"),
             ("duplicate license identity", lambda hd, en, lo: ([hd[0], hd[0], *hd[2:]], en, lo),
@@ -384,67 +388,45 @@ class LandMobilePrivateTowersTests(unittest.TestCase):
              "source_callsign_join_drift"),
             ("missing location number", lambda hd, en, lo: (hd, en, [lo[0], _lo(101, "KNKA101", ""), *lo[2:]]),
              "source_location_number_invalid"),
-            ("state roster", lambda hd, en, lo: (hd, en, [lo[0].replace("|CA|", "|ZZ|"), *lo[1:]]),
-             "source_state_roster_drift"),
-            ("latitude direction distribution", lambda hd, en, lo: (
-                hd, en, [_lo(104, "", 2, lat_deg="45", lat_min="0", lat_sec=".0", lat_dir="X",
-                             lon_deg="123", lon_min="0", lon_sec=".0", lon_dir="", state="NV")
-                         if index == 7 else row for index, row in enumerate(lo)]),
-             "source_latitude_direction_distribution_drift"),
-            ("longitude direction distribution", lambda hd, en, lo: (
-                hd, en, [_lo(104, "", 2, lat_deg="45", lat_min="0", lat_sec=".0", lat_dir="",
-                             lon_deg="123", lon_min="0", lon_sec=".0", lon_dir="X", state="NV")
-                         if index == 7 else row for index, row in enumerate(lo)]),
-             "source_longitude_direction_distribution_drift"),
-            ("counts file", lambda hd, en, lo: (hd, en, lo), "source_counts_file_drift"),
+            ("bounds envelope longitude", lambda hd, en, lo: (
+                hd, en, [lo[0].replace("|121|45|30.0|W|", "|181|45|30.0|W|"), *lo[1:]]),
+             "source_bounds_drift"),
+            ("bounds envelope latitude", lambda hd, en, lo: (
+                hd, en, [_lo(104, "", 1, lat_deg="95", lat_min="0", lat_sec="0", lon_deg="115",
+                             lon_min="0", lon_sec="0", state="NV"), *lo[2:]]),
+             "source_bounds_drift"),
+            ("empty published population", lambda hd, en, lo: (
+                [_hd(101, "KNKA101", "A")], [_en(101, "KNKA101", "L", "Licensee One")],
+                [_lo(101, "KNKA101", 1, lon_deg="", lon_min="", lon_sec="", lon_dir="")]),
+             "source_active_population_empty"),
         ]
         for label, mutate, expected in cases:
             with self.subTest(label=label):
-                pins = self._pins(*_documents())
-                if label == "counts file":
-                    pins["EXPECTED_COUNTS_FILE"] = {"HD.dat": 4, "EN.dat": 5, "LO.dat": 9}
                 hd, en, lo = mutate(*_documents())
                 with self.assertRaisesRegex(ValueError, expected):
-                    self._validate(hd, en, lo, pins)
+                    self._validate(hd, en, lo)
 
-    def test_missing_coordinate_and_population_pins_fail_closed(self):
+    def test_counts_witness_mismatches_fail_closed(self):
         hd, en, lo = _documents()
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_MISSING_COORDINATE_ROWS"] = 2
-        with self.assertRaisesRegex(ValueError, "source_missing_coordinate_row_count_drift"):
-            self._validate(hd, en, lo, pins)
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_ACTIVE_LOCATION_ROWS"] = 6
-        with self.assertRaisesRegex(ValueError, "source_active_location_row_count_drift"):
-            self._validate(hd, en, lo, pins)
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_ACTIVE_LOCATIONS"] = 5
-        with self.assertRaisesRegex(ValueError, "source_active_population_drift"):
-            self._validate(hd, en, lo, pins)
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_DUPLICATE_LOCATION_KEY_COUNT"] = 0
-        with self.assertRaisesRegex(ValueError, "source_duplicate_location_key_count_drift"):
-            self._validate(hd, en, lo, pins)
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_ACTIVE_ID_SHA256"] = "0" * 64
-        with self.assertRaisesRegex(ValueError, "source_active_id_roster_drift"):
-            self._validate(hd, en, lo, pins)
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_STATE_ROSTER_SHA256"] = "0" * 64
-        with self.assertRaisesRegex(ValueError, "source_state_roster_drift"):
-            self._validate(hd, en, lo, pins)
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_EMPTY_CALLSIGN_ROWS"] = 3
-        with self.assertRaisesRegex(ValueError, "source_empty_callsign_row_count_drift"):
-            self._validate(hd, en, lo, pins)
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_OUT_OF_RANGE_COORDINATE_ROWS"] = 0
-        with self.assertRaisesRegex(ValueError, "source_out_of_range_coordinate_row_count_drift"):
-            self._validate(hd, en, lo, pins)
-        pins = self._pins(hd, en, lo)
-        pins["EXPECTED_BOUNDS"] = [0.0, 0.0, 0.0, 0.0]
-        with self.assertRaisesRegex(ValueError, "source_bounds_drift"):
-            self._validate(hd, en, lo, pins)
+        # Fewer decoded rows than the publisher's counts member records.
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+            self._validate(hd[:3], en, lo, counts={"HD": 4, "EN": 5, "LO": 8})
+        with self.assertRaisesRegex(ValueError, "source_record_population_drift:EN"):
+            self._validate(hd, en[:4], lo, counts={"HD": 4, "EN": 5, "LO": 8})
+        with self.assertRaisesRegex(ValueError, "source_record_population_drift:LO"):
+            self._validate(hd, en, lo[:7], counts={"HD": 4, "EN": 5, "LO": 8})
+        # More rows declared than the file holds.
+        with self.assertRaisesRegex(ValueError, "source_count_or_id_roster_drift"):
+            self._validate(hd, en, lo, counts={"HD": 3, "EN": 5, "LO": 8})
+        with self.assertRaisesRegex(ValueError, "source_record_population_drift:EN"):
+            self._validate(hd, en, lo, counts={"HD": 4, "EN": 4, "LO": 8})
+        with self.assertRaisesRegex(ValueError, "source_record_population_drift:LO"):
+            self._validate(hd, en, lo, counts={"HD": 4, "EN": 5, "LO": 7})
+        # A counts member that lost a table's line cannot witness completeness.
+        with self.assertRaisesRegex(ValueError, "source_counts_witness_missing:HD"):
+            self._validate(hd, en, lo, counts={"EN": 5, "LO": 8})
+        with self.assertRaisesRegex(ValueError, "source_counts_witness_missing:HD,EN,LO"):
+            self._validate(hd, en, lo, counts={})
 
     def test_zip_container_and_capture_receipts_fail_closed(self):
         hd, en, lo = _documents()
