@@ -140,6 +140,28 @@ class StreamingWriterTests(unittest.TestCase):
                 stream_geoparquet_candidate(schema, 4326, batches, Path(directory) / "c.parquet",
                                             geometry_column="geometry", geometry_types=[])
 
+    def test_preexisting_schema_metadata_survives_with_geo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            schema = pa.schema(
+                [pa.field("a", pa.int64(), nullable=True),
+                 pa.field("geometry", pa.binary(), nullable=True)],
+                metadata={b"hifld:source_esri_fields": b'[{"name": "OBJECTID"}]'})
+            batches = iter([pa.record_batch(
+                [pa.array([1, 2], type=pa.int64()),
+                 pa.array([b"g1", b"g2"], type=pa.binary())],
+                names=["a", "geometry"])])
+            path, _digest, rows = stream_geoparquet_candidate(
+                schema, 4326, batches, Path(directory) / "c.parquet",
+                geometry_column="geometry", geometry_types=["Point"])
+            self.assertEqual(rows, 2)
+            table = pq.read_table(path)
+        metadata = table.schema.metadata
+        self.assertEqual(metadata[b"hifld:source_esri_fields"], b'[{"name": "OBJECTID"}]')
+        primary, column, crs = geometry_metadata(table.schema)
+        self.assertEqual(primary, "geometry")
+        self.assertEqual(column["geometry_types"], ["Point"])
+        self.assertEqual(crs.to_epsg(), 4326)
+
     def test_mismatched_batch_fails_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             schema = pa.schema([pa.field("a", pa.int64(), nullable=True)])

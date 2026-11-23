@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import json
 import math
+import tempfile
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 import httpx
 import pyarrow as pa
-import pyarrow.parquet as pq
-import pyproj
 from shapely.geometry import MultiPolygon, Polygon
 
 from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
@@ -29,6 +28,9 @@ from dagster_hifld.sources.capture_common import (
     write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.geoparquet_candidate import (
+    CANDIDATE_BATCH_SIZE, stream_geoparquet_candidate,
+)
 from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps
 
 DATASET_SLUG = "formerly-used-defense-sites-division-boundaries"
@@ -89,23 +91,28 @@ def _esri_polygon(geometry: dict) -> MultiPolygon:
     return result
 
 
-def _native_parquet(fields: list[dict], features: list[dict]) -> bytes:
+def _native_candidate(fields: list[dict], features: list[dict],
+                      capture_dir: Path) -> tuple[Path, str, int]:
     # SHAPE is the geometry and ArcGIS does not return it as an attribute.
     # SHAPE is returned through the Esri geometry member. Other attributes,
     # including nullable BLOB values, retain their declared source types.
     attr_fields = [f for f in fields if f["type"] != "esriFieldTypeGeometry"]
-    names = [f["name"] for f in attr_fields]
-    cols = {f["name"]: pa.array([x["attributes"][f["name"]] for x in features], type=_arrow_type(f))
-            for f in attr_fields}
-    geoms = [_esri_polygon(x["geometry"]) for x in features]
-    cols["geometry"] = pa.array([g.wkb for g in geoms], type=pa.binary())
+    names = [f["name"] for f in attr_fields] + ["geometry"]
     schema = pa.schema([pa.field(f["name"], _arrow_type(f), nullable=f.get("nullable", True))
                         for f in attr_fields] + [pa.field("geometry", pa.binary(), nullable=False)])
-    geo = {"version":"1.1.0", "primary_column":"geometry", "columns":{"geometry":{
-        "encoding":"WKB", "geometry_types":["MultiPolygon"], "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"planar"}}}
-    sink = pa.BufferOutputStream()
-    pq.write_table(pa.Table.from_pydict(cols, schema=schema.with_metadata({b"geo":_canonical(geo)})), sink, compression="zstd")
-    return sink.getvalue().to_pybytes()
+
+    def batches():
+        for start in range(0, len(features), CANDIDATE_BATCH_SIZE):
+            chunk = features[start:start + CANDIDATE_BATCH_SIZE]
+            arrays = [pa.array([x["attributes"][f["name"]] for x in chunk], type=_arrow_type(f))
+                      for f in attr_fields]
+            arrays.append(pa.array([_esri_polygon(x["geometry"]).wkb for x in chunk],
+                                   type=pa.binary()))
+            yield pa.record_batch(arrays, names=names)
+
+    return stream_geoparquet_candidate(
+        schema, 4326, batches(), Path(capture_dir) / "candidate.parquet",
+        geometry_column="geometry", geometry_types=["MultiPolygon"])
 
 
 def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version: str,
@@ -188,51 +195,60 @@ def capture_fuds_division_boundaries(storage: StagingStorageResource, *, version
         geom_digest=_sha(_canonical([[x["attributes"]["OBJECTID"],x["geometry"]] for x in features]))
         record_digest=_sha(_canonical([x["attributes"] for x in features]))
         identity=processing_identity(Path(__file__).parents[3]); schema_digest=_sha(_canonical(schema))
-        native=_native_parquet(fields,features); version=content_derived_version(record_digest,geom_digest,schema_digest,identity)
-        prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version); native_name=f"geoparquet/{DATASET_SLUG}.parquet"
-        audit={"feature_count":count,"source_id_sha256":_sha(_canonical(seed)),"source_record_sha256":record_digest,
-            "source_geometry_sha256":geom_digest,"source_schema_sha256":schema_digest,"source_crs_epsg":4326,
-            "geometry_type":"Polygon","all_ids_captured_once":True,"ids_equal_before_after":True,
-            "source_release_date":None,"source_release_date_unknown_reason":"Service metadata provides no producer release date.",
-            "source_blob_values":{"SE_ANNO_CAD_DATA":{"source_type":"esriFieldTypeBlob",
-                "value_status":"producer returned explicit JSON null for every feature",
-                "explicit_null_count":len(blob_values),"substituted_null":False}}}
-        manifest={"schema_version":1,"processor":"HIFLD Next","approved":False,"title":LAYER_NAME,"publisher":PUBLISHER,
-            "agency":"U.S. Army Corps of Engineers","source_url":LAYER_URL,"source_release_date":None,
-            "date_issued":None,"date_modified":None,"code_commit":identity["code_commit"],"inputs":[
-                {"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication",
-                 "canonical_url":LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],
-                 "http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Unreviewed; no license claim made.",
-                 "attribution":"USACE layer copyright/attribution has not been reviewed.","release_date":None,
-                 "release_date_unknown_reason":"USACE service responses do not provide a producer release date."}
-                for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))],
-            "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
-                "layer_id":LAYER_ID,"attributes":"all query-returned source attributes retained in source order/types/values",
-                "geometry":"Esri rings interpreted as Polygon/MultiPolygon WKB in EPSG:4326; no repair or simplification",
-                "blob_field":"SE_ANNO_CAD_DATA returned explicit null values; preserved as nullable binary with no substitutions",
-                "approval_gates_open":True}}],
-            "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Candidate preserves query-returned FUDS fields and native vertices; approval gates remain open.","objects":[{"path":native_name,"bytes":len(native),"sha256":_sha(native)}]}}}}
-        validate_release_provenance(manifest); validate_output_policy(manifest)
-        outputs={native_name:native,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
-            "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
-        for name,(body,receipt) in captures.items():
-            outputs.update({f"raw/{name}.body":body,f"raw/{name}.wire":(root/f"{name}.wire").read_bytes(),f"raw/{name}.receipt.json":_canonical(receipt)+b"\n"})
-        descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-        ready={"approved":False,"version":version,"objects":descriptors,"source_release_accepted":False,
-            "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
-            "rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-        outputs["metadata/candidate_ready.json"]=_canonical(ready)+b"\n"
-        state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"; fingerprint=_sha(_canonical(identity))
-        if storage.object_snapshot(state_key) is not None:
-            sealed=json.loads(load_first_construction(storage,state_key,version,fingerprint)); payload=sealed.get("payload")
-            if not isinstance(payload,dict): raise ValueError("cached_first_candidate_payload_missing")
-            verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,
-                identity,record_digest,schema_digest,payload.get("objects",{}),payload.get("capture_receipts",{}))
-            if set(payload["objects"]) != set(outputs): raise ValueError("cached_candidate_roster_changed")
-            return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":count,
-                "candidate_ready":f"{prefix}/metadata/candidate_ready.json","release_accepted":False,"reused":True}
-        write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_output_physical_readback_failed:')
-        descriptors={name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
+        with tempfile.TemporaryDirectory(prefix="hifld-fuds-candidate-") as candidate_dir:
+            native_path, native_sha, native_rows = _native_candidate(fields, features, Path(candidate_dir))
+            if native_rows != count:
+                raise ValueError("candidate_row_count_drift")
+            native_size = native_path.stat().st_size
+            def _descriptor(body):
+                if isinstance(body, Path):
+                    return {"bytes": native_size, "sha256": native_sha}
+                return {"bytes": len(body), "sha256": _sha(body)}
+            version=content_derived_version(record_digest,geom_digest,schema_digest,identity)
+            prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version); native_name=f"geoparquet/{DATASET_SLUG}.parquet"
+            audit={"feature_count":count,"source_id_sha256":_sha(_canonical(seed)),"source_record_sha256":record_digest,
+                "source_geometry_sha256":geom_digest,"source_schema_sha256":schema_digest,"source_crs_epsg":4326,
+                "geometry_type":"Polygon","all_ids_captured_once":True,"ids_equal_before_after":True,
+                "source_release_date":None,"source_release_date_unknown_reason":"Service metadata provides no producer release date.",
+                "source_blob_values":{"SE_ANNO_CAD_DATA":{"source_type":"esriFieldTypeBlob",
+                    "value_status":"producer returned explicit JSON null for every feature",
+                    "explicit_null_count":len(blob_values),"substituted_null":False}}}
+            manifest={"schema_version":1,"processor":"HIFLD Next","approved":False,"title":LAYER_NAME,"publisher":PUBLISHER,
+                "agency":"U.S. Army Corps of Engineers","source_url":LAYER_URL,"source_release_date":None,
+                "date_issued":None,"date_modified":None,"code_commit":identity["code_commit"],"inputs":[
+                    {"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication",
+                     "canonical_url":LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],
+                     "http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Unreviewed; no license claim made.",
+                     "attribution":"USACE layer copyright/attribution has not been reviewed.","release_date":None,
+                     "release_date_unknown_reason":"USACE service responses do not provide a producer release date."}
+                    for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))],
+                "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{
+                    "layer_id":LAYER_ID,"attributes":"all query-returned source attributes retained in source order/types/values",
+                    "geometry":"Esri rings interpreted as Polygon/MultiPolygon WKB in EPSG:4326; no repair or simplification",
+                    "blob_field":"SE_ANNO_CAD_DATA returned explicit null values; preserved as nullable binary with no substitutions",
+                    "approval_gates_open":True}}],
+                "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Candidate preserves query-returned FUDS fields and native vertices; approval gates remain open.","objects":[{"path":native_name,"bytes":native_size,"sha256":native_sha}]}}}}
+            validate_release_provenance(manifest); validate_output_policy(manifest)
+            outputs={native_name:native_path,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
+                "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
+            for name,(body,receipt) in captures.items():
+                outputs.update({f"raw/{name}.body":body,f"raw/{name}.wire":(root/f"{name}.wire").read_bytes(),f"raw/{name}.receipt.json":_canonical(receipt)+b"\n"})
+            descriptors={name:_descriptor(body) for name,body in outputs.items()}
+            ready={"approved":False,"version":version,"objects":descriptors,"source_release_accepted":False,
+                "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
+                "rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+            outputs["metadata/candidate_ready.json"]=_canonical(ready)+b"\n"
+            state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"; fingerprint=_sha(_canonical(identity))
+            if storage.object_snapshot(state_key) is not None:
+                sealed=json.loads(load_first_construction(storage,state_key,version,fingerprint)); payload=sealed.get("payload")
+                if not isinstance(payload,dict): raise ValueError("cached_first_candidate_payload_missing")
+                verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,
+                    identity,record_digest,schema_digest,payload.get("objects",{}),payload.get("capture_receipts",{}))
+                if set(payload["objects"]) != set(outputs): raise ValueError("cached_candidate_roster_changed")
+                return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":count,
+                    "candidate_ready":f"{prefix}/metadata/candidate_ready.json","release_accepted":False,"reused":True}
+            write_candidate_outputs(storage, prefix, outputs, error_prefix='candidate_output_physical_readback_failed:')
+        descriptors={name:_descriptor(body) for name,body in outputs.items()}
         seal_candidate_objects(
             storage, state_key, version,
             identity, {n: r for n, (_b, r) in captures.items()}, descriptors,
