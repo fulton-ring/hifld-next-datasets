@@ -10,9 +10,8 @@ Service (BRS, radio service code `BR`) and ITFS is the former name of the
 Educational Broadband Service (EBS, radio service code `ED`).
 
 The published population is every location (`LO`) record of every license whose
-header (`HD`) license status is `A` (active) — 4669 locations in the pinned
-weekly file (creation date `Sun Nov  8 10:07:38 EST 2026`), radio services
-`BR` and `ED` only — under the ULS-derived tower column contract (`UniqSysID`,
+header (`HD`) license status is `A` (active), radio services `BR` and `ED`
+only, under the ULS-derived tower column contract (`UniqSysID`,
 `Licensee`, `Callsign`, `LocNum`, DMS coordinates, address fields, `Nepa`,
 `QZone`, `TowReg`, `SupStruc`, `AllStruc`, `StrucType`, `LicStatus`, derived
 `latdec`/`londec`, `url`). `UniqSysID` and `LocNum` are retained unchanged and
@@ -36,18 +35,28 @@ filed-site population for the 2.5 GHz band, not a census of physical
 transmitters. Market areas, service-area polygons and centroids are never
 substituted for filed sites.
 
-Validation fails closed on capture roster and receipt drift, zip member roster,
-per-record-type field counts and record-type prefixes, HD/EN/LO record totals,
-radio service roster (BR/ED only), license status distribution (A 13732,
-C 3568, E 1296, T 386), licensee and callsign joins (verbatim; a blank LO
-callsign is tolerated only when the header callsign is blank, and every
-published row must carry a callsign), duplicate `(UniqSysID, LocNum)` keys,
-active-population count, full active ID roster digest, state roster digest
-(16 states plus Puerto Rico, including Alaska and Hawaii bounds), DMS direction
-codes, derived-decimal coordinate range and null-geometry count (3 filed rows
-without usable coordinates are retained with null geometry). Raw DMS components
-are preserved verbatim even when out of nominal range. The weekly refresh
-schedule is stopped. The archived HIFLD OPEN layer (DataLumos project 238712,
+The capture retains the complete zip body, wire body and request receipt. The
+FCC serves the weekly file at one fixed URL and replaces it in place, with no
+edition name in the path; the payload's own `counts` member is therefore the
+completeness witness and its file creation date the observed edition marker,
+both recorded in the audit and the candidate result. Record population
+completeness is checked against the publisher's own `counts` member at capture
+time: the decoded HD unique license-ID roster (via the shared
+`validate_capture_witness` path) and the EN/LO row counts must equal the
+line counts the publisher recorded for those members. Validation fails closed
+on capture roster and receipt drift, zip member roster, per-record-type field
+counts and record-type prefixes, radio service roster (BR/ED only), licensee
+and callsign joins (verbatim; a blank LO callsign is tolerated only when the
+header callsign is blank, and every published row must carry a callsign),
+duplicate `(UniqSysID, LocNum)` keys, DMS direction codes and derived-decimal
+coordinate range. The license status distribution, active-location count,
+null-geometry count (filed rows without usable coordinates are retained with
+null geometry), full active ID roster digest and state roster digest are
+recorded as per-capture audit observations rather than gates, so a regenerated
+weekly edition is adopted and its drift against an approved release is
+reported by the registered non-blocking approved-baseline drift check. Raw DMS
+components are preserved verbatim even when out of nominal range. The weekly
+refresh schedule is stopped. The archived HIFLD OPEN layer (DataLumos project 238712,
 the inventory's download location) returns HTTP 403 anonymously, so the
 historical column and coordinate-convention comparison remains unexecuted and
 the derived-column convention is documented as unverified. Source edition,
