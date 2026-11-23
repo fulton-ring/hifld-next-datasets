@@ -4,11 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.brs_ebs_transmitters import (
-    DATASET_SLUG, EXPECTED_ACTIVE_LOCATIONS, FILE_SLUG, capture_brs_ebs_transmitters,
+    DATASET_SLUG, FILE_SLUG, capture_brs_ebs_transmitters,
 )
 
 
@@ -22,10 +23,12 @@ class BrsEbsTransmittersConfig(Config):
     compute_kind="http",
     description=(
         "FCC ULS weekly public access complete MDS/ITFS licenses file l_mdsitfs.zip: location records of active "
-        "BRS (BR) and EBS (ED) licenses under the ULS-derived tower column contract (4669 active locations "
-        "observed). BRS/EBS licensing is geographic (47 CFR 27.1208), so this is the FCC's filed-site population "
-        "for the 2.5 GHz band, not a census of physical transmitters. Unapproved candidate; baseline, contract, "
-        "coverage, rights, and release decisions remain pending."
+        "BRS (BR) and EBS (ED) licenses under the ULS-derived tower column contract. "
+        "Completeness is witnessed at capture time against the payload's own counts member; the counts member "
+        "file creation date is the observed edition marker. BRS/EBS licensing is geographic (47 CFR 27.1208), "
+        "so this is the FCC's filed-site population for the 2.5 GHz band, not a census of physical "
+        "transmitters. Unapproved candidate; baseline, contract, coverage, rights, and release decisions "
+        "remain pending."
     ),
 )
 def brs_ebs_transmitters(context, config: BrsEbsTransmittersConfig,
@@ -44,10 +47,13 @@ def brs_ebs_transmitters(context, config: BrsEbsTransmittersConfig,
 
 @asset_check(asset=brs_ebs_transmitters, blocking=True)
 def brs_ebs_transmitters_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_ACTIVE_LOCATIONS
+    count = candidate.get("source_reported_count")
+    passed = (type(count) is int and count > 0
+              and candidate.get("feature_count") == count
               and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -71,7 +77,9 @@ brs_ebs_transmitters_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+brs_ebs_transmitters_drift = register_approved_baseline_drift(brs_ebs_transmitters, "brs_ebs_transmitters_drift")
+
 INGEST_ASSETS = [brs_ebs_transmitters]
-ASSET_CHECKS = [brs_ebs_transmitters_complete]
+ASSET_CHECKS = [brs_ebs_transmitters_complete, brs_ebs_transmitters_drift]
 JOBS = [brs_ebs_transmitters_draft_job]
 SCHEDULES = [brs_ebs_transmitters_draft_schedule]
