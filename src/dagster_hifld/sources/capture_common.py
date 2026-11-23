@@ -461,9 +461,10 @@ def retain_failed_capture(storage: StagingStorageResource, capture_root: Path,
         not_retained.append({"name": "*",
                              "reason": "capture_root_unreadable:" + type(failure).__name__})
     views = RetainedCaptureViews(root, names, error, reader=read_retained_capture)
+    reason = getattr(exc, "code", None) or type(exc).__name__
     try:
         return quarantine_incomplete_capture(
-            storage, root, dataset_slug, version, views, type(exc).__name__,
+            storage, root, dataset_slug, version, views, reason,
             not_retained=not_retained)
     except Exception as failure:
         try:

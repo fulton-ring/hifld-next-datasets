@@ -47,7 +47,7 @@ import shutil
 import struct
 from array import array
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, Mapping
+from typing import Mapping
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
@@ -67,7 +67,7 @@ from dagster_hifld.sources.capture_common import (
     capture_get,
     content_derived_version,
     processing_identity,
-    quarantine_incomplete_capture,
+    retain_failed_capture,
     verify_cached_candidate,
     write_immutable,
     reuse_sealed_candidate,
@@ -373,23 +373,6 @@ def _load_receipt_map(capture_root: Path, count: int) -> dict[str, dict[str, obj
     """Load every expected receipt without holding any page body in memory."""
     return {name: _load_receipt(capture_root, name)
             for name in _expected_capture_names(count)}
-
-
-class _RetainedCaptureViews(Mapping):
-    """Lazily materialize one capture view per access so quarantine stays bounded."""
-
-    def __init__(self, capture_root: Path, names: Iterable[str]):
-        self._capture_root = Path(capture_root)
-        self._names = tuple(names)
-
-    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
-        return _read_capture(self._capture_root, name)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._names)
-
-    def __len__(self) -> int:
-        return len(self._names)
 
 
 def _validate_service_document(service: object, label: str) -> None:
@@ -955,20 +938,8 @@ def capture_nhd_flowline(storage: StagingStorageResource, *, version: str,
                                first_captured_at=captured[0],
                                last_captured_at=str(state["tail"]["captured_at"]))
     except Exception as exc:
-        valid_names = []
-        for receipt_path in sorted(capture_root.glob("*.receipt.json")) \
-                if capture_root.exists() else []:
-            name = receipt_path.name.removesuffix(".receipt.json")
-            try:
-                _read_capture(capture_root, name)
-            except (OSError, NhdFlowlineError, ValueError):
-                continue
-            valid_names.append(name)
-        if valid_names:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          _RetainedCaptureViews(capture_root, valid_names),
-                                          getattr(exc, "code", type(exc).__name__)
-                                          or type(exc).__name__)
+        retain_failed_capture(storage, capture_root, DATASET_SLUG, version, exc,
+                              error=NhdFlowlineError)
         raise
 
 
