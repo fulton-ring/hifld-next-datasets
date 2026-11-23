@@ -107,7 +107,11 @@ and [daily/weekly page](https://www.fcc.gov/uls/transactions/daily-weekly).
 The following describes the actual draft adapters. All inputs are published by
 FCC WTB in the [official weekly directory](https://data.fcc.gov/download/pub/uls/complete/).
 The weekly cadence describes the producer's distribution, not acceptance of a
-new edition: the adapters' pinned population/identity checks remain in place.
+new edition: the ASR adapter witnesses record population against the payload's
+own counts member at capture time (its retired edition pins were snapshot
+constants, and the counts member file creation date is the observed edition
+marker, never an equality gate), while the other ULS adapters in this table
+retain their pinned population/identity checks until their follow-up issues land.
 `source_population_complete` means completeness of the declared source file and
 selection below; it makes no claim about all physical structures, current
 operation, or equivalence to a historical HIFLD release.
@@ -121,7 +125,7 @@ operation, or equivalence to a historical HIFLD release.
 | Land Mobile Commercial / `l_LMcomm.zip` | LO license-location; (`UniqSysID`, `LocNum`) jointly unique | HD status `A`, complete file service roster; no structure-type filter. Missing coordinates remain null; documented local-datum coordinates are retained without falsely assigning NAD83 geometry. |
 | Land Mobile Private / `l_LMpriv.zip` | LO license-location; (`UniqSysID`, `LocNum`) retained, not unique | HD status `A`, both degree components present, excluding local-datum `MP`/`UM` filings from candidate points. 603,775 rows, 27 duplicate keys; 322,063 active rows without a coordinate pair remain in raw capture, 15 local-datum rows also preserved in audit. |
 | Land Mobile Broadcast Auxiliary / `l_LMbcast.zip` | LO fixed-location record; native `unique_system_identifier` + `location_number` retained without an invented row or structure ID | LO type `F`, services `LP RP LV`, **all** HD statuses; only mappable coordinates enter candidate points. Missing/invalid coordinates are counted and retained raw. This adapter does not assert uniqueness of the native location pair. |
-| ASR / `r_tower.zip` | CO registration-coordinate; (`ra_registration_number`, `ra_unique_system_identifier`, `co_coordinate_type`) jointly unique in the pinned edition | All RA status and archive codes; 198,069 RA registrations, 203,304 CO rows (198,068 `T`, 5,236 `A`), one RA without CO has no candidate row. 124 CO rows keep null geometry. No expansion by array total or position. |
+| ASR / `r_tower.zip` | CO registration-coordinate; (`ra_registration_number`, `ra_unique_system_identifier`, `co_coordinate_type`) jointly unique, duplicate keys fail closed | All RA status and archive codes; record population completeness witnessed against the payload's own counts member at capture time. 2026-11-15 edition observed: 198,069 RA registrations, 203,304 CO rows (198,068 `T`, 5,236 `A`), one RA without CO has no candidate row, 124 CO rows keep null geometry. No expansion by array total or position. |
 
 ULS joins HD and the unique EN licensee (`L`) on the native license system ID;
 one license may have multiple LO rows. ASR joins CO to RA on registration number

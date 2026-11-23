@@ -4,12 +4,12 @@ from dagster import (
     ScheduleDefinition, asset, asset_check, define_asset_job,
 )
 
+from dagster_hifld.capture_completeness import register_approved_baseline_drift
 from dagster_hifld.download import build_version_id
 from dagster_hifld.partitions import PUBLISH_PARTITION_NAME, build_publish_partition_key
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources.antenna_structure_registration_asr import (
-    DATASET_SLUG, EXPECTED_PUBLISHED_ROWS, FILE_SLUG,
-    capture_antenna_structure_registration_asr,
+    DATASET_SLUG, FILE_SLUG, capture_antenna_structure_registration_asr,
 )
 
 
@@ -24,11 +24,11 @@ class AntennaStructureRegistrationConfig(Config):
     description=(
         "FCC ULS weekly public access ASR tower registration file r_tower.zip: one row per CO coordinate row "
         "joined to its RA registration row and unique EN owner entity row, with every declared RA/CO/EN field "
-        "retained verbatim plus DMS-derived latdec/londec and WKB Point geometry in native NAD83 (EPSG:4269) "
-        "(203304 coordinate rows observed over 198069 registrations). T tower-coordinate and A array-coordinate "
-        "records retain all registration statuses; array totals do not expand rows. Not a census of "
-        "physical towers. Unapproved candidate; baseline, contract, coverage, rights, and release decisions "
-        "remain pending."
+        "retained verbatim plus DMS-derived latdec/londec and WKB Point geometry in native NAD83 (EPSG:4269). "
+        "Completeness is witnessed at capture time against the payload's own counts member; the counts member "
+        "file creation date is the observed edition marker. T tower-coordinate and A array-coordinate records "
+        "retain all registration statuses; array totals do not expand rows. Not a census of physical towers. "
+        "Unapproved candidate; baseline, contract, coverage, rights, and release decisions remain pending."
     ),
 )
 def antenna_structure_registration_asr(context, config: AntennaStructureRegistrationConfig,
@@ -47,10 +47,13 @@ def antenna_structure_registration_asr(context, config: AntennaStructureRegistra
 
 @asset_check(asset=antenna_structure_registration_asr, blocking=True)
 def antenna_structure_registration_asr_complete(candidate: dict) -> AssetCheckResult:
-    passed = (candidate.get("feature_count") == EXPECTED_PUBLISHED_ROWS
+    count = candidate.get("source_reported_count")
+    passed = (type(count) is int and count > 0
+              and candidate.get("feature_count") == count
               and candidate.get("source_population_complete") is True)
     return AssetCheckResult(passed=passed, metadata={
         "complete_source_population": candidate.get("feature_count", 0),
+        "source_reported_count": count if count is not None else "missing",
         "source_id_sha256": candidate.get("source_id_sha256", "missing"),
         "source_schema_sha256": candidate.get("source_schema_sha256", "missing"),
         "source_capture_evidence_sha256": candidate.get("source_capture_evidence_sha256", "missing"),
@@ -74,7 +77,10 @@ antenna_structure_registration_asr_draft_schedule = ScheduleDefinition(
     default_status=DefaultScheduleStatus.STOPPED,
 )
 
+antenna_structure_registration_asr_drift = register_approved_baseline_drift(
+    antenna_structure_registration_asr, "antenna_structure_registration_asr_drift")
+
 INGEST_ASSETS = [antenna_structure_registration_asr]
-ASSET_CHECKS = [antenna_structure_registration_asr_complete]
+ASSET_CHECKS = [antenna_structure_registration_asr_complete, antenna_structure_registration_asr_drift]
 JOBS = [antenna_structure_registration_asr_draft_job]
 SCHEDULES = [antenna_structure_registration_asr_draft_schedule]

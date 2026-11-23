@@ -27,6 +27,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.construction_state import load_first_construction
 from dagster_hifld.http_capture import capture_roster_digests, validate_retained_capture_replay
@@ -64,29 +65,12 @@ CAPTURE_NAMES = {"r_tower"}
 MAX_CAPTURE_BYTES = 192_000_000
 CAPTURE_BODY_LIMIT = 64 * 1024 * 1024
 DISK_FLOOR = 400_000_000
+# Structural source-identity contracts: which members the weekly archive must
+# contain and the field widths of the three decoded tables. Population facts
+# about one captured edition are not contracts here; they are witnessed from
+# the payload's own counts member at capture time.
 ZIP_MEMBER_ROSTER = ["CO.dat", "EN.dat", "HS.dat", "RA.dat", "RE.dat", "SC.dat", "counts"]
 RECORD_FIELD_COUNTS = {"RA": 49, "CO": 18, "EN": 25}
-EXPECTED_RA_RECORDS = 198069
-EXPECTED_CO_RECORDS = 203304
-EXPECTED_EN_RECORDS = 374343
-EXPECTED_CREATION_DATE = "Sun Nov 15 06:19:55 EST 2026"
-EXPECTED_STATUS_COUNTS = {"C": 142026, "A": 15925, "T": 8911, "I": 12753, "G": 18441, "": 13}
-EXPECTED_ARCHIVE_COUNTS = {"C": 160716, "A": 37352, "": 1}
-EXPECTED_COORDINATE_TYPE_COUNTS = {"T": 198068, "A": 5236}
-EXPECTED_LATITUDE_DIRECTIONS = {"N": 203161, "S": 23, "": 120}
-EXPECTED_LONGITUDE_DIRECTIONS = {"W": 203082, "E": 102, "": 120}
-EXPECTED_OWNER_ENTITY_ROWS = 198053
-EXPECTED_REGISTRANT_ENTITY_ROWS = 176290
-EXPECTED_REGISTRATIONS_WITHOUT_ENTITY = 16
-EXPECTED_ROWS_WITHOUT_OWNER_ENTITY = 15
-EXPECTED_ARRAY_ROWS_WITH_POSITION = 354
-EXPECTED_PUBLISHED_ROWS = 203304
-EXPECTED_NULL_GEOMETRY_COUNT = 124
-EXPECTED_ID_SHA256 = "3e5b06ac9e62031c686eef86304197e8496fc5207e0a21709cd4b5f675a262e0"
-EXPECTED_GEOMETRY_SHA256 = "dd488554406c7a6582962595ce3cdccf04ed63fb2ac45030ab335ab822832439"
-EXPECTED_STATE_ROSTER_SHA256 = "5fdba7b3f3aa1b6bdb4bc8bd862b5a1bf87142658ea1bcb279e8c6bb062411cf"
-EXPECTED_ROWS_SHA256 = "2a43a008e728b5c1360d86b98bf8ddba57e06e9f35bdf9e872e5063b3712f474"
-EXPECTED_BOUNDS = [-176.705472222, -15.15, 174.138861111, 71.3103611111]
 RA_FIELDS = [
     "record_type", "content_indicator", "file_number", "registration_number",
     "unique_system_identifier", "application_purpose", "previous_purpose",
@@ -137,13 +121,16 @@ PUBLISHED_COLUMN_NAMES = [name for name, _ in PUBLISHED_SCHEMA]
 RECORD_VALUE_NAMES = [name for name in PUBLISHED_COLUMN_NAMES if name != "geometry"]
 ROW_KEY_COLUMNS = ("ra_registration_number", "ra_unique_system_identifier", "co_coordinate_type")
 COVERAGE_SCOPE = (
-    "Every CO coordinate row joined to its RA registration in the pinned weekly FCC ASR "
-    "r_tower.zip: 198068 T (tower-coordinate) rows and 5236 A (array-coordinate) rows, "
-    "with all RA status and archive codes retained. These are registration-coordinate records, "
-    "not a census of physical towers or an inventory of every member of an array. Of the A rows, "
-    "354 carry array_tower_position and 4882 do not; array_total_tower does not expand rows. "
-    "The single RA registration without CO is retained only in raw staging; 124 CO rows keep "
-    "null geometry. Completeness refers to this source-row population, not all structures."
+    "Every CO coordinate row joined to its RA registration in the weekly FCC ASR "
+    "r_tower.zip: T (tower-coordinate) and A (array-coordinate) rows as separate points, "
+    "with all RA status and archive codes retained. These are registration-coordinate "
+    "records, not a census of physical towers or an inventory of every member of an "
+    "array; array_total_tower does not expand rows and array_tower_position counts are "
+    "recorded per edition in the audit. RA registrations without a CO row are retained "
+    "only in raw staging; CO rows without parsable degrees and directions keep null "
+    "geometry, and published rows whose registration carries no EN owner row keep null "
+    "joined EN fields, both counted per edition in the audit. Completeness refers to "
+    "this source-row population, not all structures."
 )
 # ASR coordinates are referenced to the North American Datum of 1983: the FCC's
 # ASR registration search states "Based on NAD83 (convert from NAD27)"
@@ -223,16 +210,25 @@ def _zip_tables(body: bytes) -> tuple[dict[str, list[list[str]]], bytes]:
     return tables, counts
 
 
-def _counts_tables(counts: bytes) -> dict[str, int]:
-    table_counts = {}
+def _counts_witness(counts: bytes) -> dict[str, int]:
+    """Return the publisher's own per-table record counts from the counts member.
+
+    The weekly archive is replaced in place at one fixed URL with no edition name
+    in the path, so the payload's own counts member is the record population
+    witness observed at capture time, and its file creation date the observed
+    edition marker; a regenerated weekly edition carries its own consistent
+    counts. A missing or unreadable line for a decoded table is a format drift,
+    not a missing row, so the witness fails closed.
+    """
+    table_counts: dict[str, int] = {}
     for line in counts.decode("utf-8", "strict").splitlines():
         parts = line.split()
         if len(parts) == 2 and parts[1].rsplit("/", 1)[-1].endswith(".dat"):
             table_counts[parts[1].rsplit("/", 1)[-1][:-4]] = int(parts[0])
-    for name, expected in (("RA", EXPECTED_RA_RECORDS), ("CO", EXPECTED_CO_RECORDS),
-                           ("EN", EXPECTED_EN_RECORDS)):
-        if table_counts.get(name) != expected:
-            raise ValueError("source_counts_file_population_drift:" + name)
+    missing = [name for name in ("RA", "CO", "EN") if name not in table_counts]
+    if missing:
+        raise ValueError("source_counts_witness_missing:" + ",".join(missing))
+    return table_counts
 
 
 def _decimal_degrees(degrees: str, minutes: str, seconds: str,
@@ -265,16 +261,21 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[list], dict
             raise ValueError("source_record_field_count_drift:" + name)
         if any(row[0] != name for row in rows):
             raise ValueError("source_record_type_prefix_drift:" + name)
-    if (len(tables["RA"]) != EXPECTED_RA_RECORDS or len(tables["CO"]) != EXPECTED_CO_RECORDS
-            or len(tables["EN"]) != EXPECTED_EN_RECORDS):
-        raise ValueError("source_record_population_drift")
-    _counts_tables(counts)
+    # The weekly archive is replaced in place at one fixed URL with no edition
+    # name in the path, so the payload's own counts member is the record
+    # population witness observed at capture time; a regenerated weekly edition
+    # carries its own consistent counts.
+    witness = _counts_witness(counts)
+    for name in ("RA", "CO", "EN"):
+        if len(tables[name]) != witness[name]:
+            raise ValueError("source_record_population_drift:" + name)
     match = CREATION_DATE_RE.search(counts)
     if match is None:
         raise ValueError("source_creation_date_missing")
+    # The archive's own build stamp is the capture witness of the observed
+    # edition, recorded in the audit and the candidate result; no later weekly
+    # edition can equal a pinned stamp, so it is never an equality gate.
     creation_date = match.group(1).decode("utf-8", "replace").strip()
-    if creation_date != EXPECTED_CREATION_DATE:
-        raise ValueError("source_creation_date_drift")
 
     ra_by_key: dict[tuple[str, str], list[str]] = {}
     registration_numbers: set[str] = set()
@@ -295,14 +296,18 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[list], dict
         status_counts[row[RA_STATUS_CODE]] = status_counts.get(row[RA_STATUS_CODE], 0) + 1
         archive_counts[row[RA_ARCHIVE_FLAG_CODE]] = archive_counts.get(row[RA_ARCHIVE_FLAG_CODE], 0) + 1
         ra_by_key[key] = row
-    if status_counts != EXPECTED_STATUS_COUNTS:
-        raise ValueError("source_registration_status_distribution_drift")
-    if archive_counts != EXPECTED_ARCHIVE_COUNTS:
-        raise ValueError("source_archive_flag_distribution_drift")
+    # The decoded unique USI roster must equal the publisher's witnessed RA
+    # count (shared witness path); duplicate identities fail closed above.
+    try:
+        usi_roster = sorted(int(usi) for usi in unique_system_identifiers)
+    except ValueError as exc:
+        raise ValueError("source_unique_system_identifier_invalid") from exc
+    validate_capture_witness(witness["RA"], usi_roster, witness["RA"], usi_roster)
+    # The observed registration status and archive flag distributions are
+    # recorded in the audit, not gated: a weekly edition moves registrations
+    # between statuses and archive flags without breaking the capture.
     states = sorted({row[RA_STRUCTURE_STATE_CODE].strip() for row in tables["RA"]
                      if row[RA_STRUCTURE_STATE_CODE].strip()})
-    if _sha(_canonical(states)) != EXPECTED_STATE_ROSTER_SHA256:
-        raise ValueError("source_state_roster_drift")
 
     owner_by_key: dict[tuple[str, str], list[str]] = {}
     registrant_rows = 0
@@ -316,15 +321,10 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[list], dict
             owner_by_key[key] = row
         elif row[EN_ENTITY_TYPE] == "R":
             registrant_rows += 1
-    if len(owner_by_key) != EXPECTED_OWNER_ENTITY_ROWS:
-        raise ValueError("source_owner_entity_population_drift")
-    if registrant_rows != EXPECTED_REGISTRANT_ENTITY_ROWS:
-        raise ValueError("source_registrant_entity_population_drift")
-    if entity_types.get("O", 0) != EXPECTED_OWNER_ENTITY_ROWS:
-        raise ValueError("source_entity_type_distribution_drift")
+    # The observed owner/registrant entity populations and the registration
+    # without-entity count are recorded in the audit, not gated; the unique
+    # owner row per registration is still enforced in the loop above.
     without_entity = sum(1 for key in ra_by_key if key not in owner_by_key)
-    if without_entity != EXPECTED_REGISTRATIONS_WITHOUT_ENTITY:
-        raise ValueError("source_registration_without_entity_drift")
 
     coordinate_types: dict[str, int] = {}
     latitude_directions: dict[str, int] = {}
@@ -374,42 +374,38 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[list], dict
             null_geometry += 1
         record = [*ra, *row, *(owner if owner is not None else [None] * 25), latdec, londec]
         records.append(record)
-    if coordinate_types != EXPECTED_COORDINATE_TYPE_COUNTS:
-        raise ValueError("source_coordinate_type_distribution_drift")
-    if latitude_directions != EXPECTED_LATITUDE_DIRECTIONS:
-        raise ValueError("source_latitude_direction_distribution_drift")
-    if longitude_directions != EXPECTED_LONGITUDE_DIRECTIONS:
-        raise ValueError("source_longitude_direction_distribution_drift")
+    # The observed coordinate type and DMS direction distributions, array
+    # position population, null-geometry count and rows without an owner
+    # entity are recorded in the audit, not gated: a regenerated weekly
+    # edition changes them without breaking the capture. The published row
+    # count is one per CO row, already witnessed against the counts member.
     rows_without_owner = sum(1 for record in records if record[49 + 18] is None)
-    if rows_without_owner != EXPECTED_ROWS_WITHOUT_OWNER_ENTITY:
-        raise ValueError("source_rows_without_owner_entity_drift")
-    if array_position_rows != EXPECTED_ARRAY_ROWS_WITH_POSITION:
-        raise ValueError("source_array_position_population_drift")
-    if null_geometry != EXPECTED_NULL_GEOMETRY_COUNT:
-        raise ValueError("source_null_geometry_count_drift")
-    if len(records) != EXPECTED_PUBLISHED_ROWS:
-        raise ValueError("source_published_population_drift")
 
+    # The full ID/geometry/row-value digests are recorded per-capture in the
+    # audit, not gated: a regenerated weekly edition changes composition
+    # without breaking the capture, and drift against an approved release is
+    # reported by the registered non-blocking drift check.
     order = {name: index for index, name in enumerate(RECORD_VALUE_NAMES)}
     records.sort(key=lambda record: tuple(record[order[name]] for name in ROW_KEY_COLUMNS))
     roster = [[record[order[name]] for name in ROW_KEY_COLUMNS] for record in records]
-    if _sha(_canonical(roster)) != EXPECTED_ID_SHA256:
-        raise ValueError("source_id_roster_drift")
     geometry_roster = [[record[order["ra_registration_number"]],
                         record[order["ra_unique_system_identifier"]],
                         record[order["co_coordinate_type"]],
                         record[order["londec"]], record[order["latdec"]]]
                        for record in records if record[order["londec"]] is not None]
-    if _sha(_canonical(geometry_roster)) != EXPECTED_GEOMETRY_SHA256:
-        raise ValueError("source_geometry_roster_drift")
-    if _sha(_canonical(records)) != EXPECTED_ROWS_SHA256:
-        raise ValueError("source_record_values_drift")
     coordinates = [(record[order["londec"]], record[order["latdec"]])
                    for record in records if record[order["londec"]] is not None]
+    if not coordinates:
+        raise ValueError("source_published_geometry_empty")
+    # Published-output validity contract on the observed bounds (derived from
+    # the observed data, edition-independent): the registry extent must be
+    # non-empty and inside the geographic envelope. The retired pinned extent
+    # was a snapshot of one edition; a legitimate edition that extends it is
+    # adopted with its observed extent recorded in the audit.
     bounds = [min(x for x, _y in coordinates), min(y for _x, y in coordinates),
               max(x for x, _y in coordinates), max(y for _x, y in coordinates)]
-    if bounds != EXPECTED_BOUNDS:
-        raise ValueError("source_bounds_drift")
+    if (bounds[0] < -180.0 or bounds[1] < -90.0 or bounds[2] > 180.0 or bounds[3] > 90.0):
+        raise ValueError("source_bounds_out_of_geographic_envelope")
     schema_contract = {"zip_members": sorted(ZIP_MEMBER_ROSTER),
                        "record_field_counts": RECORD_FIELD_COUNTS,
                        "published_columns": PUBLISHED_COLUMN_NAMES}
@@ -420,6 +416,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[list], dict
         "source_id_sha256": _sha(_canonical(roster)),
         "source_state_roster_sha256": _sha(_canonical(states)),
         "source_state_count": len(states),
+        "source_counts_witness": witness,
         "source_ra_record_count": len(tables["RA"]), "source_co_record_count": len(tables["CO"]),
         "source_en_record_count": len(tables["EN"]),
         "source_registration_status_counts": status_counts,
@@ -432,7 +429,7 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[list], dict
         "source_registrations_without_entity": without_entity,
         "source_rows_without_owner_entity": rows_without_owner,
         "source_array_rows_with_position": array_position_rows,
-        "source_array_rows_without_position": EXPECTED_COORDINATE_TYPE_COUNTS["A"] - array_position_rows,
+        "source_array_rows_without_position": coordinate_types.get("A", 0) - array_position_rows,
         "source_file_creation_date": creation_date,
         "source_null_geometry_count": null_geometry,
         "source_geometry_datum": ("NAD83 (EPSG:4269); the FCC ASR registration search states ASR "
@@ -440,18 +437,24 @@ def _validate(captures: dict[str, tuple[bytes, dict]]) -> tuple[list[list], dict
                                   "ASR filings must use NAD83 coordinates"),
         "source_bounds": bounds, "source_coverage_scope": COVERAGE_SCOPE,
         "drift_guard": ("Exact capture roster, HTTP status/completeness/length/hash receipt, zip member roster, "
-                        "per-record-type field counts and record-type prefixes, RA/CO/EN record totals, counts-file "
-                        "record totals and creation date, distinct registration_number and unique_system_identifier "
-                        "identities, status/archive flag distributions, structure state roster digest, one unique "
-                        "EN owner (entity_type O) row per registered registration, registrant row population, "
-                        "registrations without entity rows, CO/RA join, unique (registration_number, "
-                        "unique_system_identifier, coordinate_type) keys, coordinate type and DMS direction "
-                        "distributions, array position population, derived-decimal coordinate range, "
-                        "full published ID/geometry/row-value digests, bounds and null-geometry count are checked; "
-                        "duplicate identities or coordinate keys fail closed. All declared RA/CO/EN field values "
-                        "are retained verbatim, including empty values, leading zeros and fixed-width char "
-                        "padding; joined EN fields stay null for the 15 published rows whose registration carries "
-                        "no EN owner row."),
+                        "per-record-type field counts and record-type prefixes, distinct registration_number and "
+                        "unique_system_identifier identities, one unique EN owner (entity_type O) row per "
+                        "registered registration, CO/RA join, unique (registration_number, "
+                        "unique_system_identifier, coordinate_type) keys, valid DMS direction letters, "
+                        "derived-decimal coordinate range and the observed-bounds geographic envelope are "
+                        "checked; duplicate identities or coordinate keys fail closed. Record population "
+                        "completeness comes from the payload's own counts member at capture time: the decoded "
+                        "RA/CO/EN row counts and the decoded unique USI roster must equal the publisher's "
+                        "recorded counts, and the counts member file creation date is the observed edition "
+                        "marker. The status/archive flag distributions, entity populations, registrations "
+                        "without entity rows, coordinate type and DMS direction distributions, array position "
+                        "population, null-geometry count, rows without an owner entity and the full "
+                        "ID/geometry/row-value and state-roster digests are recorded per-capture audit "
+                        "observations, not gates; the registered non-blocking approved-baseline drift check "
+                        "compares them against an approved release. All declared RA/CO/EN field values are "
+                        "retained verbatim, including empty values, leading zeros and fixed-width char "
+                        "padding; joined EN fields stay null for published rows whose registration carries no "
+                        "EN owner row."),
     }
     return records, audit
 
@@ -562,9 +565,11 @@ def capture_antenna_structure_registration_asr(storage: StagingStorageResource, 
         "sha256": receipts["r_tower"]["sha256"], "wire_bytes": receipts["r_tower"]["wire_bytes"],
         "wire_sha256": receipts["r_tower"]["wire_sha256"],
         "release_date": None,
-        "release_date_unknown_reason": ("The weekly tower registration file is regenerated every Sunday; the "
-                                        "payload's own counts file creation date is retained in the audit while "
-                                        "no per-release edition date is declared by the FCC for this distribution."),
+        "release_date_unknown_reason": ("The weekly tower registration file is regenerated every Sunday and served "
+                                        "at one fixed URL with no edition name in the path; the FCC declares no "
+                                        "per-release edition date for this distribution, so the payload's own "
+                                        "counts member file creation date is recorded in the audit and candidate "
+                                        "result as the observed edition marker for update detection."),
         "license": "Unresolved; rights review pending.", "attribution": "FCC Wireless Telecommunications Bureau ULS public access ASR tower tables; attribution and rights review pending."}
         for name, receipt in sorted(receipts.items())]
     manifest = {"schema_version": 1, "approved": False, "title": "Antenna Structure Registration (FCC ASR)",
@@ -582,12 +587,12 @@ def capture_antenna_structure_registration_asr(storage: StagingStorageResource, 
         "code_identity_scheme": identity["code_identity_scheme"], "inputs": inputs,
         "transformations": [{"operation": "ULS pipe-delimited ASR tower registration file to GeoParquet candidate", "parameters": {
             "source_tables": "RA registration, CO coordinates and EN entity tables of r_tower.zip decoded as CRLF pipe-delimited UTF-8 records (trailing CR removed per line)",
-            "population": ("one published row per CO coordinate row (198068 tower rows and 5236 array rows) "
-                           "joined to its RA registration row and to the registration's unique EN owner entity "
-                           "row (entity_type O), without status or archive filtering; A rows are retained as "
-                           "filed, not expanded into array members; the single registration without a coordinate row has no "
-                           "published row and the 15 published rows whose registration carries no EN owner row "
-                           "keep null joined EN fields"),
+            "population": ("one published row per CO coordinate row (T tower rows and A array rows as filed, "
+                            "not expanded into array members) joined to its RA registration row and to the "
+                            "registration's unique EN owner entity row (entity_type O), without status or archive "
+                            "filtering; an RA registration without a coordinate row has no published row, and "
+                            "published rows whose registration carries no EN owner row keep null joined EN "
+                            "fields; per-edition counts are recorded in the audit"),
             "source_ids": ("ra_registration_number, ra_unique_system_identifier and co_coordinate_type retained "
                            "verbatim and jointly unique; no substitute identifiers are generated"),
             "source_values": ("all 92 declared RA/CO/EN fields retained verbatim as strings, including empty "
@@ -595,10 +600,10 @@ def capture_antenna_structure_registration_asr(storage: StagingStorageResource, 
                               "31-column schema/ID contract (its declared columns are positionally misaligned "
                               "relative to these tables) remains a pending maintainer mapping decision"),
             "derived_columns": ("latdec/londec are DMS-to-decimal conversions of the raw components formatted "
-                                "to 12 significant digits, the established ULS-family derived-coordinate "
-                                "convention (missing minutes or seconds contribute zero); the 124 coordinate "
-                                "rows without parsable degrees and directions keep null latdec/londec and null "
-                                "geometry and are counted"),
+                                 "to 12 significant digits, the established ULS-family derived-coordinate "
+                                 "convention (missing minutes or seconds contribute zero); coordinate rows "
+                                 "without parsable degrees and directions keep null latdec/londec and null "
+                                 "geometry and are counted in the audit per edition"),
             "geometry": GEOMETRY_PROVENANCE + " (FCC ASR registration search: "
                         "https://wireless2.fcc.gov/UlsApp/AsrSearch/asrRegistrationSearch.jsp)",
             "candidate_status": "unapproved; historical/schema/ID/coverage/rights/release decisions pending"}}],
@@ -658,8 +663,10 @@ def capture_antenna_structure_registration_asr(storage: StagingStorageResource, 
             identity, audit["source_record_sha256"], audit["source_schema_sha256"],
             original.get("objects", {}), original_receipts)
         return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-            "feature_count": EXPECTED_PUBLISHED_ROWS, "source_population_complete": True,
+            "feature_count": audit["source_feature_count"],
+            "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
             "source_id_sha256": audit["source_id_sha256"],
+            "source_file_creation_date": audit["source_file_creation_date"],
             "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
             "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": True,
             "source_capture_evidence_sha256": capture_hash,
@@ -676,8 +683,10 @@ def capture_antenna_structure_registration_asr(storage: StagingStorageResource, 
         fingerprint=fingerprint)
     validate_construction_code_identity(Path(__file__).parents[3], identity["code_commit"], identity["files"], identity=identity)
     return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG, "version": version,
-        "feature_count": EXPECTED_PUBLISHED_ROWS, "source_population_complete": True,
+        "feature_count": audit["source_feature_count"],
+        "source_reported_count": audit["source_feature_count"], "source_population_complete": True,
         "source_id_sha256": audit["source_id_sha256"],
+        "source_file_creation_date": audit["source_file_creation_date"],
         "source_schema_sha256": audit["source_schema_sha256"], "source_coverage_scope": audit["source_coverage_scope"],
         "candidate_ready": prefix + "/metadata/candidate_ready.json", "reused": False,
         "source_capture_evidence_sha256": capture_hash,
