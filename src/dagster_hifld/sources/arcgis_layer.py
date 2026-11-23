@@ -44,7 +44,10 @@ from dagster_hifld.capture_completeness import validate_capture_witness
 from dagster_hifld.http_capture import capture_http_response, validate_capture_roster, validate_retained_capture_replay
 from dagster_hifld.source_release import ReleaseSignal
 from dagster_hifld.sources.capture_common import (
+    RetainedCaptureViews,
     capture_get,
+    load_receipt,
+    read_capture,
     write_immutable,
     write_candidate_outputs as write_outputs,
 )
@@ -702,30 +705,6 @@ def fetch_capture_retry(client: httpx.Client, url: str, root: Path, name: str, b
     raise last
 
 
-def load_receipt(capture_root: Path, name: str, error: type[ValueError]) -> dict[str, object]:
-    """Parse and structurally validate one retained receipt without page bytes."""
-    try:
-        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise error("retained_capture_receipt_invalid:" + name) from exc
-    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
-            or receipt.get("url") != receipt.get("final_url")
-            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
-        raise error("retained_capture_receipt_invalid:" + name)
-    return receipt
-
-
-def read_capture(capture_root: Path, name: str,
-                 error: type[ValueError]) -> tuple[bytes, dict[str, object]]:
-    body, wire = ((capture_root / f"{name}.body").read_bytes(),
-                  (capture_root / f"{name}.wire").read_bytes())
-    receipt = load_receipt(capture_root, name, error)
-    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
-            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
-        raise error("retained_capture_receipt_invalid:" + name)
-    return body, receipt
-
-
 def load_state(capture_root: Path, error: type[ValueError]) -> dict[str, object]:
     path = capture_root / "capture_state.json"
     if not path.exists():
@@ -893,24 +872,6 @@ def bracket_document_complete(name: str, body: bytes) -> bool:
     if name.startswith("count_"):
         return isinstance(document.get("count"), int)
     return bool(document)
-
-
-class RetainedCaptureViews(Mapping):
-    """Lazily materialize one capture view per access so quarantine stays bounded."""
-
-    def __init__(self, capture_root: Path, names: Iterable[str], error: type[ValueError]):
-        self._capture_root = Path(capture_root)
-        self._names = tuple(names)
-        self._error = error
-
-    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
-        return read_capture(self._capture_root, name, self._error)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self._names)
-
-    def __len__(self) -> int:
-        return len(self._names)
 
 
 def poll_layer_release(client: httpx.Client, *, service_url: str, layer_url: str,

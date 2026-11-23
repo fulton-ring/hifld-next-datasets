@@ -14,7 +14,7 @@ import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Iterable, Mapping
+from typing import Callable, Iterable, Iterator, Mapping
 from uuid import uuid4
 
 import httpx
@@ -313,23 +313,166 @@ def processing_identity(repo_root: Path) -> dict[str, object]:
     return identity
 
 
+def load_receipt(capture_root: Path, name: str, error: type[ValueError]) -> dict[str, object]:
+    """Parse and structurally validate one retained receipt without page bytes."""
+    try:
+        receipt = json.loads((capture_root / f"{name}.receipt.json").read_bytes())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise error("retained_capture_receipt_invalid:" + name) from exc
+    if (not isinstance(receipt, dict) or receipt.get("method") != "GET"
+            or receipt.get("url") != receipt.get("final_url")
+            or receipt.get("complete_body") is not True or receipt.get("status") != 200):
+        raise error("retained_capture_receipt_invalid:" + name)
+    return receipt
+
+
+def read_capture(capture_root: Path, name: str,
+                 error: type[ValueError]) -> tuple[bytes, dict[str, object]]:
+    body, wire = ((capture_root / f"{name}.body").read_bytes(),
+                  (capture_root / f"{name}.wire").read_bytes())
+    receipt = load_receipt(capture_root, name, error)
+    if (receipt.get("bytes") != len(body) or receipt.get("sha256") != _sha(body)
+            or receipt.get("wire_bytes") != len(wire) or receipt.get("wire_sha256") != _sha(wire)):
+        raise error("retained_capture_receipt_invalid:" + name)
+    return body, receipt
+
+
+def read_retained_capture(capture_root: Path, name: str,
+                          error: type[ValueError]) -> tuple[bytes, dict[str, object]]:
+    """Read retained failure evidence without requiring a complete GET.
+
+    Failure retention keeps partial attempts: the three files must be present,
+    the receipt must parse, and body and wire must match the receipt's sizes
+    and digests. The complete-GET contract belongs to replay, not to evidence.
+    """
+    root = Path(capture_root)
+    receipt_path, body_path, wire_path = (root / f"{name}.receipt.json",
+                                          root / f"{name}.body", root / f"{name}.wire")
+    if not receipt_path.is_file():
+        raise error("retained_capture_receipt_missing:" + name)
+    try:
+        receipt = json.loads(receipt_path.read_bytes())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise error("retained_capture_receipt_unreadable:" + name) from exc
+    if not isinstance(receipt, dict):
+        raise error("retained_capture_receipt_unreadable:" + name)
+    missing = [suffix for suffix, path in (("body", body_path), ("wire", wire_path))
+               if not path.is_file()]
+    if missing:
+        raise error("retained_capture_file_missing:" + name + ":" + ",".join(missing))
+    try:
+        body, wire = body_path.read_bytes(), wire_path.read_bytes()
+    except OSError as exc:
+        raise error("retained_capture_file_unreadable:" + name) from exc
+    if (receipt.get("bytes") != len(body) or receipt.get("wire_bytes") != len(wire)
+            or receipt.get("sha256") != _sha(body) or receipt.get("wire_sha256") != _sha(wire)):
+        raise error("retained_capture_evidence_mismatch:" + name)
+    return body, receipt
+
+
+class RetainedCaptureViews(Mapping):
+    """Lazily materialize one capture view per access so quarantine stays bounded."""
+
+    def __init__(self, capture_root: Path, names: Iterable[str], error: type[ValueError],
+                 reader: Callable[[Path, str, type[ValueError]],
+                                  tuple[bytes, dict[str, object]]] | None = None):
+        self._capture_root = Path(capture_root)
+        self._names = tuple(names)
+        self._error = error
+        self._reader = reader or read_capture
+
+    def __getitem__(self, name: str) -> tuple[bytes, dict[str, object]]:
+        return self._reader(self._capture_root, name, self._error)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._names)
+
+    def __len__(self) -> int:
+        return len(self._names)
+
+
 def quarantine_incomplete_capture(storage: StagingStorageResource, capture_root: Path,
                                   dataset_slug: str, version: str,
                                   captures: Mapping[str, tuple[bytes, Mapping[str, object]]],
-                                  reason_code: str) -> str:
-    """Retain all completed acquisition evidence under a unique quarantine key."""
+                                  reason_code: str, *,
+                                  not_retained: Iterable[Mapping[str, str]] = ()) -> str:
+    """Retain all completed acquisition evidence under a unique quarantine key.
+
+    A capture whose bytes cannot be read is recorded under ``not_retained``
+    (name and reason) in ``metadata/failure.json`` instead of raising from
+    the failure path.
+    """
     if not isinstance(storage, StagingStorageResource) or isinstance(storage, PublishedStorageResource):
         raise ValueError("explicit_staging_resource_required")
     token = f"{version}-{uuid4().hex}"
     base = f"_quarantine/{dataset_slug}/{token}"
-    for name, (body, receipt) in captures.items():
-        wire = (Path(capture_root) / f"{name}.wire").read_bytes()
+    captured_names: list[str] = []
+    skipped = [dict(entry) for entry in not_retained]
+    for name in captures:
+        try:
+            body, receipt = captures[name]
+        except Exception as failure:
+            skipped.append({"name": str(name), "reason": str(failure)})
+            continue
+        try:
+            wire = (Path(capture_root) / f"{name}.wire").read_bytes()
+        except FileNotFoundError:
+            skipped.append({"name": str(name),
+                            "reason": "retained_capture_wire_missing:" + str(name)})
+            continue
+        except OSError as failure:
+            skipped.append({"name": str(name), "reason": str(failure)})
+            continue
         write_immutable(storage, f"{base}/raw/{name}.body", body)
         write_immutable(storage, f"{base}/raw/{name}.wire", wire)
         write_immutable(storage, f"{base}/raw/{name}.receipt.json", _canonical(dict(receipt)) + b"\n")
+        captured_names.append(str(name))
     write_immutable(storage, f"{base}/metadata/failure.json",
-                    _canonical({"reason_code": reason_code, "captured_names": sorted(captures)}) + b"\n")
+                    _canonical({"reason_code": reason_code,
+                                "captured_names": sorted(captured_names),
+                                "not_retained": sorted(skipped,
+                                                       key=lambda entry: str(entry.get("name")))})
+                    + b"\n")
     return base
+
+
+def retain_failed_capture(storage: StagingStorageResource, capture_root: Path,
+                          dataset_slug: str, version: str, exc: BaseException, *,
+                          error: type[ValueError]) -> str | None:
+    """Retain every readable capture after a failure, recording what cannot be.
+
+    Scans the capture root once; each capture's bytes are read lazily by the
+    quarantine, one at a time. A capture whose receipt, body or wire is
+    missing, unreadable or inconsistent is recorded under ``not_retained``
+    (name and reason) in ``metadata/failure.json`` instead of being dropped
+    or replacing the failure. This helper catches its own failures and
+    records them where it can; it never raises in place of ``exc`` — the
+    caller re-raises the original error.
+    """
+    root = Path(capture_root)
+    not_retained: list[dict[str, str]] = []
+    try:
+        names = sorted({path.name.removesuffix(suffix)
+                        for path in root.iterdir()
+                        for suffix in (".body", ".wire", ".receipt.json")
+                        if path.name.endswith(suffix)})
+    except OSError as failure:
+        names = []
+        not_retained.append({"name": "*",
+                             "reason": "capture_root_unreadable:" + type(failure).__name__})
+    views = RetainedCaptureViews(root, names, error, reader=read_retained_capture)
+    try:
+        return quarantine_incomplete_capture(
+            storage, root, dataset_slug, version, views, type(exc).__name__,
+            not_retained=not_retained)
+    except Exception as failure:
+        try:
+            (root / "capture_retention_failed.json").write_bytes(_canonical({
+                "error_type": type(failure).__name__,
+                "not_retained": not_retained}) + b"\n")
+        except OSError:
+            pass
+        return None
 
 
 def seal_ready_candidate(storage: StagingStorageResource, state_key: str, version: str,
