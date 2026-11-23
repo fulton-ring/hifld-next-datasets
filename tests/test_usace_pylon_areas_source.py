@@ -28,7 +28,7 @@ from dagster_hifld.sources.usace_pylon_areas import (
     PAGE_SIZE,
     PREVIOUSLY_ACCEPTED_EXTENT,
     _esri_polygon,
-    _parquet_bytes,
+    _candidate_parquet,
     _validate,
     processing_identity,
     validate_processing_identity,
@@ -451,10 +451,10 @@ class ParquetCandidateContract(unittest.TestCase):
 
     def test_round_trip_preserves_schema_values_and_geometry(self):
         fields, features = self._sample()
-        parquet = _parquet_bytes(fields, features, 4326)
-        import io
-
-        table = pq.read_table(io.BytesIO(parquet))
+        with tempfile.TemporaryDirectory() as directory:
+            path, digest, rows = _candidate_parquet(fields, features, 4326, Path(directory))
+            self.assertEqual(rows, COUNT)
+            table = pq.read_table(path)
         self.assertEqual(table.num_rows, COUNT)
         self.assertEqual(
             [field.name for field in table.schema],

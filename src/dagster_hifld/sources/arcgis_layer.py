@@ -37,7 +37,6 @@ from urllib.parse import urlencode, urlsplit
 
 import httpx
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pyproj
 
 from dagster_hifld.capture_completeness import validate_capture_witness
@@ -52,6 +51,7 @@ from dagster_hifld.sources.esri_common import arrow_type, canonical as _canonica
 from dagster_hifld.sources.esri_geometry import (
     _validate_spatial_reference, esri_polygon_wkb as _shared_esri_polygon_wkb,
 )
+from dagster_hifld.sources.geoparquet_candidate import stream_geoparquet_candidate
 from dagster_hifld.sources.usace_ienc_common import (
     PAGE_MAX_BYTES, _arrow_type, capture_identity, capture_page, esri_polyline_wkb,
     load_capture, polyline_parquet_bytes,
@@ -280,30 +280,38 @@ def esri_polygon_wkb(geometry: dict) -> bytes:
     return _shared_esri_polygon_wkb(geometry, allow_zm=False)
 
 
-def layer_parquet_bytes(fields: list[dict], features: list[dict], wkid: int) -> bytes:
-    properties = [f for f in fields if f["name"] != "SHAPE"]
-    arrays = []
-    for field in properties:
-        name, dtype = field["name"], arrow_type(field)
-        values = [feature["attributes"][name] for feature in features]
-        arrays.append(pa.array(values, type=dtype))
-    geometries = [esri_polygon(x["geometry"]) for x in features]
-    arrays.append(pa.array(geometries, type=pa.binary()))
-    names = [x["name"] for x in properties] + ["geometry"]
-    table = pa.Table.from_arrays(arrays, names=names)
-    crs = {"$schema": "https://proj.org/schemas/v0.7/projjson.schema.json", "type": "GeographicCRS",
-           "name": "WGS 84", "datum": {"type": "GeodeticReferenceFrame", "name": "World Geodetic System 1984",
-           "ellipsoid": {"name": "WGS 84", "semi_major_axis": 6378137, "inverse_flattening": 298.257223563},
-           "id": {"authority": "EPSG", "code": 6326}},
-           "coordinate_system": {"subtype": "ellipsoidal", "axis": [{"name": "Geodetic latitude", "abbreviation": "Lat", "direction": "north", "unit": "degree"}, {"name": "Geodetic longitude", "abbreviation": "Lon", "direction": "east", "unit": "degree"}]},
-           "id": {"authority": "EPSG", "code": wkid}}
-    metadata = {b"geo": _canonical({"version": "1.1.0", "primary_column": "geometry",
-        "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["MultiPolygon", "Polygon"], "crs": crs}}})}
-    import io
+GEOMETRY_COLUMN = "geometry"
+LAYER_BATCH_SIZE = 250
 
-    sink = io.BytesIO()
-    pq.write_table(table.replace_schema_metadata(metadata), sink, compression="zstd", use_dictionary=False)
-    return sink.getvalue()
+
+def layer_candidate_parquet(fields: list[dict], features: list[dict], wkid: int,
+                            capture_root: Path) -> tuple[Path, str, int]:
+    """Stream one captured ArcGIS polygon layer to a local GeoParquet candidate.
+
+    Returns the candidate path under ``capture_root``, its sha256 digest and
+    its row count. Attribute columns keep declared physical types and source
+    order; rings encode to WKB with Z/M preserved. The GeoParquet 1.1 ``geo``
+    metadata comes from the shared candidate writer, which builds the source
+    CRS PROJJSON from the actual ``wkid``.
+    """
+    properties = [f for f in fields if f["name"] != "SHAPE"]
+    names = [f["name"] for f in properties] + [GEOMETRY_COLUMN]
+    schema = pa.schema(
+        [pa.field(f["name"], arrow_type(f), nullable=True) for f in properties]
+        + [pa.field(GEOMETRY_COLUMN, pa.binary(), nullable=True)])
+
+    def batches() -> Iterator[pa.RecordBatch]:
+        for start in range(0, len(features), LAYER_BATCH_SIZE):
+            chunk = features[start:start + LAYER_BATCH_SIZE]
+            arrays = [pa.array([feature["attributes"][field["name"]] for feature in chunk],
+                               type=arrow_type(field)) for field in properties]
+            arrays.append(pa.array([esri_polygon(feature["geometry"]) for feature in chunk],
+                                   type=pa.binary()))
+            yield pa.record_batch(arrays, names=names)
+
+    return stream_geoparquet_candidate(
+        schema, wkid, batches(), Path(capture_root) / "candidate.parquet",
+        geometry_column=GEOMETRY_COLUMN, geometry_types=["MultiPolygon", "Polygon"])
 
 
 def load_replay(root: Path, name: str) -> tuple[bytes, dict]:

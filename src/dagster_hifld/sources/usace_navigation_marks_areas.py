@@ -17,8 +17,6 @@ from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
-import pyarrow as pa
-import pyarrow.parquet as pq
 import shapely
 from pyproj import CRS
 
@@ -38,7 +36,7 @@ from dagster_hifld.sources.arcgis_layer import (
     capture_witness,
     ienc_layer_capture_roster,
     fetch_capture_retry,
-    layer_parquet_bytes as _parquet_bytes,
+    layer_candidate_parquet as _candidate_parquet,
     load_replay as _load_replay, write_outputs as _write_outputs,
 )
 
@@ -331,7 +329,9 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
 
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
-    parquet=_parquet_bytes(fields,features,wkid)
+    parquet_path,parquet_sha,parquet_rows=_candidate_parquet(fields,features,wkid,root)
+    if parquet_rows!=len(features): raise ValueError("candidate_row_count_drift")
+    parquet_size=parquet_path.stat().st_size
     capture_evidence={}
     for name,(body,receipt) in ((name, captures[name]) for name in sorted(captures)):
         wire=(root/f"{name}.wire").read_bytes()
@@ -382,7 +382,7 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
             f"The previous BTS map-service item {OLD_BTS_ITEM_ID} returned an anonymous-access denial on 2026-10-21; "
             "succession continuity is recorded but not accepted. This candidate contains only the complete observed service layer 68."),
         "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings are retained as a candidate; release and compatibility decisions remain pending.",
-            "objects":[{"path":"geoparquet/navigation-system-of-marks-areas-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},
+            "objects":[{"path":"geoparquet/navigation-system-of-marks-areas-usace-ienc.parquet","bytes":parquet_size,"sha256":parquet_sha}]}}},
         "unsupported_output_formats":{"geopackage":"No pinned complete native GDB inventory or schema/compatibility approval.",
             "pmtiles":"No display transformation approved."}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
@@ -397,10 +397,10 @@ def capture_usace_navigation_marks_areas(storage: StagingStorageResource, *, ver
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
     (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
-    outputs={"geoparquet/navigation-system-of-marks-areas-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
+    outputs={"geoparquet/navigation-system-of-marks-areas-usace-ienc.parquet":parquet_path,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
-    ready={"approved":False,"version":version,"objects":{"geoparquet/navigation-system-of-marks-areas-usace-ienc.parquet":{"bytes":len(parquet),"sha256":_sha(parquet)}},"source_population_complete":True,"source_record_sha256":audit["source_record_sha256"],"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+    ready={"approved":False,"version":version,"objects":{"geoparquet/navigation-system-of-marks-areas-usace-ienc.parquet":{"bytes":parquet_size,"sha256":parquet_sha}},"source_population_complete":True,"source_record_sha256":audit["source_record_sha256"],"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     outputs["metadata/candidate_ready.json"]=_canonical(ready)+b"\n"
     fingerprint=_sha(_canonical(identity)); state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
     receipts={n:r for n,(_b,r) in captures.items()}
