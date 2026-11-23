@@ -7,6 +7,7 @@ from collections.abc import Mapping
 import json
 import math
 import shutil
+import tempfile
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,7 +44,7 @@ from dagster_hifld.sources.usace_ienc_common import (
     capture_page,
     capture_identity,
     load_capture,
-    polyline_parquet_bytes,
+    polyline_candidate_parquet,
 )
 
 
@@ -307,82 +308,86 @@ def capture_usace_obstruction_lines(storage: StagingStorageResource, *, version:
                                  "schema_sha256":_sha(schema_body),"decoded_wire_evidence_sha256":capture_sha,
                                  "processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
-    parquet=polyline_parquet_bytes(fields,features)
-    inputs=[{"input_id":name,"producer":PUBLISHER if name != "bts_item" else "USDOT Bureau of Transportation Statistics (BTS) IENC NTAD item",
-             "host":urlsplit(receipt["url"]).hostname,
-             "role":"official_distributor" if name == "bts_item" else "producer_publication",
-             "canonical_url":BTS_ITEM_URL if name == "bts_item" else LAYER_URL,
-             "retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],
-             "http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],
-             "wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"],
-             "release_date":None,"release_date_unknown_reason":"The IENC item describes bi-monthly updates but does not provide a release date for this extracted layer snapshot.",
-             "license":"Unresolved; rights review pending.","attribution":"USACE IENC / BTS; attribution and rights review pending.",
-             **({"distributor":"USACE IENC Feature Classes service","delegation_evidence":{"bts_item_url":BTS_ITEM_URL,
-                 "bts_item_id":BTS_ITEM_ID,"bts_item_owner":"USDOT_BTS","official_service_directory":SERVICE_DIRECTORY_URL,
-                 "linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
-                 "basis":"Captured BTS IENC record identifies the program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase; linked service metadata identifies copyright USACE IENC."}} if name=="bts_item" else {})}
-            for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
-    manifest={"schema_version":1,"approved":False,"title":"Obstruction Lines (USACE IENC)",
-        "description":"Complete current OBSTRUCTION_LINE feature class from the official USACE IENC Feature Classes service; unapproved faithful candidate. Observed coverage is limited to records returned by this layer.",
-        "publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,
-        "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next",
-        "code_commit":identity["code_commit"],"inputs":inputs,
-        "transformations":[{"operation":"Esri JSON Polyline to GeoParquet WKB candidate; source XY ordinates and path order preserved",
-           "parameters":{"feature_count":audit["source_feature_count"],"source_fields":"all declared non-geometry fields retained in source order and declared types",
-             "source_ids":"OBJECTID and Feature_ID preserved unchanged","source_crs":"EPSG:4326","source_geometry":"2D paths exactly as captured; no projection, repair or line simplification",
-             "raw_evidence":"complete decoded response and wire bytes retained with checksummed receipts","candidate_status":"unapproved"}}],
-        "lineage":"BTS NTAD IENC item 3607d485a9854d6fa458bf507058ceae identifies the IENC program, states that USACE/Army Geospatial Center updates it twice monthly, and links this official USACE IENC Feature Classes service and master file geodatabase. This candidate is exactly the OBSTRUCTION_LINE service layer 42; its observed 16 features are concentrated in the Ohio and Tennessee River area and are not represented as national coverage.",
-        "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"All declared source attributes and IDs are typed and retained; the 2D source paths are stored as WKB with source EPSG:4326. Candidate remains unapproved pending compatibility and release decisions.",
-             "objects":[{"path":f"geoparquet/{FILE_SLUG}.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},
-        "unsupported_output_formats":{"geopackage":"No approved format-specific delivery contract exists.","pmtiles":"No approved display/generalization policy exists for this navigation feature class."}}
-    validate_release_provenance(manifest);validate_output_policy(manifest);provenance_projection(manifest)
-    audit["source_fields"]=fields
-    audit["official_layer_name"]="OBSTRUCTION_LINE"
-    audit["official_layer_id"]=LAYER_ID
-    audit["official_source_item"]="USDOT_BTS " + BTS_ITEM_ID
-    outputs={f"geoparquet/{FILE_SLUG}.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
-             "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
-    for name,(body,receipt) in captures.items():
-        _body,wire,_receipt=load_capture(root,name)
-        outputs[f"raw/{name}.body"]=body;outputs[f"raw/{name}.wire"]=wire
-        outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
-    ready={"approved":False,"version":version,"objects":{f"geoparquet/{FILE_SLUG}.parquet":{"bytes":len(parquet),"sha256":_sha(parquet)}},
-           "source_population_complete":True,"source_record_sha256":audit["source_record_sha256"],
-           "source_schema_sha256":audit["source_schema_sha256"],"source_release_accepted":False,"freshness_accepted":False,
-           "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,
-           "mapping_approved":False,"release_accepted":False}
-    outputs["metadata/candidate_ready.json"]=_canonical(ready)+b"\n"
-    fingerprint=_sha(_canonical({"identity":identity,"source_record_sha256":audit["source_record_sha256"],
-                                 "source_schema_sha256":audit["source_schema_sha256"],"capture_evidence_sha256":capture_sha}))
-    state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
-    receipts={name:receipt for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))}
-    if storage.object_snapshot(state_key) is not None:
-        original=json.loads(load_first_construction(storage,state_key,version,fingerprint)).get("payload")
-        if (not isinstance(original,dict) or original.get("processing_identity")!=identity
-                or original.get("source_record_sha256")!=audit["source_record_sha256"]
-                or original.get("source_schema_sha256")!=audit["source_schema_sha256"]
-                or not isinstance(original.get("capture_receipts"),dict)):
-            raise ValueError("cached_first_candidate_identity_or_source_changed")
-        original_receipts=original["capture_receipts"]
-        if set(original_receipts)!=set(captures):
-            raise ValueError("cached_candidate_capture_roster_changed")
-        for name in captures:
-            fresh_body,fresh_wire,_receipt=load_capture(root,name)
-            if (storage.read_key(f"{prefix}/raw/{name}.body")!=fresh_body
-                    or storage.read_key(f"{prefix}/raw/{name}.wire")!=fresh_wire):
-                raise ValueError("cached_source_evidence_changed:"+name)
-        verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,
-            audit["source_record_sha256"],audit["source_schema_sha256"],original.get("objects",{}),original_receipts)
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
-            "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],
-            "source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],
-            "source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
-            "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],
-            "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"source_capture_evidence_sha256":capture_sha,
-            "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
-            "coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,
-            "capture_directory":str(root)}
-    descriptors = write_candidate_outputs(storage, prefix, outputs)
+    with tempfile.TemporaryDirectory(prefix="hifld-polyline-candidate-") as candidate_dir:
+        parquet_path, parquet_sha, parquet_rows = polyline_candidate_parquet(fields, features, 4326, Path(candidate_dir))
+        if parquet_rows != len(features):
+            raise ValueError("candidate_row_count_drift")
+        parquet_size = parquet_path.stat().st_size
+        inputs=[{"input_id":name,"producer":PUBLISHER if name != "bts_item" else "USDOT Bureau of Transportation Statistics (BTS) IENC NTAD item",
+                 "host":urlsplit(receipt["url"]).hostname,
+                 "role":"official_distributor" if name == "bts_item" else "producer_publication",
+                 "canonical_url":BTS_ITEM_URL if name == "bts_item" else LAYER_URL,
+                 "retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],
+                 "http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],
+                 "wire_bytes":receipt["wire_bytes"],"wire_sha256":receipt["wire_sha256"],
+                 "release_date":None,"release_date_unknown_reason":"The IENC item describes bi-monthly updates but does not provide a release date for this extracted layer snapshot.",
+                 "license":"Unresolved; rights review pending.","attribution":"USACE IENC / BTS; attribution and rights review pending.",
+                 **({"distributor":"USACE IENC Feature Classes service","delegation_evidence":{"bts_item_url":BTS_ITEM_URL,
+                     "bts_item_id":BTS_ITEM_ID,"bts_item_owner":"USDOT_BTS","official_service_directory":SERVICE_DIRECTORY_URL,
+                     "linked_feature_classes_service":"https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes",
+                     "basis":"Captured BTS IENC record identifies the program and explicitly links the official USACE IENC Feature Classes service and master file geodatabase; linked service metadata identifies copyright USACE IENC."}} if name=="bts_item" else {})}
+                for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
+        manifest={"schema_version":1,"approved":False,"title":"Obstruction Lines (USACE IENC)",
+            "description":"Complete current OBSTRUCTION_LINE feature class from the official USACE IENC Feature Classes service; unapproved faithful candidate. Observed coverage is limited to records returned by this layer.",
+            "publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,
+            "source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next",
+            "code_commit":identity["code_commit"],"inputs":inputs,
+            "transformations":[{"operation":"Esri JSON Polyline to GeoParquet WKB candidate; source XY ordinates and path order preserved",
+               "parameters":{"feature_count":audit["source_feature_count"],"source_fields":"all declared non-geometry fields retained in source order and declared types",
+                 "source_ids":"OBJECTID and Feature_ID preserved unchanged","source_crs":"EPSG:4326","source_geometry":"2D paths exactly as captured; no projection, repair or line simplification",
+                 "raw_evidence":"complete decoded response and wire bytes retained with checksummed receipts","candidate_status":"unapproved"}}],
+            "lineage":"BTS NTAD IENC item 3607d485a9854d6fa458bf507058ceae identifies the IENC program, states that USACE/Army Geospatial Center updates it twice monthly, and links this official USACE IENC Feature Classes service and master file geodatabase. This candidate is exactly the OBSTRUCTION_LINE service layer 42; its observed 16 features are concentrated in the Ohio and Tennessee River area and are not represented as national coverage.",
+            "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"All declared source attributes and IDs are typed and retained; the 2D source paths are stored as WKB with source EPSG:4326. Candidate remains unapproved pending compatibility and release decisions.",
+                 "objects":[{"path":f"geoparquet/{FILE_SLUG}.parquet","bytes":parquet_size,"sha256":parquet_sha}]}}},
+            "unsupported_output_formats":{"geopackage":"No approved format-specific delivery contract exists.","pmtiles":"No approved display/generalization policy exists for this navigation feature class."}}
+        validate_release_provenance(manifest);validate_output_policy(manifest);provenance_projection(manifest)
+        audit["source_fields"]=fields
+        audit["official_layer_name"]="OBSTRUCTION_LINE"
+        audit["official_layer_id"]=LAYER_ID
+        audit["official_source_item"]="USDOT_BTS " + BTS_ITEM_ID
+        outputs={f"geoparquet/{FILE_SLUG}.parquet":parquet_path,"metadata/source_manifest.json":_canonical(manifest)+b"\n",
+                 "metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
+        for name,(body,receipt) in captures.items():
+            _body,wire,_receipt=load_capture(root,name)
+            outputs[f"raw/{name}.body"]=body;outputs[f"raw/{name}.wire"]=wire
+            outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
+        ready={"approved":False,"version":version,"objects":{f"geoparquet/{FILE_SLUG}.parquet":{"bytes":parquet_size,"sha256":parquet_sha}},
+               "source_population_complete":True,"source_record_sha256":audit["source_record_sha256"],
+               "source_schema_sha256":audit["source_schema_sha256"],"source_release_accepted":False,"freshness_accepted":False,
+               "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,
+               "mapping_approved":False,"release_accepted":False}
+        outputs["metadata/candidate_ready.json"]=_canonical(ready)+b"\n"
+        fingerprint=_sha(_canonical({"identity":identity,"source_record_sha256":audit["source_record_sha256"],
+                                     "source_schema_sha256":audit["source_schema_sha256"],"capture_evidence_sha256":capture_sha}))
+        state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
+        receipts={name:receipt for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))}
+        if storage.object_snapshot(state_key) is not None:
+            original=json.loads(load_first_construction(storage,state_key,version,fingerprint)).get("payload")
+            if (not isinstance(original,dict) or original.get("processing_identity")!=identity
+                    or original.get("source_record_sha256")!=audit["source_record_sha256"]
+                    or original.get("source_schema_sha256")!=audit["source_schema_sha256"]
+                    or not isinstance(original.get("capture_receipts"),dict)):
+                raise ValueError("cached_first_candidate_identity_or_source_changed")
+            original_receipts=original["capture_receipts"]
+            if set(original_receipts)!=set(captures):
+                raise ValueError("cached_candidate_capture_roster_changed")
+            for name in captures:
+                fresh_body,fresh_wire,_receipt=load_capture(root,name)
+                if (storage.read_key(f"{prefix}/raw/{name}.body")!=fresh_body
+                        or storage.read_key(f"{prefix}/raw/{name}.wire")!=fresh_wire):
+                    raise ValueError("cached_source_evidence_changed:"+name)
+            verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,
+                audit["source_record_sha256"],audit["source_schema_sha256"],original.get("objects",{}),original_receipts)
+            return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,
+                "feature_count":audit["source_feature_count"],"source_reported_count":audit["source_feature_count"],
+                "source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],
+                "source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
+                "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],
+                "candidate_ready":prefix+"/metadata/candidate_ready.json","reused":True,"source_capture_evidence_sha256":capture_sha,
+                "source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
+                "coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False,
+                "capture_directory":str(root)}
+        descriptors = write_candidate_outputs(storage, prefix, outputs)
     seal_candidate_objects(
         storage, state_key, version,
         identity, receipts, descriptors,
