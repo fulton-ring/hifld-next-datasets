@@ -17,8 +17,6 @@ from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
-import pyarrow as pa
-import pyarrow.parquet as pq
 import shapely
 
 from dagster_hifld.http_capture import validated_capture_view
@@ -35,7 +33,7 @@ from dagster_hifld.sources.esri_geometry import esri_polygon_wkb as _esri_polygo
 from dagster_hifld.sources.arcgis_layer import (
     capture_witness,
     fetch_capture_retry,
-    layer_parquet_bytes as _parquet_bytes,
+    layer_candidate_parquet as _candidate_parquet,
     load_replay as _load_replay, write_outputs as _write_outputs,
 )
 
@@ -253,7 +251,9 @@ def capture_usace_administrative_areas(storage: StagingStorageResource, *, versi
 
     identity=processing_identity(Path(__file__).parents[3])
     wkid=4326
-    parquet=_parquet_bytes(fields,features,wkid)
+    parquet_path,parquet_sha,parquet_rows=_candidate_parquet(fields,features,wkid,root)
+    if parquet_rows!=len(features): raise ValueError("candidate_row_count_drift")
+    parquet_size=parquet_path.stat().st_size
     capture_sha=_sha(_canonical({name:_sha(body) for name,(body,_receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"]=capture_sha
     version="v"+_sha(_canonical({"source_record_sha256":audit["source_record_sha256"],
@@ -261,7 +261,7 @@ def capture_usace_administrative_areas(storage: StagingStorageResource, *, versi
         "source_capture_sha256":capture_sha,"processing_identity":identity}))[:32]
     prefix=candidate_prefix(DATASET_SLUG,FILE_SLUG,version)
     inputs=[{"input_id":name,"producer":PUBLISHER,"host":urlsplit(receipt["url"]).hostname,"role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":receipt["url"],"observed_final_url":receipt["final_url"],"retrieved_at":receipt["observed_at"],"http_status":receipt["status"],"bytes":receipt["bytes"],"sha256":receipt["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"Official layer metadata does not establish the source release date."} for name,(_body,receipt) in ((name, captures[name]) for name in sorted(captures))]
-    manifest={"schema_version":1,"approved":False,"title":"Administrative Areas (USACE IENC)","description":"Complete official USACE IENC ADMINISTRATIVE_AREA feature class; unapproved faithful candidate. Does not assert national coverage or compatibility with the historical HIFLD/FEMA baseline.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":"USDOT_BTS current public item 7ec34864c8804468a9cf52d437fe4b6c and its PDF describe the current IENC distribution and link the official USACE IENC Feature Classes service and native geodatabase. Prior item 3607d485a9854d6fa458bf507058ceae is recorded as historical; succession/continuity is unverified and not accepted. This candidate represents only the complete observed ADMINISTRATIVE_AREA layer 56, not national administrative-area coverage.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/administrative-areas-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},"unsupported_output_formats":{"geopackage":"No pinned complete native GDB inventory or schema/compatibility approval.","pmtiles":"No display transformation approved."}}
+    manifest={"schema_version":1,"approved":False,"title":"Administrative Areas (USACE IENC)","description":"Complete official USACE IENC ADMINISTRATIVE_AREA feature class; unapproved faithful candidate. Does not assert national coverage or compatibility with the historical HIFLD/FEMA baseline.","publisher":PUBLISHER,"agency":"US Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],"code_identity_scheme":identity["code_identity_scheme"],"inputs":inputs,"transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"source_fields":"all declared attributes retained in source order and declared physical types","source_ids":"OBJECTID and Feature_ID values retained unchanged","geometry":"Polygon rings retained in captured raw Esri JSON; WKB candidate at source EPSG:4326; no reprojection or geometry repair","candidate_status":"unapproved; source release, baseline, ID/schema, coverage and rights decisions remain pending"}}],"lineage":"USDOT_BTS current public item 7ec34864c8804468a9cf52d437fe4b6c and its PDF describe the current IENC distribution and link the official USACE IENC Feature Classes service and native geodatabase. Prior item 3607d485a9854d6fa458bf507058ceae is recorded as historical; succession/continuity is unverified and not accepted. This candidate represents only the complete observed ADMINISTRATIVE_AREA layer 56, not national administrative-area coverage.","prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Native layer attributes, identifiers and unmodified rings retained as a candidate; release and compatibility decisions remain pending.","objects":[{"path":"geoparquet/administrative-areas-usace-ienc.parquet","bytes":parquet_size,"sha256":parquet_sha}]}}},"unsupported_output_formats":{"geopackage":"No pinned complete native GDB inventory or schema/compatibility approval.","pmtiles":"No display transformation approved."}}
     validate_release_provenance(manifest); validate_output_policy(manifest)
     audit.update({"source_fields":fields,"official_layer_name":"ADMINISTRATIVE_AREA","current_official_source_item":"USDOT_BTS 7ec34864c8804468a9cf52d437fe4b6c","prior_source_item":"USDOT_BTS 3607d485a9854d6fa458bf507058ceae","prior_item_succession_accepted":False,"source_release_accepted":False,"source_freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False})
     attempts={}
@@ -269,10 +269,10 @@ def capture_usace_administrative_areas(storage: StagingStorageResource, *, versi
         try: attempts[receipt_path.name.removesuffix(".receipt.json")]=json.loads(receipt_path.read_bytes())
         except (OSError,ValueError): attempts[receipt_path.name]={"receipt_readback_failed":True}
     (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":True,"source_feature_count":audit["source_feature_count"],"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},"attempts":attempts,"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
-    outputs={"geoparquet/administrative-areas-usace-ienc.parquet":parquet,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
+    outputs={"geoparquet/administrative-areas-usace-ienc.parquet":parquet_path,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n"}
     for name,(body,receipt) in captures.items():
         outputs[f"raw/{name}.body"]=body; outputs[f"raw/{name}.wire"]=(root/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
-    ready={"approved":False,"version":version,"objects":{"geoparquet/administrative-areas-usace-ienc.parquet":{"bytes":len(parquet),"sha256":_sha(parquet)}},"source_population_complete":True,"source_record_sha256":audit["source_record_sha256"],"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+    ready={"approved":False,"version":version,"objects":{"geoparquet/administrative-areas-usace-ienc.parquet":{"bytes":parquet_size,"sha256":parquet_sha}},"source_population_complete":True,"source_record_sha256":audit["source_record_sha256"],"source_release_accepted":False,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
     outputs["metadata/candidate_ready.json"]=_canonical(ready)+b"\n"
     fingerprint=_sha(_canonical(identity)); state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
     receipts={n:r for n,(_b,r) in captures.items()}

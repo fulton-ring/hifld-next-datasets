@@ -31,7 +31,6 @@ from uuid import uuid4
 
 import httpx
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pyproj
 import shapely
 
@@ -53,7 +52,7 @@ from dagster_hifld.sources.arcgis_layer import (
     capture_witness,
     ienc_layer_capture_roster,
     fetch_capture_retry,
-    layer_parquet_bytes as _parquet_bytes,
+    layer_candidate_parquet as _candidate_parquet,
     load_replay as _load_replay, write_outputs as _write_outputs,
 )
 
@@ -576,7 +575,10 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
 
     identity = processing_identity(Path(__file__).parents[3])
     wkid = 4326
-    parquet = _parquet_bytes(fields, features, wkid)
+    parquet_path, parquet_sha, parquet_rows = _candidate_parquet(fields, features, wkid, root)
+    if parquet_rows != len(features):
+        raise ValueError("candidate_row_count_drift")
+    parquet_size = parquet_path.stat().st_size
     capture_sha = _sha(_canonical({name: _sha(body) for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures))}))
     audit["source_capture_sha256"] = capture_sha
     fingerprint = _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
@@ -619,7 +621,7 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
         "lineage": "USDOT BTS item " + BTS_ITEM_ID + " documents bi-monthly USACE/AGC IENC updates and links the official IENCCloud feature-class service and master file geodatabase. The earlier BTS map-service item " + PRIOR_BTS_ITEM_ID + " used by related IENC drafts returned anonymous-access denial (HTTP 403 GWM_0003) on 2026-10-21; succession requires maintainer continuity review. This candidate is the exact published PYLONS_AREA layer, not the entire IENC archive.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
             "reason": "Native layer attributes, identifiers and unmodified polygon rings retained as a candidate; release and compatibility decisions remain pending.",
-            "objects": [{"path": "geoparquet/pylon-areas-usace-ienc.parquet", "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
+            "objects": [{"path": "geoparquet/pylon-areas-usace-ienc.parquet", "bytes": parquet_size, "sha256": parquet_sha}]}}},
         "unsupported_output_formats": {"geopackage": "No approved schema/compatibility contract.",
                                        "pmtiles": "No display transformation approved."}}
     validate_release_provenance(manifest)
@@ -645,7 +647,7 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
             "receipts": {n: r for n, (_b, r) in ((name, captures[name]) for name in sorted(captures))},
             "attempts": attempts,
             "artifact_roster": _capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
-    outputs = {"geoparquet/pylon-areas-usace-ienc.parquet": parquet,
+    outputs = {"geoparquet/pylon-areas-usace-ienc.parquet": parquet_path,
         "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n",
         "metadata/processing_identity.json": _canonical(identity) + b"\n"}
@@ -654,7 +656,7 @@ def capture_usace_pylon_areas(storage: StagingStorageResource, *, version: str,
         outputs[f"raw/{name}.wire"] = (root / f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
     ready = {"approved": False, "version": version,
-        "objects": {"geoparquet/pylon-areas-usace-ienc.parquet": {"bytes": len(parquet), "sha256": _sha(parquet)}},
+        "objects": {"geoparquet/pylon-areas-usace-ienc.parquet": {"bytes": parquet_size, "sha256": parquet_sha}},
         "source_population_complete": True,
         "source_record_sha256": audit["source_record_sha256"],
         "source_release_accepted": False, "freshness_accepted": False,

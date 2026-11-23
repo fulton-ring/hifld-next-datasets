@@ -1,4 +1,3 @@
-import io
 import hashlib
 import json
 import tempfile
@@ -15,7 +14,7 @@ import shapely
 from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 from dagster_hifld.sources.usace_administrative_areas import (
     CURRENT_BTS_ITEM_ID, EXPECTED_FIELD_DECLARATIONS, EXPECTED_FIELDS, PAGE_SIZE,
-    _esri_polygon, _fetch_retry, _parquet_bytes, _validate,
+    _esri_polygon, _fetch_retry, _candidate_parquet, _validate,
 )
 from dagster_hifld.http_capture import capture_roster_digests, validate_capture_roster
 
@@ -126,8 +125,11 @@ class UsaceAdministrativeAreasTests(unittest.TestCase):
         ]
         feature = {"attributes":{"OBJECTID":17,"Jurisdiction":"00107","Scale_Minimum":0,"Feature_ID":"X-17"},
                    "geometry":{"rings":[[[0,0],[0,4],[4,4],[4,0],[0,0]]],"spatialReference":{"wkid":4326}}}
-        body = _parquet_bytes(fields,[feature],4326)
-        table = pq.ParquetFile(io.BytesIO(body)).read(use_threads=False)
+        with tempfile.TemporaryDirectory() as directory:
+            path,digest,rows=_candidate_parquet(fields,[feature],4326,Path(directory))
+            self.assertEqual(rows,1)
+            self.assertEqual(digest,hashlib.sha256(path.read_bytes()).hexdigest())
+            table = pq.ParquetFile(path).read(use_threads=False)
         self.assertEqual(table.column("OBJECTID").to_pylist(),[17])
         self.assertEqual(table.column("Jurisdiction").to_pylist(),["00107"])
         self.assertEqual(table.column("Scale_Minimum").to_pylist(),[0])

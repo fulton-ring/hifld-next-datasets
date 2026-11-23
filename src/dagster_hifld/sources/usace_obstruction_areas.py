@@ -37,7 +37,7 @@ from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _s
 from dagster_hifld.sources.arcgis_layer import (
     esri_polygon as _esri_polygon, fetch_capture_retry,
     layer_capture_roster,
-    layer_parquet_bytes as _parquet_bytes,
+    layer_candidate_parquet as _candidate_parquet,
     load_replay as _load_replay, write_outputs as _write_outputs,
 )
 
@@ -285,7 +285,10 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
         raise
 
     identity = processing_identity(Path(__file__).parents[3])
-    parquet = _parquet_bytes(fields, features, 4326)
+    parquet_path, parquet_sha, parquet_rows = _candidate_parquet(fields, features, 4326, root)
+    if parquet_rows != len(features):
+        raise ValueError("candidate_row_count_drift")
+    parquet_size = parquet_path.stat().st_size
     capture_hash = _capture_identity_hash(captures)
     audit["source_capture_sha256"] = capture_hash
     version = "v" + _sha(_canonical({"source_record_sha256": audit["source_record_sha256"],
@@ -313,7 +316,7 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
             "candidate_status": "unapproved; source release, baseline, schema/ID, coverage and rights remain pending"}}],
         "lineage": f"Current public BTS IENC PDF item {CURRENT_BTS_ITEM_ID} links the official USACE IENC Feature Classes service and master geodatabase and describes the bi-monthly USACE/AGC update cadence. The previous BTS map-service item {PRIOR_BTS_ITEM_ID} returned an anonymous-access denial (ArcGIS error 403/GWM_0003) on 2026-11-13; succession continuity is recorded but not accepted. This candidate contains the complete OBSTRUCTION_AREA layer only.",
         "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {"reason": "Faithful unapproved native-layer candidate.",
-            "objects": [{"path": output_path, "bytes": len(parquet), "sha256": _sha(parquet)}]}}},
+            "objects": [{"path": output_path, "bytes": parquet_size, "sha256": parquet_sha}]}}},
         "unsupported_output_formats": {"geopackage": "No approved mapping or GDB cross-check.", "pmtiles": "No display transformation approved."}}
     validate_release_provenance(manifest)
     validate_output_policy(manifest)
@@ -326,13 +329,13 @@ def capture_usace_obstruction_areas(storage: StagingStorageResource, *, version:
         "complete": True, "source_feature_count": audit["source_feature_count"],
         "source_record_sha256": audit["source_record_sha256"], "source_schema_sha256": audit["source_schema_sha256"],
         "receipts": receipts, "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
-    outputs = {output_path: parquet, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
+    outputs = {output_path: parquet_path, "metadata/source_manifest.json": _canonical(manifest) + b"\n",
         "metadata/source_audit.json": _canonical(audit) + b"\n", "metadata/processing_identity.json": _canonical(identity) + b"\n"}
     for name, (body, receipt) in captures.items():
         outputs[f"raw/{name}.body"] = body
         outputs[f"raw/{name}.wire"] = (root / f"{name}.wire").read_bytes()
         outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
-    ready = {"approved": False, "version": version, "objects": {output_path: {"bytes": len(parquet), "sha256": _sha(parquet)}},
+    ready = {"approved": False, "version": version, "objects": {output_path: {"bytes": parquet_size, "sha256": parquet_sha}},
         "source_population_complete": True, "source_record_sha256": audit["source_record_sha256"],
         "source_release_accepted": False, "freshness_accepted": False, "schema_contract_accepted": False,
         "id_contract_accepted": False, "coverage_accepted": False, "rights_accepted": False,
