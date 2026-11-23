@@ -71,7 +71,7 @@ from dagster_hifld.sources.capture_common import (
     capture_get,
     content_derived_version,
     processing_identity,
-    quarantine_incomplete_capture,
+    retain_failed_capture,
     verify_cached_candidate,
     write_immutable,
     reuse_sealed_candidate,
@@ -80,7 +80,6 @@ from dagster_hifld.sources.capture_common import (
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_layer import (
-    RetainedCaptureViews as _RetainedCaptureViews,
     capture_with_retry as _capture_with_retry,
     preserve_failed_attempt as _preserve_failed_attempt,
     producer_error_doc as _producer_error_doc,
@@ -1009,20 +1008,7 @@ def capture_nhd_catchment(storage: StagingStorageResource, *, version: str,
                                first_captured_at=captured[0] if captured else "",
                                last_captured_at=captured[-1] if captured else "")
     except Exception as exc:
-        valid_names = []
-        for receipt_path in sorted(capture_root.glob("*.receipt.json")) \
-                if capture_root.exists() else []:
-            name = receipt_path.name.removesuffix(".receipt.json")
-            try:
-                _read_capture(capture_root, name)
-            except (OSError, NhdCatchmentError, ValueError):
-                continue
-            valid_names.append(name)
-        if valid_names:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                          _RetainedCaptureViews(capture_root, valid_names,
-                                                                NhdCatchmentError),
-                                          getattr(exc, "code", type(exc).__name__)
-                                          or type(exc).__name__)
+        retain_failed_capture(storage, capture_root, DATASET_SLUG, version, exc,
+                              error=NhdCatchmentError)
         raise
 
