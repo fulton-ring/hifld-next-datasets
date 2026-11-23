@@ -1,10 +1,10 @@
 """Tiny complete source capture, immutable cache, catalog, and drift fixtures."""
 import unittest
 
-from test_bts_intermodal_family import BtsIntermodalLayerTests
+import bts_intermodal_family_support as family_support
 
 
-class BtsRailTofcCofcTests(BtsIntermodalLayerTests):
+class BtsRailTofcCofcTests(family_support.BtsIntermodalLayerTests):
     LAYER = "rail_tofc_cofc"
 
 

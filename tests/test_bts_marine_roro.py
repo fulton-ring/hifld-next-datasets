@@ -1,10 +1,10 @@
 """Tiny complete source capture, immutable cache, catalog, and drift fixtures."""
 import unittest
 
-from test_bts_intermodal_family import BtsIntermodalLayerTests
+import bts_intermodal_family_support as family_support
 
 
-class BtsMarineRoroTests(BtsIntermodalLayerTests):
+class BtsMarineRoroTests(family_support.BtsIntermodalLayerTests):
     LAYER = "marine_roro"
 
 
