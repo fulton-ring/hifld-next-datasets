@@ -1,7 +1,9 @@
 """Focused tests for the USGS GNIS Historical Physical Points draft pipeline."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from dagster import AssetCheckSeverity
 
@@ -12,6 +14,7 @@ from dagster_hifld.assets.gnis_historical_physical_points import (
 )
 from dagster_hifld.capture_completeness import approved_baseline_drift
 from dagster_hifld.sources import gnis_historical_physical_points as src
+from dagster_hifld.sources import gnis_historical_points_family as family_src
 
 import gnis_historical_points_support as support
 from gnis_historical_points_support import (
@@ -73,6 +76,40 @@ class GnisHistoricalPhysicalPointsTests(support.GnisHistoricalPointsLayerTests):
         self.assertEqual(drift.severity, AssetCheckSeverity.WARN)
         self.assertEqual(drift.metadata["feature_count_delta"].value, 1)
         self.assertTrue(drift.metadata["native_id_roster_changed"].value)
+
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        src = self.src
+        rows = _fixture_rows(SPEC.featureclasses)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields(src)})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            transport = make_responder(src, rows)
+
+            def corrupt_then_fail(spec, error, runtime, capture_root, **kwargs):
+                (Path(capture_root) / "layer_before.receipt.json").write_bytes(b"{")
+                raise error("source_schema_contract_drift")
+
+            with fixture_mode(src, schema_sha, transport):
+                storage = _staging(root)
+                with patch.object(family_src, "_stream_validate",
+                                  side_effect=corrupt_then_fail):
+                    with self.assertRaisesRegex(
+                            self.spec.error, "source_schema_contract_drift"):
+                        self._capture()(storage, version="corrupt-run",
+                                        capture_directory=str(capture_root))
+            quarantined = sorted(
+                (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json")
+                                 .read_bytes())
+            self.assertEqual(failure["reason_code"], "source_schema_contract_drift")
+            not_retained = {entry["name"]: entry["reason"]
+                            for entry in failure["not_retained"]}
+            self.assertIn("layer_before", not_retained)
+            self.assertTrue(not_retained["layer_before"].startswith(
+                "retained_capture_receipt_unreadable:layer_before"))
+            self.assertIn("ids_seed", failure["captured_names"])
 
 
 if __name__ == "__main__":

@@ -513,6 +513,41 @@ class GnisOtherHydrographicFeaturesTests(unittest.TestCase):
                                          .read_bytes())
                     self.assertTrue(failure["reason_code"])
 
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        rows = _fixture_rows()
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            transport = make_responder(rows)
+
+            def corrupt_then_fail(capture_root, **kwargs):
+                (Path(capture_root) / "layer_before.receipt.json").write_bytes(b"{")
+                raise src.GnisOtherHydrographicFeaturesError(
+                    "source_schema_contract_drift")
+
+            with fixture_mode(schema_sha, transport):
+                storage = _staging(root)
+                with patch.object(src, "_stream_validate", side_effect=corrupt_then_fail):
+                    with self.assertRaisesRegex(
+                            src.GnisOtherHydrographicFeaturesError,
+                            "source_schema_contract_drift"):
+                        src.capture_gnis_other_hydrographic_features(
+                            storage, version="corrupt-run",
+                            capture_directory=str(capture_root))
+            quarantined = sorted(
+                (root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json")
+                                 .read_bytes())
+            self.assertEqual(failure["reason_code"], "source_schema_contract_drift")
+            not_retained = {entry["name"]: entry["reason"]
+                            for entry in failure["not_retained"]}
+            self.assertIn("layer_before", not_retained)
+            self.assertTrue(not_retained["layer_before"].startswith(
+                "retained_capture_receipt_unreadable:layer_before"))
+            self.assertIn("ids_seed", failure["captured_names"])
+
     def test_packaged_runtime_without_git_seals_and_reuses_with_real_validator(self):
         """Reproduce the shipped /app layout: package + manifests, no .git."""
         import shutil

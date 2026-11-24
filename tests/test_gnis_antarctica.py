@@ -406,6 +406,44 @@ class GnisAntarcticaSourceTests(unittest.TestCase):
         self.assertEqual(source._list_sha(items), source._sha(_canonical(items)))
         self.assertEqual(source._list_sha([]), source._sha(_canonical([])))
 
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        import tempfile
+        from pathlib import Path
+
+        gpkg_body = _build_gpkg(NAMES_ROWS, ALLNAMES_ROWS)
+        captures = _build_captures(gpkg_body)
+        real_capture_get = source.capture_get
+
+        def corrupting_capture_get(client, url, capture_root, name, *, max_bytes):
+            body, receipt = real_capture_get(client, url, capture_root, name,
+                                             max_bytes=max_bytes)
+            if name == "gpkg_zip":
+                (capture_root / f"{name}.receipt.json").write_bytes(b"{")
+            return body, receipt
+
+        with tempfile.TemporaryDirectory(prefix="gnis-antarctica-corrupt-") as temporary:
+            root = Path(temporary)
+            storage = source.StagingStorageResource(use_local=True,
+                                                    local_dir=str(root / "staging"), prefix="")
+            with patch.multiple(source, **_pins()), \
+                 patch.object(source.httpx, "Client", side_effect=_client_factory(captures)), \
+                 patch.object(source, "capture_get", side_effect=corrupting_capture_get), \
+                 patch.object(source, "_validate_captures",
+                              side_effect=ValueError("source_schema_contract_drift")):
+                with self.assertRaisesRegex(ValueError, "source_schema_contract_drift"):
+                    source.capture_gnis_antarctica(storage, version="vfixture",
+                                                   capture_directory=str(root / "captures"))
+            quarantined = sorted((root / "staging" / "_quarantine" / source.DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "ValueError")
+            not_retained = {entry["name"]: entry["reason"]
+                            for entry in failure["not_retained"]}
+            self.assertIn("gpkg_zip", not_retained)
+            self.assertTrue(not_retained["gpkg_zip"].startswith(
+                "retained_capture_receipt_unreadable:gpkg_zip"))
+            self.assertIn("text_zip", failure["captured_names"])
+
     def test_full_capture_seals_candidate_and_reuses_cache(self):
         import tempfile
         from pathlib import Path
@@ -682,11 +720,14 @@ class GnisAntarcticaSourceTests(unittest.TestCase):
                     source.capture_gnis_antarctica(storage, version="vfixture",
                                                   capture_directory=str(root / "captures"))
             quarantine = sorted(storage.list_prefix("_quarantine/antarctica"))
-            self.assertEqual(len(quarantine), 1 + (len(completed) + 1) * 3)
+            self.assertEqual(len(quarantine), 1 + len(completed) * 3)
             failure_key = next(key for key in quarantine if key.endswith("metadata/failure.json"))
             failure = json.loads(storage.read_key(failure_key))
             self.assertEqual(failure["reason_code"], "ValueError")
-            self.assertEqual(failure["captured_names"], sorted(completed | {"text_zip"}))
+            self.assertEqual(failure["captured_names"], sorted(completed))
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "text_zip",
+                               "reason": "retained_capture_evidence_mismatch:text_zip"}])
             for name in completed:
                 base = quarantine[0].rsplit("/", 2)[0]
                 self.assertEqual(storage.read_key(f"{base}/raw/{name}.body"), bodies[name])
