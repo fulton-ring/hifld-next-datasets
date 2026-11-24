@@ -320,6 +320,56 @@ class GnisStreamsMouthTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_layer_extent_drift"):
                 source._validate_captures(captures)
 
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        from dagster_hifld.resources import StagingStorageResource
+
+        fields, features, fixture_captures, schema, geom, counts, bounds = _fixture()
+        bodies = {name: body for name, (body, _) in fixture_captures.items()}
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            body = bodies[name]
+            digest = hashlib.sha256(body).hexdigest()
+            receipt = {"method": "GET", "url": url, "final_url": url,
+                       "observed_at": "2026-11-13T00:00:00+00:00",
+                       "status": 200, "complete_body": True, "wire_bytes": len(body),
+                       "wire_sha256": digest, "bytes": len(body), "sha256": digest,
+                       "content_encoding": None, "content_length": str(len(body)),
+                       "error_code": None}
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(
+                b"{" if name == "layer_before" else _canonical(receipt) + b"\n")
+            return body, receipt
+
+        class EmptyClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        with tempfile.TemporaryDirectory(prefix="gnis-streams-mouth-corrupt-") as temporary:
+            root = Path(temporary)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            with patch.multiple(source, **_pins(features, schema, geom, counts, bounds)), \
+                 patch.object(arcgis_layer, "capture_get", side_effect=fake_capture_get), \
+                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()), \
+                 patch.object(source, "_validate_captures",
+                              side_effect=ValueError("source_schema_contract_drift")):
+                with self.assertRaisesRegex(ValueError, "source_schema_contract_drift"):
+                    source.capture_gnis_streams_mouth(storage, version="vfixture",
+                                                      capture_directory=str(root / "captures"))
+            quarantined = sorted((root / "staging" / "_quarantine" / source.DATASET_SLUG).glob("*"))
+            self.assertTrue(quarantined)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "ValueError")
+            not_retained = {entry["name"]: entry["reason"]
+                            for entry in failure["not_retained"]}
+            self.assertIn("layer_before", not_retained)
+            self.assertTrue(not_retained["layer_before"].startswith(
+                "retained_capture_receipt_unreadable:layer_before"))
+            self.assertIn("ids_seed", failure["captured_names"])
+
     def test_unexpected_field_is_quarantined_by_contract(self):
         _, features, captures, schema, geom, counts, bounds = _fixture()
         layer = json.loads(captures["layer_before"][0])

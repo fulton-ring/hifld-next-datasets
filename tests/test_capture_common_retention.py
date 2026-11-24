@@ -183,5 +183,32 @@ class QuarantineMissingWireTest(unittest.TestCase):
                            "reason": "retained_capture_wire_missing:no-wire"}])
 
 
+class GnisPlacesFamilyRescanRemovalTests(unittest.TestCase):
+    """Issue #1225: the nine GNIS/places-family modules must not hand-roll
+    failure-path receipt rescans any more."""
+
+    MODULES = (
+        "gnis_crossings", "gnis_streams_mouth", "gnis_antarctica",
+        "gnis_other_hydrographic_features", "gnis_historical_points_family",
+        "landforms_gnis", "populated_places_gnis",
+        "incorporated_places_civil_gnis", "unincorporated_places_census_gnis",
+    )
+
+    def test_no_except_handler_receipt_rescan_remains(self):
+        import ast
+        sources_dir = Path(__file__).parents[1] / "src" / "dagster_hifld" / "sources"
+        violations = []
+        for module in self.MODULES:
+            tree = ast.parse((sources_dir / f"{module}.py").read_text())
+            for handler in ast.walk(tree):
+                if not isinstance(handler, ast.ExceptHandler):
+                    continue
+                for node in ast.walk(ast.Module(body=handler.body, type_ignores=[])):
+                    if isinstance(node, (ast.For, ast.comprehension)) \
+                            and "receipt.json" in ast.unparse(node.iter):
+                        violations.append(f"{module}:{handler.lineno}")
+        self.assertEqual(violations, [])
+
+
 if __name__ == "__main__":
     unittest.main()

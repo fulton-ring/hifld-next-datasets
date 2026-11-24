@@ -67,7 +67,7 @@ from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.sources.arcgis_adaptive import SliceCaptureSpec, capture_offset_pages, capture_offset_documents
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version,
-    processing_identity, quarantine_incomplete_capture, seal_ready_candidate,
+    processing_identity, retain_failed_capture, seal_ready_candidate,
     verify_cached_candidate, write_immutable,
     seal_candidate_objects,
     write_candidate_outputs,
@@ -566,28 +566,8 @@ def capture_gnis_crossings(storage: StagingStorageResource, *, version: str,
                 retained_bytes=captured_total, max_total_bytes=MAX_CAPTURE_TOTAL_BYTES)
         layer, source_fields, extracted = _validate_captures(captures)
     except Exception as exc:
-        receipts = {}
-        for path in sorted(capture_root.glob("*.receipt.json")):
-            try:
-                receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
-            except (ValueError, OSError):
-                receipts[path.name.removesuffix(".receipt.json")] = {"receipt_readback_failed": True}
-        (capture_root / "capture_manifest.json").write_bytes(
-            _canonical({"captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
-                        "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        retained = RetainedCaptureView(capture_root, captures)
-        for receipt_path in capture_root.glob("*.receipt.json"):
-            name = receipt_path.name.removesuffix(".receipt.json")
-            if name in retained:
-                continue
-            try:
-                retained[name] = ((capture_root / f"{name}.body").read_bytes(),
-                                  json.loads(receipt_path.read_bytes()))
-            except (OSError, ValueError):
-                continue
-        if retained:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, retained,
-                                          type(exc).__name__)
+        retain_failed_capture(storage, capture_root, DATASET_SLUG, version, exc,
+                              error=ValueError)
         raise
     identity = _code_identity()
     parquet_body = _parquet_bytes(source_fields, extracted["features"])
