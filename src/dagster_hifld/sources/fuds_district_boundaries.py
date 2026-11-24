@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import json
 import math
+import tempfile
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import httpx
 import pyarrow as pa
-import pyarrow.parquet as pq
-import pyproj
 from shapely.geometry import MultiPolygon
 
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry
+from dagster_hifld.sources.geoparquet_candidate import (
+    CANDIDATE_BATCH_SIZE, stream_geoparquet_candidate,
+)
 
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.construction_state import load_first_construction
@@ -80,24 +82,27 @@ def _esri_polygon(geometry: dict) -> MultiPolygon:
     return polygon if polygon.geom_type == "MultiPolygon" else MultiPolygon([polygon])
 
 
-def _native_parquet(fields: list[dict], source_fields: list[dict], features: list[dict]) -> bytes:
-    columns = {f["name"]: pa.array([x["attributes"][f["name"]] for x in features], type=_arrow_type(f))
-               for f in fields}
-    columns["geometry"] = pa.array([_esri_polygon(x["geometry"]).wkb for x in features], type=pa.binary())
+def _native_candidate(fields: list[dict], source_fields: list[dict], features: list[dict],
+                      capture_dir: Path) -> tuple[Path, str, int]:
     schema = pa.schema([pa.field(
         f["name"], _arrow_type(f), nullable=f.get("nullable", True),
         metadata={b"esri:source_field": _canonical(f)},
     ) for f in fields]
-                       + [pa.field("geometry", pa.binary(), nullable=False)])
-    geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {"geometry": {
-        "encoding": "WKB", "geometry_types": ["MultiPolygon"],
-        "crs": pyproj.CRS.from_epsg(4326).to_json_dict(), "edges": "planar"}}}
-    sink = pa.BufferOutputStream()
-    pq.write_table(pa.Table.from_pydict(columns, schema=schema.with_metadata({
-        b"geo": _canonical(geo), b"hifld:source_esri_fields": _canonical(source_fields),
-    })),
-                   sink, compression="zstd")
-    return sink.getvalue().to_pybytes()
+                    + [pa.field("geometry", pa.binary(), nullable=False)])
+    schema = schema.with_metadata({b"hifld:source_esri_fields": _canonical(source_fields)})
+
+    def batches():
+        for start in range(0, len(features), CANDIDATE_BATCH_SIZE):
+            chunk = features[start:start + CANDIDATE_BATCH_SIZE]
+            arrays = [pa.array([x["attributes"][f["name"]] for x in chunk], type=_arrow_type(f))
+                      for f in fields]
+            arrays.append(pa.array([_esri_polygon(x["geometry"]).wkb for x in chunk],
+                                   type=pa.binary()))
+            yield pa.record_batch(arrays, schema=schema)
+
+    return stream_geoparquet_candidate(
+        schema, 4326, batches(), Path(capture_dir) / "candidate.parquet",
+        geometry_column="geometry", geometry_types=["MultiPolygon"])
 
 
 def _validate_capture_pages(captures, count, seed, fields, layer, service):
@@ -197,97 +202,106 @@ def capture_fuds_district_boundaries(storage: StagingStorageResource, *, version
     records_sha = _sha(_canonical([x["attributes"] for x in features]))
     geometry_sha = _sha(_canonical([[x["attributes"]["OBJECTID"], x["geometry"]] for x in features]))
     identity = processing_identity(Path(__file__).parents[3])
-    native = _native_parquet(fields, layer["fields"], features)
-    version = content_derived_version(records_sha, geometry_sha, schema_sha, identity)
-    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    native_name = f"geoparquet/{DATASET_SLUG}.parquet"
-    objects = {native_name: native}
-    receipts = {n: r for n, (_, r) in ((name, captures[name]) for name in sorted(captures))}
-    inputs = []
-    for name, receipt in sorted(receipts.items()):
-        parsed = urlsplit(receipt["url"])
-        base_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
-        inputs.append({
-            "input_id": name, "producer": "U.S. Army Corps of Engineers (USACE)",
-            "host": parsed.hostname, "role": "producer_publication",
-            "canonical_url": base_url, "retrieval_url": receipt["url"],
-            "observed_final_url": receipt["final_url"], "retrieved_at": receipt["observed_at"],
-            "http_status": receipt["status"], "bytes": receipt["bytes"], "sha256": receipt["sha256"],
-            "license": "Unreviewed; no license claim made.",
-            "attribution": "USACE service attribution and terms have not been reviewed.",
-            "release_date": None,
-            "release_date_unknown_reason": "USACE layer metadata does not identify a producer release date.",
-        })
-    manifest = {
-        "schema_version": 1, "processor": "HIFLD Next", "approved": False, "title": LAYER_NAME,
-        "publisher": "U.S. Army Corps of Engineers (USACE), Military/FUDS_Data MapServer",
-        "agency": "U.S. Army Corps of Engineers", "source_url": LAYER_URL,
-        "source_release_date": None, "source_release_date_unknown": True,
-        "feature_count": count, "native_id_column": "OBJECTID", "source_schema_sha256": schema_sha,
-        "source_crs_epsg": 4326, "geometry_type": "Polygon", "geometry_dimensions": "2D",
-        "rights_accepted": False, "source_freshness_accepted": False,
-        "schema_contract_accepted": False, "id_contract_accepted": False,
-        "mapping_approved": False, "release_accepted": False,
-        "code_commit": identity["code_commit"], "inputs": inputs,
-        "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
-                             "parameters": {"layer_id": LAYER_ID, "source_fields": "all query attributes in order",
-                                            "geometry": "native 2D rings; no repair or simplification",
-                                            "approval": False}}],
-        "unsupported_output_formats": {
-            "shapefile_zip": "No approved mapping for publishing the complete native USACE schema.",
-            "geopackage": "No approved mapping for publishing the complete native USACE schema.",
-            "pmtiles": "No approved display simplification or public field mapping.",
-        },
-        "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
-            "reason": "Complete native source attributes, OBJECTID, and 2D polygons are retained without a public mapping; approval remains open.",
-            "objects": [{"path": native_name, "bytes": len(native), "sha256": _sha(native)}]}}},
-        "unapproved_candidate": True,
-    }
-    validate_release_provenance(manifest)
-    validate_output_policy(manifest)
-    outputs = {native_name: native,
-               "metadata/source_manifest.json": _canonical(manifest) + b"\n",
-               "metadata/processing_identity.json": _canonical(identity) + b"\n",
-               "metadata/source_audit.json": _canonical({
-                   "feature_count": count, "source_ids": seed, "all_ids_captured_once": True,
-                   "source_record_sha256": records_sha, "source_geometry_sha256": geometry_sha,
-                   "source_schema_sha256": schema_sha,
-               }) + b"\n"}
-    for name, (body, receipt) in captures.items():
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (root / f"{name}.wire").read_bytes()
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
-    expected_objects = {k: {"bytes": len(v), "sha256": _sha(v)} for k, v in outputs.items()}
-    outputs["metadata/candidate_ready.json"] = _canonical({
-        "approved": False, "version": version, "objects": expected_objects,
-        "source_release_accepted": False, "freshness_accepted": False,
-        "schema_contract_accepted": False, "id_contract_accepted": False,
-        "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
-    }) + b"\n"
-    expected_objects = {k: {"bytes": len(v), "sha256": _sha(v)} for k, v in outputs.items()}
-    fingerprint = _sha(_canonical(identity))
-    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    if storage.object_snapshot(state_key) is not None:
-        bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
-        payload = bundle.get("payload", {})
-        old_objects = payload.get("objects")
-        if (payload.get("processing_identity") != identity
-                or payload.get("source_record_sha256") != records_sha
-                or payload.get("source_schema_sha256") != schema_sha
-                or not isinstance(old_objects, dict) or set(old_objects) != set(expected_objects)):
-            raise ValueError("cached_first_candidate_identity_or_source_changed")
-        verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
-                                fingerprint, identity, records_sha, schema_sha,
-                                old_objects, payload.get("capture_receipts", {}))
-        for name, descriptor in old_objects.items():
-            if name == native_name and descriptor != expected_objects[name]:
-                raise ValueError("cached_native_candidate_changed")
-        return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG,
-                "version": version, "prefix": prefix, "feature_count": count,
-                "capture_complete": True, "source_id_sha256": records_sha,
-                "native_id_column": "OBJECTID", "source_schema_sha256": schema_sha,
-                "candidate_approved": False, "reused": True}
-    write_candidate_outputs(storage, prefix, outputs, snapshot_check="none")
+    with tempfile.TemporaryDirectory(prefix="hifld-fuds-candidate-") as candidate_dir:
+        native_path, native_sha, native_rows = _native_candidate(fields, layer["fields"], features,
+                                                                 Path(candidate_dir))
+        if native_rows != count:
+            raise ValueError("candidate_row_count_drift")
+        native_size = native_path.stat().st_size
+        def _object_descriptor(value):
+            if isinstance(value, Path):
+                return {"bytes": native_size, "sha256": native_sha}
+            return {"bytes": len(value), "sha256": _sha(value)}
+        version = content_derived_version(records_sha, geometry_sha, schema_sha, identity)
+        prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+        native_name = f"geoparquet/{DATASET_SLUG}.parquet"
+        objects = {native_name: native_path}
+        receipts = {n: r for n, (_, r) in ((name, captures[name]) for name in sorted(captures))}
+        inputs = []
+        for name, receipt in sorted(receipts.items()):
+            parsed = urlsplit(receipt["url"])
+            base_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+            inputs.append({
+                "input_id": name, "producer": "U.S. Army Corps of Engineers (USACE)",
+                "host": parsed.hostname, "role": "producer_publication",
+                "canonical_url": base_url, "retrieval_url": receipt["url"],
+                "observed_final_url": receipt["final_url"], "retrieved_at": receipt["observed_at"],
+                "http_status": receipt["status"], "bytes": receipt["bytes"], "sha256": receipt["sha256"],
+                "license": "Unreviewed; no license claim made.",
+                "attribution": "USACE service attribution and terms have not been reviewed.",
+                "release_date": None,
+                "release_date_unknown_reason": "USACE layer metadata does not identify a producer release date.",
+            })
+        manifest = {
+            "schema_version": 1, "processor": "HIFLD Next", "approved": False, "title": LAYER_NAME,
+            "publisher": "U.S. Army Corps of Engineers (USACE), Military/FUDS_Data MapServer",
+            "agency": "U.S. Army Corps of Engineers", "source_url": LAYER_URL,
+            "source_release_date": None, "source_release_date_unknown": True,
+            "feature_count": count, "native_id_column": "OBJECTID", "source_schema_sha256": schema_sha,
+            "source_crs_epsg": 4326, "geometry_type": "Polygon", "geometry_dimensions": "2D",
+            "rights_accepted": False, "source_freshness_accepted": False,
+            "schema_contract_accepted": False, "id_contract_accepted": False,
+            "mapping_approved": False, "release_accepted": False,
+            "code_commit": identity["code_commit"], "inputs": inputs,
+            "transformations": [{"operation": "native_esri_json_to_geoparquet_candidate",
+                                 "parameters": {"layer_id": LAYER_ID, "source_fields": "all query attributes in order",
+                                                "geometry": "native 2D rings; no repair or simplification",
+                                                "approval": False}}],
+            "unsupported_output_formats": {
+                "shapefile_zip": "No approved mapping for publishing the complete native USACE schema.",
+                "geopackage": "No approved mapping for publishing the complete native USACE schema.",
+                "pmtiles": "No approved display simplification or public field mapping.",
+            },
+            "prebuilt_output_policy": {"schema_version": 1, "formats": {"geoparquet": {
+                "reason": "Complete native source attributes, OBJECTID, and 2D polygons are retained without a public mapping; approval remains open.",
+                "objects": [{"path": native_name, "bytes": native_size, "sha256": native_sha}]}}},
+            "unapproved_candidate": True,
+        }
+        validate_release_provenance(manifest)
+        validate_output_policy(manifest)
+        outputs = {native_name: native_path,
+                   "metadata/source_manifest.json": _canonical(manifest) + b"\n",
+                   "metadata/processing_identity.json": _canonical(identity) + b"\n",
+                   "metadata/source_audit.json": _canonical({
+                       "feature_count": count, "source_ids": seed, "all_ids_captured_once": True,
+                       "source_record_sha256": records_sha, "source_geometry_sha256": geometry_sha,
+                       "source_schema_sha256": schema_sha,
+                   }) + b"\n"}
+        for name, (body, receipt) in captures.items():
+            outputs[f"raw/{name}.body"] = body
+            outputs[f"raw/{name}.wire"] = (root / f"{name}.wire").read_bytes()
+            outputs[f"raw/{name}.receipt.json"] = _canonical(receipt) + b"\n"
+        expected_objects = {k: _object_descriptor(v) for k, v in outputs.items()}
+        outputs["metadata/candidate_ready.json"] = _canonical({
+            "approved": False, "version": version, "objects": expected_objects,
+            "source_release_accepted": False, "freshness_accepted": False,
+            "schema_contract_accepted": False, "id_contract_accepted": False,
+            "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
+        }) + b"\n"
+        expected_objects = {k: _object_descriptor(v) for k, v in outputs.items()}
+        fingerprint = _sha(_canonical(identity))
+        state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+        if storage.object_snapshot(state_key) is not None:
+            bundle = json.loads(load_first_construction(storage, state_key, version, fingerprint))
+            payload = bundle.get("payload", {})
+            old_objects = payload.get("objects")
+            if (payload.get("processing_identity") != identity
+                    or payload.get("source_record_sha256") != records_sha
+                    or payload.get("source_schema_sha256") != schema_sha
+                    or not isinstance(old_objects, dict) or set(old_objects) != set(expected_objects)):
+                raise ValueError("cached_first_candidate_identity_or_source_changed")
+            verify_cached_candidate(storage, Path(__file__).parents[3], state_key, prefix, version,
+                                    fingerprint, identity, records_sha, schema_sha,
+                                    old_objects, payload.get("capture_receipts", {}))
+            for name, descriptor in old_objects.items():
+                if name == native_name and descriptor != expected_objects[name]:
+                    raise ValueError("cached_native_candidate_changed")
+            return {"dataset_slug": DATASET_SLUG, "file_slug": FILE_SLUG,
+                    "version": version, "prefix": prefix, "feature_count": count,
+                    "capture_complete": True, "source_id_sha256": records_sha,
+                    "native_id_column": "OBJECTID", "source_schema_sha256": schema_sha,
+                    "candidate_approved": False, "reused": True}
+        write_candidate_outputs(storage, prefix, outputs, snapshot_check="none")
     seal_candidate_objects(
         storage, state_key, version,
         identity, receipts, expected_objects,

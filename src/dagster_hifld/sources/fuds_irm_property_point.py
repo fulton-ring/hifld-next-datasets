@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import shutil
+import tempfile
 import base64
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,8 +20,6 @@ from uuid import uuid4
 
 import httpx
 import pyarrow as pa
-import pyarrow.parquet as pq
-import pyproj
 from shapely.geometry import Point
 
 from dagster_hifld.http_capture import validated_capture_view
@@ -39,6 +38,9 @@ from dagster_hifld.sources.capture_common import (
     write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.geoparquet_candidate import (
+    CANDIDATE_BATCH_SIZE, stream_geoparquet_candidate,
+)
 from dagster_hifld.sources.arcgis_capture_sequence import ExactIdCapturePlan, capture_request_steps
 
 DATASET_SLUG = "interim-risk-management-irm-property-point"
@@ -147,52 +149,61 @@ def _validate(captures: dict[str, tuple[bytes, dict[str, object]]]):
     return layer, fields, features, audit
 
 
-def _parquet(fields: list[dict[str, object]], features: list[dict[str, object]], spatial_ref: object) -> bytes:
-    schema_fields, columns = [], {}
+def _candidate_parquet(fields: list[dict[str, object]], features: list[dict[str, object]],
+                       spatial_ref: object, capture_dir: Path) -> tuple[Path, str, int]:
+    attr_fields = []
     for field in fields:
         if field["type"] == "esriFieldTypeGeometry":
             continue
         name = field["name"]
         if name in {"geometry", "source_geometry"}:
             raise ValueError("source_field_name_collision")
-        typ = _arrow_type(field)
-        schema_fields.append(pa.field(name, typ, nullable=field.get("nullable", True)))
-        values = [row["attributes"].get(name) for row in features]
+        attr_fields.append(field)
+    vertex_fields = [pa.field(k, pa.float64()) for k in ("x", "y", "z", "m")]
+    source_type = pa.struct([pa.field("hasZ", pa.bool_()), pa.field("hasM", pa.bool_()),
+                             pa.field("spatialReference", pa.string()), pa.field("point", pa.struct(vertex_fields)),
+                             pa.field("raw_json", pa.string())])
+    has_z = any(row.get("geometry") is not None and "z" in row["geometry"] for row in features)
+    schema = pa.schema([pa.field(f["name"], _arrow_type(f), nullable=f.get("nullable", True))
+                        for f in attr_fields]
+                       + [pa.field("source_geometry", source_type, nullable=True),
+                          pa.field("geometry", pa.binary(), nullable=True)])
+
+    def _attribute_column(field: dict, chunk: list) -> pa.Array:
+        values = [row["attributes"].get(field["name"]) for row in chunk]
         if field["type"] == "esriFieldTypeBlob":
             try:
                 values = [None if value is None else base64.b64decode(value, validate=True) for value in values]
             except (TypeError, ValueError) as exc:
                 raise ValueError("source_blob_encoding_drift") from exc
-        columns[name] = pa.array(values, type=typ)
-    has_z = any(row.get("geometry") is not None and "z" in row["geometry"] for row in features)
-    has_m = any(row.get("geometry") is not None and "m" in row["geometry"] for row in features)
-    vertex_fields = [pa.field(k, pa.float64()) for k in ("x", "y", "z", "m")]
-    source_type = pa.struct([pa.field("hasZ", pa.bool_()), pa.field("hasM", pa.bool_()),
-                             pa.field("spatialReference", pa.string()), pa.field("point", pa.struct(vertex_fields)),
-                             pa.field("raw_json", pa.string())])
-    native = []
-    projected = []
-    for row in features:
-        geom = row.get("geometry")
-        if geom is None:
-            native.append(None); projected.append(None); continue
-        valid = isinstance(geom, dict) and all(k in geom for k in ("x", "y")) and not (set(geom) - {"x", "y", "z", "m", "spatialReference"})
-        valid = valid and all(type(geom[k]) in (int, float) and math.isfinite(geom[k]) for k in ("x", "y", *[k for k in ("z", "m") if k in geom]))
-        valid = valid and -180 <= geom["x"] <= 180 and -90 <= geom["y"] <= 90
-        geom_sr = geom.get("spatialReference") if isinstance(geom, dict) else None
-        valid = valid and (geom_sr is None or geom_sr.get("latestWkid", geom_sr.get("wkid")) == 4326)
-        point = {k: geom[k] for k in ("x", "y", "z", "m") if k in geom} if valid else None
-        native.append({"hasZ": isinstance(geom, dict) and "z" in geom, "hasM": isinstance(geom, dict) and "m" in geom,
-                       "spatialReference": _canonical(geom.get("spatialReference", spatial_ref) if isinstance(geom, dict) else spatial_ref).decode(),
-                       "point": point, "raw_json": _canonical(geom).decode()})
-        projected.append((Point(geom["x"], geom["y"], geom.get("z")).wkb if "z" in geom else Point(geom["x"], geom["y"]).wkb) if valid else None)
-    columns["source_geometry"] = pa.array(native, type=source_type)
-    schema_fields.append(pa.field("source_geometry", source_type, nullable=True))
-    columns["geometry"] = pa.array(projected, type=pa.binary()); schema_fields.append(pa.field("geometry", pa.binary(), nullable=True))
-    geo = {"version":"1.1.0", "primary_column":"geometry", "columns":{"geometry":{"encoding":"WKB", "geometry_types":["Point Z" if has_z else "Point"], "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"planar"}}}
-    table = pa.Table.from_pydict(columns, schema=pa.schema(schema_fields).with_metadata({b"geo":_canonical(geo)}))
-    sink = pa.BufferOutputStream(); pq.write_table(table, sink, compression="zstd")
-    return sink.getvalue().to_pybytes()
+        return pa.array(values, type=_arrow_type(field))
+
+    def batches():
+        for start in range(0, len(features), CANDIDATE_BATCH_SIZE):
+            chunk = features[start:start + CANDIDATE_BATCH_SIZE]
+            arrays = [_attribute_column(f, chunk) for f in attr_fields]
+            native, projected = [], []
+            for row in chunk:
+                geom = row.get("geometry")
+                if geom is None:
+                    native.append(None); projected.append(None); continue
+                valid = isinstance(geom, dict) and all(k in geom for k in ("x", "y")) and not (set(geom) - {"x", "y", "z", "m", "spatialReference"})
+                valid = valid and all(type(geom[k]) in (int, float) and math.isfinite(geom[k]) for k in ("x", "y", *[k for k in ("z", "m") if k in geom]))
+                valid = valid and -180 <= geom["x"] <= 180 and -90 <= geom["y"] <= 90
+                geom_sr = geom.get("spatialReference") if isinstance(geom, dict) else None
+                valid = valid and (geom_sr is None or geom_sr.get("latestWkid", geom_sr.get("wkid")) == 4326)
+                point = {k: geom[k] for k in ("x", "y", "z", "m") if k in geom} if valid else None
+                native.append({"hasZ": isinstance(geom, dict) and "z" in geom, "hasM": isinstance(geom, dict) and "m" in geom,
+                               "spatialReference": _canonical(geom.get("spatialReference", spatial_ref) if isinstance(geom, dict) else spatial_ref).decode(),
+                               "point": point, "raw_json": _canonical(geom).decode()})
+                projected.append((Point(geom["x"], geom["y"], geom.get("z")).wkb if "z" in geom else Point(geom["x"], geom["y"]).wkb) if valid else None)
+            arrays.append(pa.array(native, type=source_type))
+            arrays.append(pa.array(projected, type=pa.binary()))
+            yield pa.record_batch(arrays, schema=schema)
+
+    return stream_geoparquet_candidate(
+        schema, 4326, batches(), Path(capture_dir) / "candidate.parquet",
+        geometry_column="geometry", geometry_types=["Point Z" if has_z else "Point"])
 
 
 def _code_identity():
@@ -284,30 +295,35 @@ def capture_fuds_irm_property_point(storage: StagingStorageResource, *, version:
         if captures: quarantine_incomplete_capture(storage,caproot,DATASET_SLUG,version,captures,type(exc).__name__)
         raise
     identity = _code_identity(); rel = f"geoparquet/{DATASET_SLUG}.parquet"
-    body = _parquet(fields, features, audit["source_spatial_reference"])
-    source_objects = {rel:{"bytes":len(body),"sha256":_sha(body)}}
-    manifest = {"schema_version":1,"approved":False,"title":LAYER_NAME,
-        "description":"Official USACE Military/FUDS_Data MapServer layer 6 IRM Property Point in IRM group layer 5. Complete attributes and IDs are retained; native geometry is retained in source_geometry and projected to GeoParquet WKB. Release date, freshness, public schema contract, and rights remain unresolved.",
-        "publisher":PUBLISHER,"agency":"U.S. Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
-        "inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":SERVICE_URL if n.startswith("service_") else LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"unknown_pending_rights_review","attribution":"USACE MapServer copyrightText is US Army Corps of Engineers; formal downstream attribution review remains pending.","release_date":None,"release_date_unknown_reason":audit["source_release_date_unknown_reason"]} for n,(b,r) in ((name, captures[name]) for name in sorted(captures))],
-        "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"layer_id":LAYER_ID,"source_fields":"all source attributes retained in producer order and declared physical types","source_ids":"source OBJECTID and all values preserved","geometry":"all returned point ordinates and per-feature native Esri geometry/SRS preserved in source_geometry; GeoParquet geometry is standards-compliant XY/XYZ WKB, without coordinate transform or repair","candidate_status":"unapproved; freshness, schema/ID contract, rights and release approval pending"}}],
-        "lineage":"USACE Military/FUDS_Data MapServer layer 6, IRM Property Point, child of group layer 5 Interim Risk Management (IRM). Layers 7 IRM Project Boundary and 8 IRM Property Boundary are distinct source products.",
-        "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Faithful complete source capture; approvals unresolved.","objects":[{"path":rel,**source_objects[rel]}]}}},"unsupported_output_formats":{"geopackage":"No accepted public schema mapping.","pmtiles":"No approved display/generalization mapping."}}
-    validate_release_provenance(manifest); validate_output_policy(manifest)
-    version = content_derived_version(audit["source_record_sha256"],audit["source_geometry_sha256"],audit["source_schema_sha256"],identity)
-    prefix = candidate_prefix(DATASET_SLUG,FILE_SLUG,version); state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
-    outputs={rel:body,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n","metadata/candidate_ready.json":_canonical({"approved":False,"version":version,"objects":source_objects,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"release_accepted":False})+b"\n"}
-    for name,(raw,receipt) in captures.items():
-        outputs[f"raw/{name}.body"]=raw; outputs[f"raw/{name}.wire"]=(caproot/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
-    (caproot/"capture_manifest.json").write_bytes(_canonical({"complete":True,"source_feature_count":audit["source_feature_count"],"receipts":{n:r for n,(b,r) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
-    fingerprint=_sha(_canonical(identity))
-    if storage.object_snapshot(state_key) is not None:
-        bundle=json.loads(load_first_construction(storage,state_key,version,fingerprint)); payload=bundle.get("payload")
-        if not isinstance(payload,dict): raise ValueError("cached_first_candidate_invalid")
-        verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],payload.get("objects",{}),payload.get("capture_receipts",{}))
-        return _candidate_result(version,audit,prefix,reused=True)
-    descriptors = write_candidate_outputs(
-        storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_readback_failed:')
+    with tempfile.TemporaryDirectory(prefix="hifld-fuds-candidate-") as candidate_dir:
+        native_path, native_sha, native_rows = _candidate_parquet(fields, features,
+                                                                  audit["source_spatial_reference"], Path(candidate_dir))
+        if native_rows != audit["source_feature_count"]:
+            raise ValueError("candidate_row_count_drift")
+        native_size = native_path.stat().st_size
+        source_objects = {rel:{"bytes":native_size,"sha256":native_sha}}
+        manifest = {"schema_version":1,"approved":False,"title":LAYER_NAME,
+            "description":"Official USACE Military/FUDS_Data MapServer layer 6 IRM Property Point in IRM group layer 5. Complete attributes and IDs are retained; native geometry is retained in source_geometry and projected to GeoParquet WKB. Release date, freshness, public schema contract, and rights remain unresolved.",
+            "publisher":PUBLISHER,"agency":"U.S. Army Corps of Engineers","source_url":LAYER_URL,"license":None,"source_modified":None,"date_issued":None,"date_modified":None,"processor":"HIFLD Next","code_commit":identity["code_commit"],
+            "inputs":[{"input_id":n,"producer":PUBLISHER,"host":urlsplit(r["url"]).hostname,"role":"producer_publication","canonical_url":SERVICE_URL if n.startswith("service_") else LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"unknown_pending_rights_review","attribution":"USACE MapServer copyrightText is US Army Corps of Engineers; formal downstream attribution review remains pending.","release_date":None,"release_date_unknown_reason":audit["source_release_date_unknown_reason"]} for n,(b,r) in ((name, captures[name]) for name in sorted(captures))],
+            "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"layer_id":LAYER_ID,"source_fields":"all source attributes retained in producer order and declared physical types","source_ids":"source OBJECTID and all values preserved","geometry":"all returned point ordinates and per-feature native Esri geometry/SRS preserved in source_geometry; GeoParquet geometry is standards-compliant XY/XYZ WKB, without coordinate transform or repair","candidate_status":"unapproved; freshness, schema/ID contract, rights and release approval pending"}}],
+            "lineage":"USACE Military/FUDS_Data MapServer layer 6, IRM Property Point, child of group layer 5 Interim Risk Management (IRM). Layers 7 IRM Project Boundary and 8 IRM Property Boundary are distinct source products.",
+            "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Faithful complete source capture; approvals unresolved.","objects":[{"path":rel,**source_objects[rel]}]}}},"unsupported_output_formats":{"geopackage":"No accepted public schema mapping.","pmtiles":"No approved display/generalization mapping."}}
+        validate_release_provenance(manifest); validate_output_policy(manifest)
+        version = content_derived_version(audit["source_record_sha256"],audit["source_geometry_sha256"],audit["source_schema_sha256"],identity)
+        prefix = candidate_prefix(DATASET_SLUG,FILE_SLUG,version); state_key=f"_construction-state/{DATASET_SLUG}/{version}.json"
+        outputs={rel:native_path,"metadata/source_manifest.json":_canonical(manifest)+b"\n","metadata/source_audit.json":_canonical(audit)+b"\n","metadata/processing_identity.json":_canonical(identity)+b"\n","metadata/candidate_ready.json":_canonical({"approved":False,"version":version,"objects":source_objects,"freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,"rights_accepted":False,"release_accepted":False})+b"\n"}
+        for name,(raw,receipt) in captures.items():
+            outputs[f"raw/{name}.body"]=raw; outputs[f"raw/{name}.wire"]=(caproot/f"{name}.wire").read_bytes(); outputs[f"raw/{name}.receipt.json"]=_canonical(receipt)+b"\n"
+        (caproot/"capture_manifest.json").write_bytes(_canonical({"complete":True,"source_feature_count":audit["source_feature_count"],"receipts":{n:r for n,(b,r) in ((name, captures[name]) for name in sorted(captures))}})+b"\n")
+        fingerprint=_sha(_canonical(identity))
+        if storage.object_snapshot(state_key) is not None:
+            bundle=json.loads(load_first_construction(storage,state_key,version,fingerprint)); payload=bundle.get("payload")
+            if not isinstance(payload,dict): raise ValueError("cached_first_candidate_invalid")
+            verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,identity,audit["source_record_sha256"],audit["source_schema_sha256"],payload.get("objects",{}),payload.get("capture_receipts",{}))
+            return _candidate_result(version,audit,prefix,reused=True)
+        descriptors = write_candidate_outputs(
+            storage, prefix, outputs, readback_order="after-all", error_prefix='candidate_output_readback_failed:')
     payload={"processing_identity":identity,"source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],"capture_receipts":{n:r for n,(b,r) in captures.items()},"objects":descriptors}
     seal_candidate_objects(
         storage, state_key, version,

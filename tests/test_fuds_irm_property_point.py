@@ -1,12 +1,15 @@
 """Focused native geometry preservation tests for USACE IRM point data."""
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 from shapely import from_wkb
 
 from dagster_hifld.assets.fuds_irm_property_point import fuds_irm_property_point_complete, fuds_irm_property_point_geometry_quality
-from dagster_hifld.sources.fuds_irm_property_point import _candidate_result, _parquet
+from dagster_hifld.sources.fuds_irm_property_point import _candidate_parquet, _candidate_result
 
 
 class IrmPropertyPointNativeTests(unittest.TestCase):
@@ -15,13 +18,26 @@ class IrmPropertyPointNativeTests(unittest.TestCase):
         {"name":"VALUE", "type":"esriFieldTypeString", "nullable":True},
     ]
 
+    def _candidate(self, rows):
+        with tempfile.TemporaryDirectory() as directory:
+            path, digest, row_count = _candidate_parquet(self.fields, rows, {"wkid":4326}, Path(directory))
+            self.assertEqual(row_count, len(rows))
+            table = pq.read_table(path)
+        self.assertEqual(len(table.schema.names), 4)
+        geo = json.loads(table.schema.metadata[b"geo"].decode())
+        self.assertEqual(geo["version"], "1.1.0")
+        self.assertEqual(geo["primary_column"], "geometry")
+        self.assertEqual(geo["columns"]["geometry"]["encoding"], "WKB")
+        self.assertEqual(geo["columns"]["geometry"]["crs"]["id"], {"authority":"EPSG","code":4326})
+        return table, geo["columns"]["geometry"]["geometry_types"]
+
     def test_xyzm_native_struct_and_standard_xyz_projection(self):
         rows = [
             {"attributes":{"OBJECTID":4,"VALUE":None}, "geometry":{"x":-72.0,"y":41.0,"z":12.5,"m":99.0,"spatialReference":{"wkid":4326}}},
             {"attributes":{"OBJECTID":5,"VALUE":"null geometry"}, "geometry":None},
         ]
-        body = _parquet(self.fields, rows, {"wkid":4326})
-        table = pq.read_table(pa.BufferReader(body), use_threads=False)
+        table, geometry_types = self._candidate(rows)
+        self.assertEqual(geometry_types, ["Point Z"])
         native = table.column("source_geometry")[0].as_py()
         self.assertTrue(native["hasZ"])
         self.assertTrue(native["hasM"])
@@ -36,14 +52,16 @@ class IrmPropertyPointNativeTests(unittest.TestCase):
 
     def test_xy_native_point_remains_xy(self):
         rows = [{"attributes":{"OBJECTID":1,"VALUE":"xy"}, "geometry":{"x":1.0,"y":2.0}}]
-        table = pq.read_table(pa.BufferReader(_parquet(self.fields, rows, {"wkid":4326})), use_threads=False)
+        table, geometry_types = self._candidate(rows)
+        self.assertEqual(geometry_types, ["Point"])
         geometry = from_wkb(table.column("geometry")[0].as_py())
         self.assertFalse(geometry.has_z)
         self.assertEqual(list(geometry.coords), [(1.0,2.0)])
 
     def test_invalid_source_geometry_is_retained_for_quality_failure(self):
         row = {"attributes":{"OBJECTID":9,"VALUE":"invalid"}, "geometry":{"x":500.0,"y":4.0}}
-        table = pq.read_table(pa.BufferReader(_parquet(self.fields, [row], {"wkid":4326})), use_threads=False)
+        table, geometry_types = self._candidate([row])
+        self.assertEqual(geometry_types, ["Point"])
         self.assertIsNone(table.column("geometry")[0].as_py())
         native = table.column("source_geometry")[0].as_py()
         self.assertEqual(native["point"], None)

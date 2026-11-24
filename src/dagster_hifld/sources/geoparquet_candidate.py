@@ -23,6 +23,7 @@ from dagster_hifld.validation import sha256_file
 GEO_VERSION = "1.1.0"
 COMPRESSION = "zstd"
 USE_DICTIONARY = False
+CANDIDATE_BATCH_SIZE = 250
 
 
 def source_crs_projjson(source_crs: int | str) -> dict[str, object]:
@@ -47,8 +48,10 @@ def stream_geoparquet_candidate(
 
     With ``geometry_column`` (plus ``source_crs`` and ``geometry_types``) the
     writer attaches the GeoParquet 1.1 ``geo`` metadata; without it the file
-    carries no ``geo`` entry. Returns the file path, its sha256 digest and the
-    row count written.
+    carries no ``geo`` entry. Attaching ``geo`` merges the key into any
+    existing schema metadata (for example a ``hifld:source_esri_fields``
+    provenance key) instead of replacing the mapping. Returns the file path,
+    its sha256 digest and the row count written.
     """
     if geometry_column is not None:
         if source_crs is None or not geometry_types:
@@ -66,7 +69,7 @@ def stream_geoparquet_candidate(
                 "crs": source_crs_projjson(source_crs),
             }},
         }
-        schema = schema.with_metadata({b"geo": _canonical(geo)})
+        schema = schema.with_metadata({**(schema.metadata or {}), b"geo": _canonical(geo)})
     elif (schema.metadata or {}).get(b"geo") is not None:
         schema = schema.with_metadata({k: v for k, v in schema.metadata.items() if k != b"geo"})
     target = Path(target)
