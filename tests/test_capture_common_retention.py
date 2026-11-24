@@ -184,7 +184,7 @@ class QuarantineMissingWireTest(unittest.TestCase):
 
 
 class GnisPlacesFamilyRescanRemovalTests(unittest.TestCase):
-    """Issue #1225: the nine GNIS/places-family modules must not hand-roll
+    """Issue #1225: the migrated modules must not hand-roll
     failure-path receipt rescans any more."""
 
     MODULES = (
@@ -192,6 +192,7 @@ class GnisPlacesFamilyRescanRemovalTests(unittest.TestCase):
         "gnis_other_hydrographic_features", "gnis_historical_points_family",
         "landforms_gnis", "populated_places_gnis",
         "incorporated_places_civil_gnis", "unincorporated_places_census_gnis",
+        "fuds_projects_points", "fuds_public_properties",
     )
 
     def test_no_except_handler_receipt_rescan_remains(self):
