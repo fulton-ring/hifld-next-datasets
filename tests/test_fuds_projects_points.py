@@ -185,3 +185,80 @@ class FudsProjectsPointsTests(unittest.TestCase):
                 reused = source.capture_fuds_projects_points(storage, version="vfixture", capture_directory=str(root / "captures"))
                 self.assertTrue(reused["reused"])
                 self.assertEqual(reused["version"],candidate["version"])
+
+    def test_failed_capture_retains_readable_evidence_and_records_the_unreadable(self):
+        import tempfile
+        from pathlib import Path
+
+        from dagster_hifld.resources import StagingStorageResource
+
+        seed = b'{"objectIdFieldName":"OBJECTID","objectIds":[1,2]}'
+
+        def _receipt(body, wire, **overrides):
+            receipt = {"method":"GET","url":"https://example.invalid/fuds","final_url":"https://example.invalid/fuds",
+                       "observed_at":"2026-10-19T00:00:00+00:00","status":200,"complete_body":True,
+                       "wire_bytes":len(wire),"wire_sha256":hashlib.sha256(wire).hexdigest(),
+                       "bytes":len(body),"sha256":hashlib.sha256(body).hexdigest(),
+                       "content_encoding":None,"content_length":str(len(body)),"error_code":None}
+            receipt.update(overrides)
+            return receipt
+
+        def _write(root, name, body, *, wire=None, write_wire=True, truncated_receipt=False, on_disk_receipt=None):
+            wire = body if wire is None else wire
+            (root / f"{name}.body").write_bytes(body)
+            if write_wire:
+                (root / f"{name}.wire").write_bytes(wire)
+            if truncated_receipt:
+                (root / f"{name}.receipt.json").write_bytes(b"{")
+            else:
+                (root / f"{name}.receipt.json").write_bytes(_canonical(on_disk_receipt or _receipt(body, wire)) + b"\n")
+
+        def fake_capture_page(_client, _url, root, name, **_kwargs):
+            if name == "ids_seed":
+                _write(root, name, seed)
+                return seed, _receipt(seed, seed)
+            if name == "service_before":
+                body = b'{"mapName":"FUDS Data"}'
+                _write(root, name, body, truncated_receipt=True)
+                return body, _receipt(body, body)
+            if name == "layer_before":
+                body = b'{"id":2}'
+                _write(root, name, body, on_disk_receipt=_receipt(body, body, bytes=len(body) + 1))
+                return body, _receipt(body, body)
+            body = b'{"count":2}'
+            _write(root, name, body, write_wire=False)
+            raise ValueError("synthetic_source_failure")
+
+        class EmptyClient:
+            def __enter__(self): return self
+            def __exit__(self, *_args): return False
+
+        with tempfile.TemporaryDirectory(prefix="fuds-projects-failure-") as temporary:
+            root = Path(temporary)
+            storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"), prefix="")
+            with patch.object(source, "capture_page", side_effect=fake_capture_page), \
+                 patch.object(source.httpx, "Client", side_effect=lambda *args, **kwargs: EmptyClient()):
+                with self.assertRaises(ValueError) as raised:
+                    source.capture_fuds_projects_points(storage, version="vfail", capture_directory=str(root / "captures"))
+            self.assertIs(type(raised.exception), ValueError)
+            self.assertEqual(str(raised.exception), "synthetic_source_failure")
+            capture_roots = sorted((root / "captures").glob("vfail-*"))
+            self.assertEqual(len(capture_roots), 1)
+            manifest = json.loads((capture_roots[0] / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "ValueError")
+            self.assertNotIn("receipts", manifest)
+            tokens = sorted((root / "staging" / "_quarantine" / source.DATASET_SLUG).glob("*"))
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"], ["ids_seed"])
+            self.assertEqual(failure["not_retained"], [
+                {"name": "count_before", "reason": "retained_capture_file_missing:count_before:wire"},
+                {"name": "layer_before", "reason": "retained_capture_evidence_mismatch:layer_before"},
+                {"name": "service_before", "reason": "retained_capture_receipt_unreadable:service_before"},
+            ])
+            self.assertEqual((tokens[0] / "raw" / "ids_seed.body").read_bytes(), seed)
+            self.assertEqual((tokens[0] / "raw" / "ids_seed.wire").read_bytes(), seed)
+            for name in ("service_before", "layer_before", "count_before"):
+                self.assertFalse((tokens[0] / "raw" / f"{name}.body").exists())
