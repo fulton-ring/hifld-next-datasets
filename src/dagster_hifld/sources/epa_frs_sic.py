@@ -47,7 +47,8 @@ from dagster_hifld.sources.arcgis_capture import RetainedCaptureView
 from dagster_hifld.sources.epa_capture import OffsetCaptureSpec, capture_offset_pages
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate,
+    quarantine_incomplete_capture, retain_failed_capture, seal_ready_candidate,
+    verify_cached_candidate,
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -266,38 +267,16 @@ def capture_epa_frs_sic(storage: StagingStorageResource, *, version: str,
         raise ValueError("unsafe_capture_directory")
     capture_root.mkdir(parents=True, exist_ok=True)
     captures = RetainedCaptureView(capture_root)
-    current_capture_url = TABLE_URL + "/query?where=1%3D1&returnCountOnly=true&f=json"
     try:
         with httpx.Client(follow_redirects=False, timeout=180,
                           headers={"User-Agent": "hifld-next-datasets/epa-frs-sic-draft"}) as client:
             rows, capture_manifest, captures = _capture_table(client, capture_root)
     except Exception as exc:
-        receipts = {}
-        for path in sorted(capture_root.glob("*.receipt.json")):
-            try: receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
-            except (ValueError, OSError): receipts[path.name] = {"receipt_readback_failed": True}
-        partial_names = {p.name.removesuffix(".wire") for p in capture_root.glob("*.wire")}
-        partial_names.update(p.name.removesuffix(".body") for p in capture_root.glob("*.body"))
-        for name in sorted(partial_names - captures.keys()):
-            body_path, wire_path = capture_root / f"{name}.body", capture_root / f"{name}.wire"
-            body = body_path.read_bytes() if body_path.exists() else b""
-            wire = wire_path.read_bytes() if wire_path.exists() else b""
-            receipt = receipts.get(name)
-            if not isinstance(receipt, dict):
-                receipt = {"method": "GET", "url": current_capture_url,
-                           "final_url": None, "observed_at": datetime.now(timezone.utc).isoformat(),
-                           "status": None, "complete_body": False, "wire_bytes": len(wire),
-                           "wire_sha256": _sha(wire), "bytes": len(body), "sha256": _sha(body),
-                           "content_encoding": None, "content_length": None,
-                           "error_code": type(exc).__name__}
-            receipts[name] = receipt
-            captures[name] = (body, receipt)
+        retain_failed_capture(storage, capture_root, DATASET_SLUG, version, exc,
+                              error=EpaFrsSicCaptureError)
         (capture_root / "capture_manifest.json").write_bytes(_canonical({
             "captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
-            "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        if captures:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, captures,
-                                          type(exc).__name__)
+            "error_code": type(exc).__name__}) + b"\n")
         raise
     identity = processing_identity(Path(__file__).parents[3])
     identity_fingerprint = _sha(_canonical(identity))

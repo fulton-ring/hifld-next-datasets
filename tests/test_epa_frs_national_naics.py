@@ -273,6 +273,50 @@ class EpaFrsNationalNaicsTests(unittest.TestCase):
                     source.capture_epa_frs_national_naics(
                         storage, version="vfixture", capture_directory=str(captures.parent))
 
+    def test_failure_retains_readable_captures_and_records_unreadable(self):
+        # The central-directory request corrupts the earlier authority-page
+        # receipt on disk; the member CRC drift then fails the capture. The
+        # quarantine must hold every still-readable capture and record the
+        # unreadable one instead of dropping it, and the original error must
+        # propagate unchanged.
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")
+            capture_dir = Path(tmp) / "captures" / "vfail"
+            base = self.fixture
+            zip_requests = []
+
+            class CorruptingFixture(Fixture):
+                def handler(self, request):
+                    if str(request.url) == archive.NATIONAL_COMBINED_ZIP_URL:
+                        zip_requests.append(request.headers.get("Range"))
+                        if len(zip_requests) == 3:
+                            (capture_dir / "authority_page.receipt.json").write_bytes(b'{"')
+                    return base.handler(request)
+
+            with ExitStack() as stack:
+                for patcher in self.pins(EXPECTED_MEMBER_CRC32="deadbeef"):
+                    stack.enter_context(patcher)
+                stack.enter_context(patch.object(
+                    source.httpx, "Client", self.mock_client(CorruptingFixture())))
+                with self.assertRaises(source.EPAFRSNationalNAICSError) as raised:
+                    source.capture_epa_frs_national_naics(
+                        storage, version="vfail", capture_directory=str(capture_dir.parent))
+            self.assertEqual(str(raised.exception), "zip_naics_member_declaration_drift")
+            self.assertNotIsInstance(raised.exception, (json.JSONDecodeError, OSError))
+            quarantined = sorted((Path(tmp) / "_quarantine" / source.DATASET_SLUG).glob("*"))
+            self.assertEqual(len(quarantined), 1)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "EPAFRSNationalNAICSError")
+            self.assertEqual(failure["captured_names"],
+                             ["zip_central_directory", "zip_eocd", "zip_probe"])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "authority_page",
+                               "reason": "retained_capture_receipt_unreadable:authority_page"}])
+            for name in ("zip_probe", "zip_eocd", "zip_central_directory"):
+                for suffix in ("body", "wire", "receipt.json"):
+                    self.assertTrue((quarantined[0] / "raw" / f"{name}.{suffix}").is_file())
+            self.assertFalse((quarantined[0] / "raw" / "authority_page.body").exists())
+
     def test_dagster_ingest_and_catalog_materialize_with_cached_reuse(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(local_dir=tmp, use_local=True, backend="local")

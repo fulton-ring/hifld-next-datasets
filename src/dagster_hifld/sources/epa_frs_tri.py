@@ -36,7 +36,7 @@ from dagster_hifld.sources.arcgis_capture_sequence import LayerCaptureFetch
 from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate,
+    retain_failed_capture, seal_ready_candidate,
     write_immutable,
     seal_candidate_objects,
     write_candidate_outputs,
@@ -314,31 +314,9 @@ def capture_epa_frs_tri(storage: StagingStorageResource, *, version: str,
                 roster=roster, fetch=cursor.fetch, on_validation_error=_validate)
         layer, fields, features, audit = _validate(captures)
     except Exception as exc:
-        receipts = {}
-        for path in sorted(capture_root.glob("*.receipt.json")):
-            try: receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
-            except (ValueError, OSError): receipts[path.name] = {"receipt_readback_failed":True}
-        # The shared capture helper may fail during a stream before it can
-        # return a receipt. Preserve every partial body/wire file with a
-        # clearly incomplete receipt so a later operator can inspect it.
-        partial_names = {p.name.removesuffix(".wire") for p in capture_root.glob("*.wire")}
-        partial_names.update(p.name.removesuffix(".body") for p in capture_root.glob("*.body"))
-        for name in sorted(partial_names - captures.keys()):
-            body_path, wire_path = capture_root/f"{name}.body", capture_root/f"{name}.wire"
-            body = body_path.read_bytes() if body_path.exists() else b""
-            wire = wire_path.read_bytes() if wire_path.exists() else b""
-            receipt = receipts.get(name)
-            if not isinstance(receipt, dict):
-                receipt = {"method":"GET","url":cursor.current_url if name == cursor.current_name else None,
-                    "final_url":None,"observed_at":datetime.now(timezone.utc).isoformat(),"status":None,
-                    "complete_body":False,"wire_bytes":len(wire),"wire_sha256":_sha(wire),
-                    "bytes":len(body),"sha256":_sha(body),"content_encoding":None,
-                    "content_length":None,"error_code":type(exc).__name__}
-            receipts[name] = receipt
-            captures[name] = (body, receipt)
-        (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__,"receipts":receipts})+b"\n")
-        if captures:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, captures, type(exc).__name__)
+        retain_failed_capture(storage, capture_root, DATASET_SLUG, version, exc,
+                              error=ValueError)
+        (capture_root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__})+b"\n")
         raise
     identity = _code_identity()
     parquet = _parquet_bytes(fields, features)

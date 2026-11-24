@@ -35,7 +35,7 @@ from dagster_hifld.sources.capture_common import (
     capture_get,
     content_derived_version,
     processing_identity,
-    quarantine_incomplete_capture,
+    retain_failed_capture,
     verify_cached_candidate,
     validate_capture_request_identity,
     write_immutable,
@@ -45,7 +45,7 @@ from dagster_hifld.sources.capture_common import (
 )
 from dagster_hifld.sources.epa_capture import KeysetCaptureSpec, capture_keyset_layer
 from dagster_hifld.sources.arcgis_layer import (
-    RetainedCaptureViews, load_receipt, load_replay, save_state as _save_state,
+    load_receipt, load_replay, save_state as _save_state,
     witness_aside as _witness_error_response,
 )
 from dagster_hifld.output_policy import validate_output_policy
@@ -631,18 +631,8 @@ def capture_epa_frs_interests(storage: StagingStorageResource, *, version: str,
                                resumed_pages=resumed_pages,
                                first_captured_at=captured[0], last_captured_at=str(state["tail"]["captured_at"]))
     except Exception as exc:
-        valid_names = []
-        for receipt_path in sorted(capture_root.glob("*.receipt.json")) if capture_root.exists() else []:
-            name = receipt_path.name.removesuffix(".receipt.json")
-            try:
-                _read_capture(capture_root, name)
-            except (OSError, EPAFRSInterestsError, ValueError):
-                continue
-            valid_names.append(name)
-        if valid_names:
-            quarantine_incomplete_capture(storage, capture_root, dataset_slug, version,
-                                          RetainedCaptureViews(capture_root, valid_names, EPAFRSInterestsError),
-                                          getattr(exc, "code", type(exc).__name__) or type(exc).__name__)
+        retain_failed_capture(storage, capture_root, dataset_slug, version, exc,
+                              error=EPAFRSInterestsError)
         raise
 
 
