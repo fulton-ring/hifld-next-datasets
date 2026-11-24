@@ -26,7 +26,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, processing_identity, retain_failed_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
     seal_candidate_objects,
@@ -283,17 +283,10 @@ def capture_river_lines_usace_ienc(storage: StagingStorageResource, *, version: 
                     on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
-            receipts = {}
-            for path in sorted(root.glob("*.receipt.json")):
-                try:
-                    receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
-                except (OSError, ValueError):
-                    receipts[path.name] = {"receipt_readback_failed": True}
             (root / "capture_manifest.json").write_bytes(_canonical({"complete": False,
-                "captured_at": datetime.now(timezone.utc).isoformat(), "error_code": type(exc).__name__,
-                "receipts": receipts}) + b"\n")
+                "captured_at": datetime.now(timezone.utc).isoformat(), "error_code": type(exc).__name__}) + b"\n")
             if captures:
-                quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captures, type(exc).__name__)
+                retain_failed_capture(storage, root, DATASET_SLUG, version, exc, error=ValueError)
             raise
         (root / "capture_manifest.json").write_bytes(_canonical({"complete": True,
             "captured_at": datetime.now(timezone.utc).isoformat(), "source_feature_count": audit["source_feature_count"],
