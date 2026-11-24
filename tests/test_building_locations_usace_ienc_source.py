@@ -2,10 +2,15 @@
 import hashlib
 import json
 import struct
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
+import httpx
 import pyarrow.parquet as pq
+
+from dagster_hifld.sources.arcgis_layer import layer_capture_roster
 
 from dagster_hifld.assets.building_locations_usace_ienc import building_locations_population_complete
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
@@ -97,6 +102,55 @@ class BuildingLocationsSourceTests(unittest.TestCase):
         self.assertTrue(building_locations_population_complete({"source_population_complete":True,"feature_count":2,"source_reported_count":2}).passed)
         self.assertFalse(building_locations_population_complete({"source_population_complete":False,"feature_count":2,"source_reported_count":2}).passed)
         self.assertFalse(building_locations_population_complete({"source_population_complete":True,"feature_count":2,"source_reported_count":3}).passed)
+    def test_failed_capture_quarantines_readable_evidence_and_records_unreadable_receipt(self):
+        docs = self.fixture()
+        docs["page_000"] = {**docs["page_000"], "features": docs["page_000"]["features"][:-1]}
+        ids = [1, 2]
+        def roster(object_ids):
+            return layer_capture_roster(object_ids, layer_url=source.LAYER_URL, service_url=source.SERVICE_URL,
+                page_size=source.BATCH_SIZE,
+                extra_documents=(("bts_item", source.BTS_ITEM_URL), ("directory", source.SERVICE_DIRECTORY_URL)),
+                after_order=("service_after", "layer_after", "count_after", "ids_after"))
+        expected_urls = dict(roster(ids))
+        bodies = {url: canonical(doc).decode() for name, url in expected_urls.items() for doc in [docs[name]]}
+        page_first_url = expected_urls["page_000"]
+
+        def serve(request):
+            url = str(request.url)
+            if url == page_first_url:
+                root = next((Path(tmp) / "captures" / "torn-page").iterdir())
+                (root / "count_before.receipt.json").write_bytes(b'{')
+            return httpx.Response(200, stream=httpx.ByteStream(bodies[url].encode()))
+
+        real_client = httpx.Client
+        with tempfile.TemporaryDirectory() as tmp, patch.object(source, "BATCH_SIZE", 200), \
+                patch.object(source, "EXPECTED_EXTENT", {"xmin": -1.0, "ymin": 2.0, "xmax": 1.0, "ymax": 4.0}), \
+                patch.object(source.httpx, "Client",
+                side_effect=lambda **kwargs: real_client(transport=httpx.MockTransport(serve), **kwargs)):
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            with self.assertRaises(ValueError) as raised:
+                source.capture_building_locations(storage, version="torn-page",
+                                                  capture_directory=str(Path(tmp) / "captures"))
+            self.assertEqual(str(raised.exception), "source_page_population_incomplete:page_000")
+            self.assertNotIsInstance(raised.exception, (json.JSONDecodeError, OSError))
+            self.assertEqual(storage.list_prefix(source.DATASET_SLUG), [])
+            quarantine_keys = storage.list_prefix("_quarantine/" + source.DATASET_SLUG)
+            failure_key = next(key for key in quarantine_keys if key.endswith("/metadata/failure.json"))
+            failure = json.loads(storage.read_key(failure_key))
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"],
+                             sorted(name for name in expected_urls if name != "count_before"))
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "count_before",
+                               "reason": "retained_capture_receipt_unreadable:count_before"}])
+            self.assertTrue(any(key.endswith("/raw/bts_item.body") for key in quarantine_keys))
+            self.assertTrue(any(key.endswith("/raw/page_000.wire") for key in quarantine_keys))
+            self.assertTrue(any(key.endswith("/raw/ids_before.receipt.json") for key in quarantine_keys))
+            root = next((Path(tmp) / "captures" / "torn-page").iterdir())
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "ValueError")
+            self.assertNotIn("receipts", manifest)
 
 
 if __name__=="__main__":unittest.main()

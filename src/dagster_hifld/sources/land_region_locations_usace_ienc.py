@@ -29,7 +29,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, capture_get, processing_identity, retain_failed_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
     validate_capture_request_identity,
     seal_candidate_objects,
@@ -392,18 +392,11 @@ def capture_land_region_locations_usace_ienc(storage: StagingStorageResource, *,
                     on_validation_error=_validate)
             fields, features, audit = _validate(captures)
         except Exception as exc:
-            retained = {}
-            for path in sorted(root.glob("*.receipt.json")):
-                try:
-                    retained[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
-                except (OSError, ValueError):
-                    retained[path.name] = {"receipt_readback_failed": True}
             (root / "capture_manifest.json").write_bytes(_canonical({"captured_at": datetime.now(timezone.utc).isoformat(),
                                                                     "complete": False,
-                                                                    "error_code": type(exc).__name__,
-                                                                    "receipts": retained}) + b"\n")
+                                                                    "error_code": type(exc).__name__}) + b"\n")
             if captures:
-                quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captures, type(exc).__name__)
+                retain_failed_capture(storage, root, DATASET_SLUG, version, exc, error=ValueError)
             raise
         (root / "capture_manifest.json").write_bytes(_canonical({"captured_at": datetime.now(timezone.utc).isoformat(),
                                                                  "complete": True,
