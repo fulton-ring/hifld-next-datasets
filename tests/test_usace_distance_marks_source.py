@@ -171,7 +171,14 @@ class DistanceMarkCaptureTests(unittest.TestCase):
         self.assertEqual(table.column("OBJECTID").to_pylist(), list(range(1, 7454)))
         self.assertEqual(table.column("native_x")[0].as_py(), -79.5 + 0.00001)
         self.assertEqual(table.column("native_y")[0].as_py(), 40.0)
-        self.assertEqual(json.loads(table.schema.metadata[b"geo"])["columns"]["geometry"]["geometry_types"], ["Point"])
+        geo = json.loads(table.schema.metadata[b"geo"])
+        self.assertEqual(geo["primary_column"], "geometry")
+        self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
+        self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4326)
+        self.assertEqual(geo["columns"]["geometry"]["crs"]["name"], "WGS 84")
+        from shapely import from_wkb
+        first = from_wkb(table.column("geometry").to_pylist()[0])
+        self.assertEqual((round(first.x, 9), round(first.y, 9)), (round(-79.5 + 0.00001, 9), 40.0))
 
     def test_transient_page_failure_is_retained_before_bounded_retry(self):
         storage, result = self._capture(ArcGISFixture(fail_page_once=3201))

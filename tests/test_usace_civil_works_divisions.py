@@ -195,8 +195,14 @@ def _witnessed_capture_dir(root: Path, witnesses: dict[str, object]) -> Path:
     return capture
 
 
+def _fake_candidate(features, _fields, root):
+    target = Path(root) / "candidate.parquet"
+    target.write_bytes(b"candidate")
+    return target, hashlib.sha256(b"candidate").hexdigest(), len(features)
+
+
 def _replay_patches():
-    return [patch.object(ucwd, "_geoparquet", return_value=b"candidate"),
+    return [patch.object(ucwd, "_geoparquet_candidate", side_effect=_fake_candidate),
             patch.object(ucwd, "processing_identity", return_value={
                 "code_commit": "a" * 40, "files": {"x.py": "b" * 64}}),
             patch.object(ucwd, "validate_construction_code_identity", return_value=None),
@@ -449,8 +455,11 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
         fixture = _fixture()
         stable_identity = {"code_commit": "a" * 40, "files": {"x.py": "b" * 64}}
 
-        def parquet(features, _fields, _root):
-            return b"candidate:" + hashlib.sha256(_body([f["attributes"] for f in features])).digest()
+        def parquet(features, _fields, root):
+            body = b"candidate:" + hashlib.sha256(_body([f["attributes"] for f in features])).digest()
+            target = Path(root) / "candidate.parquet"
+            target.write_bytes(body)
+            return target, hashlib.sha256(body).hexdigest(), len(features)
 
         with tempfile.TemporaryDirectory() as tmp:
             storage = StagingStorageResource(use_local=True, local_dir=tmp)
@@ -469,7 +478,7 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
                                        wire_sha256=hashlib.sha256(body).hexdigest())
                         captures["page_000"] = (body, receipt)
                     with patch.object(ucwd, "_load_offline", return_value=captures), \
-                            patch.object(ucwd, "_geoparquet", side_effect=parquet), \
+                            patch.object(ucwd, "_geoparquet_candidate", side_effect=parquet), \
                             patch.object(ucwd, "processing_identity",
                                          return_value=stable_identity), \
                             patch.object(ucwd, "validate_construction_code_identity",
@@ -500,7 +509,7 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
             storage = StagingStorageResource(use_local=True, local_dir=tmp)
             with fixture_pins():
                 with patch.object(ucwd, "_load_offline", return_value=copy.deepcopy(fixture)), \
-                        patch.object(ucwd, "_geoparquet", return_value=b"candidate"), \
+                        patch.object(ucwd, "_geoparquet_candidate", side_effect=_fake_candidate), \
                         patch.object(ucwd, "processing_identity", return_value=stable_identity), \
                         patch.object(ucwd, "validate_construction_code_identity",
                                      return_value=None), \
@@ -537,15 +546,22 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
             self.assertFalse(result["source_authority_accepted"])
 
     def test_geoparquet_roundtrip_preserves_native_values_and_geometry(self):
+        import io
+        import pyarrow.parquet as pq
+        from shapely import from_wkb
         with fixture_pins():
             fixture = _fixture()
             _, fields, features, _ = ucwd._validate(copy.deepcopy(fixture))
             with tempfile.TemporaryDirectory() as tmp:
-                body = ucwd._geoparquet(features, fields, Path(tmp))
-        import io
-        import pyarrow.parquet as pq
-        from shapely import from_wkb
-        table = pq.read_table(io.BytesIO(body))
+                path, candidate_sha, candidate_rows = ucwd._geoparquet_candidate(features, fields, Path(tmp))
+                self.assertEqual(candidate_rows, 8)
+                self.assertEqual(candidate_sha, hashlib.sha256(path.read_bytes()).hexdigest())
+                verification = json.loads((Path(tmp) / "candidate-verification.json").read_bytes())
+                self.assertEqual(verification["rows"], 8)
+                self.assertEqual(verification["objectid_first"], 1)
+                self.assertEqual(verification["objectid_last"], 8)
+                self.assertEqual(verification["readback_columns"], [*ucwd.FIELD_NAMES, "geometry"])
+                table = pq.read_table(io.BytesIO(path.read_bytes()))
         self.assertEqual(table.column_names, [*ucwd.FIELD_NAMES, "geometry"])
         self.assertEqual(table.num_rows, 8)
         self.assertEqual(table.column("OBJECTID").to_pylist(), [1, 2, 3, 4, 5, 6, 7, 8])
@@ -572,7 +588,11 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
         geo_metadata = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(sorted(geo_metadata["columns"]["geometry"]["geometry_types"]),
                          ["MultiPolygon", "Polygon"])
-        self.assertIn("NAD83", geo_metadata["columns"]["geometry"]["crs"].get("name", ""))
+        crs = geo_metadata["columns"]["geometry"]["crs"]
+        self.assertEqual(crs["id"]["code"], 4140)
+        self.assertIn("NAD83", crs.get("name", ""))
+        self.assertEqual(crs["datum_ensemble"]["name"], "NAD83 Canadian Spatial Reference System")
+        self.assertEqual(crs["datum_ensemble"]["ellipsoid"]["name"], "GRS 1980")
         self.assertEqual(geo_metadata["columns"]["geometry"]["bbox"],
                          [-170.0, -14.5, -70.0, 46.0])
 
@@ -644,7 +664,7 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
                 (capture / f"{name}.wire").write_bytes(wire)
                 (capture / f"{name}.receipt.json").write_bytes(_body(receipt))
             storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"))
-            with patch.object(ucwd, "_geoparquet", return_value=b"candidate"), \
+            with patch.object(ucwd, "_geoparquet_candidate", side_effect=_fake_candidate), \
                     patch.object(ucwd, "processing_identity", return_value={
                         "code_commit": "a" * 40, "files": {"x.py": "b" * 64}}), \
                     patch.object(ucwd, "validate_construction_code_identity", return_value=None), \

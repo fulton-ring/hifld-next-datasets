@@ -77,7 +77,8 @@ class UsaceNoticeMarksTests(unittest.TestCase):
             ]}).encode(), {})
             with self.assertRaisesRegex(ValueError, "source_point_ordinate_roster_drift"):
                 _fields, features, _audit = marks.validate_notice_snapshot(bad)
-                marks.notice_geoparquet(_fields, features)
+                with tempfile.TemporaryDirectory(prefix="notice-geo-") as geo_dir:
+                    marks.notice_geoparquet(_fields, features, Path(geo_dir))
 
     def test_point_validity_and_coverage_drift_rejected(self):
         fields, captures = self._captures()
@@ -142,7 +143,8 @@ class UsaceNoticeMarksTests(unittest.TestCase):
             tampered = [dict(feature) for feature in features]
             tampered[0] = {**tampered[0], "geometry":{**tampered[0]["geometry"],"y":float("nan")}}
             with self.assertRaisesRegex(ValueError, "source_point_ordinate_invalid"):
-                marks.notice_geoparquet(parsed, tampered)
+                with tempfile.TemporaryDirectory(prefix="notice-geo-") as geo_dir:
+                    marks.notice_geoparquet(parsed, tampered, Path(geo_dir))
 
     def test_offline_replay_and_first_candidate_cache(self):
         _fields, captures = self._captures()
@@ -183,6 +185,20 @@ class UsaceNoticeMarksTests(unittest.TestCase):
             self.assertEqual(first["version"], second["version"])
             self.assertTrue(second["reused"])
             self.assertEqual(first["feature_count"], 2)
+            import io
+            import pyarrow.parquet as pq
+            from shapely import from_wkb
+            candidate_key = (f"{marks.DATASET_SLUG}/{marks.FILE_SLUG}/{first['version']}/"
+                             f"geoparquet/notice-marks-usace-ienc.parquet")
+            table = pq.read_table(io.BytesIO(storage.read_key(candidate_key)))
+            geo = json.loads(table.schema.metadata[b"geo"])
+            self.assertEqual(geo["primary_column"], "geometry")
+            self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
+            self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4326)
+            self.assertEqual(geo["columns"]["geometry"]["crs"]["name"], "WGS 84")
+            points = [from_wkb(wkb) for wkb in table.column("geometry").to_pylist()]
+            self.assertEqual({round(point.x, 9) for point in points},
+                             {round(marks.EXPECTED_EXTENT["xmin"], 9), round(marks.EXPECTED_EXTENT["xmax"], 9)})
 
             roster["unexpected.body"] = {"bytes":0,"sha256":marks._sha(b"")}
             (capture_root / "capture_manifest.json").write_bytes(marks._canonical({

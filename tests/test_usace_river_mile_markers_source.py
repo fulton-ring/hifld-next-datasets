@@ -215,8 +215,15 @@ class RiverMileMarkerCaptureTests(unittest.TestCase):
         self.assertEqual(table.column("RIVER_NUMB")[11324].as_py(), None)
         geo = json.loads(table.schema.metadata[b"geo"])
         self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
-        self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4269)
+        crs = geo["columns"]["geometry"]["crs"]
+        self.assertEqual(crs["id"]["code"], 4269)
+        self.assertEqual(crs["name"], "NAD83")
+        self.assertEqual(crs["datum_ensemble"]["name"], "North American Datum 1983")
+        self.assertEqual(crs["datum_ensemble"]["ellipsoid"]["name"], "GRS 1980")
         self.assertEqual(geo["primary_column"], "geometry")
+        from shapely import from_wkb
+        first = from_wkb(table.column("geometry").to_pylist()[0])
+        self.assertEqual((round(first.x, 9), round(first.y, 9)), (round(-92.7 + 0.00001, 9), 31.4525))
 
     def test_staged_geojson_preserves_native_crs_through_catalog_reads(self):
         """The catalog consumes the canonical GeoJSON, not the native_candidate

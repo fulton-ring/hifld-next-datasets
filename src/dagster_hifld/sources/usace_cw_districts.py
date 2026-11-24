@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pyproj
 import shapely
 from shapely.geometry import MultiPolygon
@@ -20,6 +20,7 @@ from dagster_hifld.sources.arcgis_raw_capture import (
 )
 
 from dagster_hifld.sources.esri_geometry import esri_polygon_geometry, esri_polygon_ring_groups
+from dagster_hifld.sources.geoparquet_candidate import CANDIDATE_BATCH_SIZE, stream_geoparquet_candidate
 
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.sources.capture_common import processing_identity
@@ -250,36 +251,38 @@ def _arrow_type(field_type: str):
     raise ValueError("unsupported_source_field_type:" + field_type)
 
 
-def _make_parquet(metadata: dict, features: list[dict], wkb_rows: list[bytes]) -> bytes:
+def _native_candidate(metadata: dict, features: list[dict], wkb_rows: list[bytes],
+                      capture_dir: Path) -> tuple[Path, str, int]:
     fields = [field for field in metadata["fields"] if field["type"] != "esriFieldTypeGeometry"]
-    arrays = {}
-    for field in fields:
-        name, kind = field["name"], field["type"]
-        values = [feature["attributes"].get(name) for feature in features]
-        if name == "OBJECTID" and any(type(x) is not int for x in values):
-            raise ValueError("source_object_id_value_drift")
-        if kind in {"esriFieldTypeInteger", "esriFieldTypeSmallInteger"} and any(x is not None and type(x) is not int for x in values):
-            raise ValueError("source_integer_attribute_type_drift:" + name)
-        if kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"} and any(
-            x is not None and (type(x) not in (int, float) or not float("-inf") < float(x) < float("inf"))
-            for x in values
-        ):
-            raise ValueError("source_floating_attribute_type_drift:" + name)
-        if kind in _STRING and any(x is not None and not isinstance(x, str) for x in values):
-            raise ValueError("source_string_attribute_type_drift:" + name)
-        arrays[name] = pa.array(values, type=_arrow_type(kind))
-    arrays["geometry"] = pa.array(wkb_rows, type=pa.binary())
-    table = pa.table(arrays)
-    metadata_bytes = dict(table.schema.metadata or {})
-    metadata_bytes[b"geo"] = _json_bytes({
-        "version": "1.1.0", "primary_column": "geometry",
-        "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["MultiPolygon"], "edges": "planar",
-                                 "crs": pyproj.CRS.from_epsg(NATIVE_CRS_EPSG).to_json_dict()}},
-    }).strip()
-    table = table.replace_schema_metadata(metadata_bytes)
-    sink = pa.BufferOutputStream()
-    pq.write_table(table, sink, compression="zstd", version="2.6")
-    return sink.getvalue().to_pybytes()
+    schema = pa.schema(
+        [pa.field(field["name"], _arrow_type(field["type"])) for field in fields]
+        + [pa.field("geometry", pa.binary())])
+
+    def batches():
+        for start in range(0, len(features), CANDIDATE_BATCH_SIZE):
+            chunk = features[start:start + CANDIDATE_BATCH_SIZE]
+            arrays = []
+            for field in fields:
+                name, kind = field["name"], field["type"]
+                values = [feature["attributes"].get(name) for feature in chunk]
+                if name == "OBJECTID" and any(type(x) is not int for x in values):
+                    raise ValueError("source_object_id_value_drift")
+                if kind in {"esriFieldTypeInteger", "esriFieldTypeSmallInteger"} and any(x is not None and type(x) is not int for x in values):
+                    raise ValueError("source_integer_attribute_type_drift:" + name)
+                if kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"} and any(
+                    x is not None and (type(x) not in (int, float) or not float("-inf") < float(x) < float("inf"))
+                    for x in values
+                ):
+                    raise ValueError("source_floating_attribute_type_drift:" + name)
+                if kind in _STRING and any(x is not None and not isinstance(x, str) for x in values):
+                    raise ValueError("source_string_attribute_type_drift:" + name)
+                arrays.append(pa.array(values, type=_arrow_type(kind)))
+            arrays.append(pa.array(wkb_rows[start:start + CANDIDATE_BATCH_SIZE], type=pa.binary()))
+            yield pa.record_batch(arrays, schema=schema)
+
+    return stream_geoparquet_candidate(
+        schema, NATIVE_CRS_EPSG, batches(), Path(capture_dir) / "candidate.parquet",
+        geometry_column="geometry", geometry_types=["MultiPolygon"])
 
 
 class _RetainedCaptureClient:
@@ -514,7 +517,9 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
         rows = [{"attributes": f["attributes"], "geometry": {"rings": grouped}} for f, grouped in zip(features, grouped_geometries)]
         row_digest = _digest(_json_bytes(rows))
         ids_digest = _digest(_json_bytes(before))
-        parquet = _make_parquet(metadata, features, wkb_rows)
+        with tempfile.TemporaryDirectory(prefix="hifld-cw-districts-candidate-") as candidate_dir:
+            _candidate, parquet_sha, _candidate_rows = _native_candidate(metadata, features, wkb_rows, Path(candidate_dir))
+            parquet = _candidate.read_bytes()
         geojson = _json_bytes({"type": "FeatureCollection", "crs": NATIVE_GEOJSON_CRS, "features": [
             {"type": "Feature", "id": f["attributes"]["OBJECTID"], "properties": f["attributes"],
              "geometry": {"type": "MultiPolygon", "coordinates": grouped}}

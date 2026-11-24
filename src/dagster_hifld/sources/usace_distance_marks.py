@@ -4,13 +4,13 @@ from __future__ import annotations
 import hashlib
 import json
 import struct
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pyproj
 from dagster_hifld.sources.arcgis_raw_capture import (
     RawCapturePolicy, request_raw, capture_exact_id_population, population_snapshot,
@@ -19,6 +19,7 @@ from dagster_hifld.sources.arcgis_raw_capture import (
 
 from dagster_hifld.provenance import validate_provenance
 from dagster_hifld.sources.capture_common import processing_identity
+from dagster_hifld.sources.geoparquet_candidate import CANDIDATE_BATCH_SIZE, stream_geoparquet_candidate
 
 DATASET_SLUG = "distance-marks-usace-ienc-2"
 FILE_SLUG = DATASET_SLUG
@@ -174,48 +175,52 @@ def _arrow_type(field_type: str):
     raise ValueError("unsupported_source_field_type:" + field_type)
 
 
-def _make_parquet(metadata: dict, features: list[dict]) -> bytes:
+def _native_candidate(metadata: dict, features: list[dict], capture_dir: Path) -> tuple[Path, str, int]:
     fields = [field for field in metadata["fields"] if field["type"] != "esriFieldTypeGeometry"]
-    arrays = {}
-    for field in fields:
-        name, kind = field["name"], field["type"]
-        values = [feature["attributes"].get(name) for feature in features]
-        if name == "OBJECTID" and any(type(x) is not int for x in values):
-            raise ValueError("source_object_id_value_drift")
-        if kind in {"esriFieldTypeInteger", "esriFieldTypeSmallInteger"} and any(x is not None and type(x) is not int for x in values):
-            raise ValueError("source_integer_attribute_type_drift:" + name)
-        if kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"} and any(
-            x is not None and (type(x) not in (int, float) or not float("-inf") < float(x) < float("inf"))
-            for x in values
-        ):
-            raise ValueError("source_floating_attribute_type_drift:" + name)
-        if kind in _STRING and any(x is not None and not isinstance(x, str) for x in values):
-            raise ValueError("source_string_attribute_type_drift:" + name)
-        arrays[name] = pa.array(values, type=_arrow_type(kind))
-    xs, ys, wkb = [], [], []
-    for feature in features:
-        geometry = feature.get("geometry")
-        if not isinstance(geometry, dict) or type(geometry.get("x")) not in (int, float) or type(geometry.get("y")) not in (int, float):
-            raise ValueError("source_point_geometry_invalid")
-        x, y = geometry["x"], geometry["y"]
-        if not (-180 <= x <= 180 and -90 <= y <= 90):
-            raise ValueError("source_point_out_of_epsg4326_bounds")
-        xs.append(x)
-        ys.append(y)
-        wkb.append(struct.pack("<BIdd", 1, 1, float(x), float(y)))
-    arrays["native_x"] = pa.array(xs, type=pa.float64())
-    arrays["native_y"] = pa.array(ys, type=pa.float64())
-    arrays["geometry"] = pa.array(wkb, type=pa.binary())
-    table = pa.table(arrays)
-    metadata_bytes = dict(table.schema.metadata or {})
-    metadata_bytes[b"geo"] = _json_bytes({
-        "version": "1.1.0", "primary_column": "geometry",
-        "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"], "crs": pyproj.CRS.from_epsg(4326).to_json_dict()}},
-    }).strip()
-    table = table.replace_schema_metadata(metadata_bytes)
-    sink = pa.BufferOutputStream()
-    pq.write_table(table, sink, compression="zstd", version="2.6")
-    return sink.getvalue().to_pybytes()
+    schema = pa.schema(
+        [pa.field(field["name"], _arrow_type(field["type"])) for field in fields]
+        + [pa.field("native_x", pa.float64()), pa.field("native_y", pa.float64()),
+           pa.field("geometry", pa.binary())])
+
+    def batches():
+        for start in range(0, len(features), CANDIDATE_BATCH_SIZE):
+            chunk = features[start:start + CANDIDATE_BATCH_SIZE]
+            arrays = []
+            for field in fields:
+                name, kind = field["name"], field["type"]
+                values = [feature["attributes"].get(name) for feature in chunk]
+                if name == "OBJECTID" and any(type(x) is not int for x in values):
+                    raise ValueError("source_object_id_value_drift")
+                if kind in {"esriFieldTypeInteger", "esriFieldTypeSmallInteger"} and any(x is not None and type(x) is not int for x in values):
+                    raise ValueError("source_integer_attribute_type_drift:" + name)
+                if kind in {"esriFieldTypeDouble", "esriFieldTypeSingle"} and any(
+                    x is not None and (type(x) not in (int, float) or not float("-inf") < float(x) < float("inf"))
+                    for x in values
+                ):
+                    raise ValueError("source_floating_attribute_type_drift:" + name)
+                if kind in _STRING and any(x is not None and not isinstance(x, str) for x in values):
+                    raise ValueError("source_string_attribute_type_drift:" + name)
+                arrays.append(pa.array(values, type=_arrow_type(kind)))
+            xs, ys, wkb = [], [], []
+            for feature in chunk:
+                geometry = feature.get("geometry")
+                if not isinstance(geometry, dict) or type(geometry.get("x")) not in (int, float) or type(geometry.get("y")) not in (int, float):
+                    raise ValueError("source_point_geometry_invalid")
+                x, y = geometry["x"], geometry["y"]
+                if not (-180 <= x <= 180 and -90 <= y <= 90):
+                    raise ValueError("source_point_out_of_epsg4326_bounds")
+                xs.append(x)
+                ys.append(y)
+                wkb.append(struct.pack("<BIdd", 1, 1, float(x), float(y)))
+            arrays.append(pa.array(xs, type=pa.float64()))
+            arrays.append(pa.array(ys, type=pa.float64()))
+            arrays.append(pa.array(wkb, type=pa.binary()))
+            yield pa.record_batch(arrays, schema=schema)
+
+    return stream_geoparquet_candidate(
+        schema, 4326, batches(), Path(capture_dir) / "candidate.parquet",
+        geometry_column="geometry", geometry_types=["Point"])
+
 
 
 class _RetainedCaptureClient:
@@ -429,7 +434,9 @@ def _capture(staging, version_key: str, client: httpx.Client | None = None,
         rows = [{"attributes": f["attributes"], "geometry": f["geometry"]} for f in features]
         row_digest = _digest(_json_bytes(rows))
         ids_digest = _digest(_json_bytes(before))
-        parquet = _make_parquet(metadata, features)
+        with tempfile.TemporaryDirectory(prefix="hifld-distance-marks-candidate-") as candidate_dir:
+            _candidate, parquet_sha, _candidate_rows = _native_candidate(metadata, features, Path(candidate_dir))
+            parquet = _candidate.read_bytes()
         geojson = _json_bytes({"type": "FeatureCollection", "features": [
             {"type": "Feature", "id": f["attributes"]["OBJECTID"], "properties": f["attributes"],
              "geometry": {"type": "Point", "coordinates": [f["geometry"]["x"], f["geometry"]["y"]]}}

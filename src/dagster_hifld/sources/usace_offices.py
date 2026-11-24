@@ -6,6 +6,7 @@ from dagster_hifld.sources.capture_common import verify_cached_objects
 from dagster_hifld.sources.capture_common import (
     write_candidate_outputs, write_immutable, write_candidate_ready_state,
 )
+from dagster_hifld.sources.geoparquet_candidate import stream_geoparquet_candidate
 
 import hashlib
 import json
@@ -52,27 +53,6 @@ EXPECTED_FIELDS = (
     ("TIME_ZONE", "esriFieldTypeString", True, 3000),
     ("SE_ANNO_CAD_DATA", "esriFieldTypeBlob", True, None),
 )
-CRS_4326 = {
-    "$schema": "https://proj.org/schemas/v0.7/projjson.schema.json",
-    "area": "World.",
-    "bbox": {"east_longitude": 180, "north_latitude": 90, "south_latitude": -90, "west_longitude": -180},
-    "coordinate_system": {"axis": [
-        {"abbreviation": "Lat", "direction": "north", "name": "Geodetic latitude", "unit": "degree"},
-        {"abbreviation": "Lon", "direction": "east", "name": "Geodetic longitude", "unit": "degree"}], "subtype": "ellipsoidal"},
-    "datum_ensemble": {"accuracy": "2.0", "ellipsoid": {"inverse_flattening": 298.257223563, "name": "WGS 84", "semi_major_axis": 6378137},
-        "id": {"authority": "EPSG", "code": 6326}, "members": [
-            {"id": {"authority": "EPSG", "code": 1166}, "name": "World Geodetic System 1984 (Transit)"},
-            {"id": {"authority": "EPSG", "code": 1152}, "name": "World Geodetic System 1984 (G730)"},
-            {"id": {"authority": "EPSG", "code": 1153}, "name": "World Geodetic System 1984 (G873)"},
-            {"id": {"authority": "EPSG", "code": 1154}, "name": "World Geodetic System 1984 (G1150)"},
-            {"id": {"authority": "EPSG", "code": 1155}, "name": "World Geodetic System 1984 (G1674)"},
-            {"id": {"authority": "EPSG", "code": 1156}, "name": "World Geodetic System 1984 (G1762)"},
-            {"id": {"authority": "EPSG", "code": 1309}, "name": "World Geodetic System 1984 (G2139)"},
-            {"id": {"authority": "EPSG", "code": 1383}, "name": "World Geodetic System 1984 (G2296)"}],
-        "name": "World Geodetic System 1984 ensemble"}, "id": {"authority": "EPSG", "code": 4326},
-    "name": "WGS 84", "scope": "Horizontal component of 3D system.", "type": "GeographicCRS"}
-
-
 class USACEOfficesSourceError(ValueError):
     """Fail-closed source, drift, or candidate error."""
 
@@ -259,8 +239,7 @@ def _table(metadata: dict, features: list) -> tuple[pa.Table, list[str]]:
                 quality.append("coordinates_outside_epsg4326_domain")
             wkb.append(shapely.to_wkb(point, output_dimension=2, byte_order=1))
     arrays.append(pa.array(wkb, type=pa.binary(), from_pandas=False)); schema_fields.append(pa.field("geometry", pa.binary(), nullable=True))
-    geo = {"version": "1.1.0", "primary_column": "geometry", "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"], "crs": CRS_4326}}}
-    schema = pa.schema(schema_fields, metadata={b"geo": _json(geo).strip()})
+    schema = pa.schema(schema_fields)
     table = pa.Table.from_arrays(arrays, schema=schema)
     return table, sorted(set(quality))
 
@@ -515,10 +494,19 @@ def stage_usace_offices(storage: StagingStorageResource, *, version: str, captur
         candidate = Path(temp)
         parquet = candidate / "geoparquet" / f"{SLUG}.parquet"
         parquet.parent.mkdir()
-        pq.write_table(table, parquet, compression="zstd", version="2.6", write_statistics=True)
+        _candidate, _parquet_sha, parquet_rows = stream_geoparquet_candidate(
+            table.schema, 4326, table.to_batches(), parquet,
+            geometry_column="geometry", geometry_types=["Point"])
         readback = pq.read_table(parquet)
-        if not readback.equals(table, check_metadata=True) or readback.num_rows != len(features):
+        if parquet_rows != len(features) or not readback.equals(table, check_metadata=False):
             raise USACEOfficesSourceError("native_parquet_roundtrip_mismatch")
+        readback_geo = json.loads(readback.schema.metadata[b"geo"])
+        readback_crs = readback_geo["columns"]["geometry"]["crs"]
+        if (readback_geo["version"] != "1.1.0" or readback_geo["primary_column"] != "geometry"
+                or readback_geo["columns"]["geometry"]["geometry_types"] != ["Point"]
+                or readback_crs["id"].get("code") != 4326
+                or readback_crs.get("name") != "WGS 84"):
+            raise USACEOfficesSourceError("native_geoparquet_contract_mismatch")
         objects = {}
         payloads = {
             f"geoparquet/{SLUG}.parquet": parquet.read_bytes(),
