@@ -327,6 +327,39 @@ class MirtaDodSitesPointsSourceContractTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unexpected_source_capture_name"):
                 _load_capture("unknown", root)
 
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "staging"), use_local=True)
+            archive = b"PK\x03\x04fixture-archive"
+            real_capture_get = src.capture_get
+
+            def corrupting_capture_get(client, url, capture_root, name, **kwargs):
+                body, receipt = real_capture_get(client, url, capture_root, name, **kwargs)
+                if name == "mirta_zip":
+                    (Path(capture_root) / "mirta_zip.receipt.json").write_bytes(b"{")
+                return body, receipt
+
+            mock_client = _mock_client(b"fixture-notes", archive)
+            with patch.object(src, "capture_get", side_effect=corrupting_capture_get), \
+                    patch.object(src, "_decode",
+                                 side_effect=ValueError("source_zip_layout_drift")), \
+                    patch.object(src.httpx, "Client",
+                                 side_effect=lambda **kwargs: mock_client):
+                with self.assertRaisesRegex(ValueError, "source_zip_layout_drift"):
+                    src._capture(root, storage, "vtest")
+            tokens = sorted((Path(tmp) / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"], ["release_notes"])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "mirta_zip",
+                               "reason": "retained_capture_receipt_unreadable:mirta_zip"}])
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "ValueError")
+
     def test_added_site_captures_and_drift_warns(self):
         drift_check = assets.mirta_dod_sites_points_approved_baseline_drift
         self.assertIn(drift_check, assets.ASSET_CHECKS)
