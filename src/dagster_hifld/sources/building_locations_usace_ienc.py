@@ -28,7 +28,7 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.arcgis_layer import capture_layer, RetainedCaptureView, layer_capture_roster
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
+    retain_failed_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
     seal_candidate_objects,
     write_candidate_outputs,
 )
@@ -230,19 +230,8 @@ def capture_building_locations(storage:StagingStorageResource,*,version:str,capt
                     validate_seed=validate_seed, fetch=_capture, on_validation_error=_validate)
             fields,features,audit=_validate(captures)
         except Exception as exc:
-            receipts={};names=set()
-            for path in sorted(root.glob("*.receipt.json")):
-                name=path.name.removesuffix(".receipt.json");names.add(name)
-                try:receipts[name]=json.loads(path.read_bytes())
-                except (OSError,ValueError):receipts[name]={"receipt_readback_failed":True}
-            (root/"capture_manifest.json").write_bytes(_canonical({"complete":False,"error_code":type(exc).__name__,"receipts":receipts})+b"\n")
-            for name in names:
-                try:
-                    body=(root/f"{name}.body").read_bytes()
-                    receipt=json.loads((root/f"{name}.receipt.json").read_bytes())
-                    if (root/f"{name}.wire").is_file(): captures[name]=(body,receipt)
-                except (OSError,ValueError): pass
-            if captures:quarantine_incomplete_capture(storage,root,DATASET_SLUG,version,captures,type(exc).__name__)
+            (root/"capture_manifest.json").write_bytes(_canonical({"complete":False,"error_code":type(exc).__name__})+b"\n")
+            if captures:retain_failed_capture(storage,root,DATASET_SLUG,version,exc,error=ValueError)
             raise
         (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"receipts":{n:r for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))},
             "artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
