@@ -26,7 +26,8 @@ from dagster_hifld.resources import PublishedStorageResource, StagingStorageReso
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
     candidate_prefix, capture_get, content_derived_version, processing_identity,
-    quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable,
+    quarantine_incomplete_capture, retain_failed_capture, seal_ready_candidate,
+    verify_cached_candidate, write_immutable,
     seal_candidate_objects,
     write_candidate_outputs,
 )
@@ -247,16 +248,8 @@ def capture_epa_disaster_debris(storage: StagingStorageResource, *, version: str
                 on_validation_error=_validate)
         fields,features,audit=_validate(captures)
     except Exception as exc:
-        receipts={}
-        for path in sorted(root.glob("*.receipt.json")):
-            try:
-                name=path.name.removesuffix(".receipt.json")
-                receipts[name]=json.loads(path.read_bytes())
-                if name not in captures:
-                    captures[name]=((root/f"{name}.body").read_bytes(),receipts[name])
-            except (ValueError,OSError): receipts[path.name]={"receipt_readback_failed":True}
-        (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__,"receipts":receipts})+b"\n")
-        if captures: quarantine_incomplete_capture(storage,root,DATASET_SLUG,version,captures,type(exc).__name__)
+        retain_failed_capture(storage,root,DATASET_SLUG,version,exc,error=ValueError)
+        (root/"capture_manifest.json").write_bytes(_canonical({"captured_at":datetime.now(timezone.utc).isoformat(),"complete":False,"error_code":type(exc).__name__})+b"\n")
         raise
     return _build_candidate(storage,version,root,captures,fields,features,audit)
 
