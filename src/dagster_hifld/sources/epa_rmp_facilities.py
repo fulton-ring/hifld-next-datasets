@@ -31,7 +31,7 @@ from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureView
 from dagster_hifld.sources.capture_common import (
-    capture_get, content_derived_version, processing_identity, quarantine_incomplete_capture,
+    capture_get, content_derived_version, processing_identity, retain_failed_capture,
     verify_cached_candidate, write_immutable,
     seal_candidate_objects,
     write_candidate_outputs,
@@ -389,24 +389,11 @@ def capture_epa_rmp_facilities(storage: StagingStorageResource, *, version: str,
                 on_validation_error=validate_source_captures)
         extracted = validate_source_captures(captures)
     except Exception as exc:
-        receipts = {}
-        failed_captures: dict[str, tuple[bytes, dict[str, object]]] = {}
-        for path in sorted(capture_root.glob("*.receipt.json")):
-            try:
-                name = path.name.removesuffix(".receipt.json")
-                receipt = json.loads(path.read_bytes())
-                receipts[name] = receipt
-                body_path, wire_path = capture_root / f"{name}.body", capture_root / f"{name}.wire"
-                failed_captures[name] = (body_path.read_bytes() if body_path.exists() else b"", receipt)
-            except (ValueError, OSError):
-                receipts[path.name] = {"receipt_readback_failed": True}
+        retain_failed_capture(storage, capture_root, DATASET_SLUG, version, exc, error=ValueError)
         (capture_root / "capture_manifest.json").write_bytes(_canonical({
             "captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
-            "error_code": type(exc).__name__, "receipts": receipts,
+            "error_code": type(exc).__name__,
         }) + b"\n")
-        if failed_captures:
-            quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version, failed_captures,
-                                          type(exc).__name__)
         raise
 
     root = Path(__file__).parents[3]

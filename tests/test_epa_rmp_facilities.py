@@ -214,6 +214,49 @@ class EpaRmpSourceTests(unittest.TestCase):
             self.assertEqual(storage.list_prefix(DATASET_SLUG), [])
             self.assertEqual(SOURCE_COUNT, 21853)
 
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        seed = (_canonical({"objectIds": [1, 2, 3]}), {})
+        doc_body = b"Risk Management Plan (RMP) section 112(r) program page"
+
+        def drifted_seed_get(_client, url, capture_root, name, *, max_bytes):
+            body = seed[0]
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            receipt = {"method": "GET", "url": url, "final_url": url,
+                       "observed_at": "2026-11-08T00:00:00Z", "status": 200, "complete_body": True,
+                       "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest(),
+                       "wire_bytes": len(body), "wire_sha256": hashlib.sha256(body).hexdigest(),
+                       "content_encoding": "identity", "content_length": len(body), "error_code": None}
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            (capture_root / "epa_frs_sources_page.body").write_bytes(doc_body)
+            (capture_root / "epa_frs_sources_page.wire").write_bytes(doc_body)
+            doc_receipt = {**receipt, "url": EPA_FRS_DATA_SOURCES_URL, "final_url": EPA_FRS_DATA_SOURCES_URL,
+                           "bytes": len(doc_body), "sha256": hashlib.sha256(doc_body).hexdigest(),
+                           "wire_bytes": len(doc_body), "wire_sha256": hashlib.sha256(doc_body).hexdigest(),
+                           "content_length": len(doc_body)}
+            (capture_root / "epa_frs_sources_page.receipt.json").write_bytes(_canonical(doc_receipt) + b"\n")
+            (capture_root / "epa_frs_sources_page.receipt.json").write_bytes(b'{"')
+            return body, receipt
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"), use_local=True, backend="local")
+            with (patch("dagster_hifld.sources.epa_rmp_facilities.SOURCE_COUNT", 2),
+                  patch("dagster_hifld.sources.epa_rmp_facilities.capture_get", side_effect=drifted_seed_get)):
+                with self.assertRaisesRegex(ValueError, "source_seed_id_count_drift"):
+                    capture_epa_rmp_facilities(storage, version="synthetic-seed-drift-corrupt",
+                                               capture_directory=str(Path(tmp) / "captures"))
+            quarantine_keys = storage.list_prefix("_quarantine/" + DATASET_SLUG)
+            failure_key = next(key for key in quarantine_keys if key.endswith("/metadata/failure.json"))
+            failure = json.loads(storage.read_key(failure_key))
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"], ["ids_seed"])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "epa_frs_sources_page",
+                               "reason": "retained_capture_receipt_unreadable:epa_frs_sources_page"}])
+            self.assertTrue(any(key.endswith("/raw/ids_seed.body") for key in quarantine_keys))
+            self.assertFalse(any(key.endswith("/raw/epa_frs_sources_page.body") for key in quarantine_keys))
+            self.assertEqual(storage.list_prefix(DATASET_SLUG), [])
+
     def test_complete_synthetic_capture_manifest_candidate_and_cache_reuse(self):
         captures, fields, _ = _capture_fixture()
         captures["ids_seed"] = (_canonical({"objectIds": [2, 1]}), {})

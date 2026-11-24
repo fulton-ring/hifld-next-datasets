@@ -316,6 +316,47 @@ class EpaTscaSourceDriftTests(unittest.TestCase):
             self.assertEqual(failure["captured_names"], ["ids_seed"])
             self.assertEqual(storage.list_prefix(DATASET_SLUG), [])
 
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        seed = _canonical({"objectIds": [1, 2, 2]})
+        doc_body = b"FRS data sources"
+
+        def drifted_seed_get(_client, url, capture_root, name, *, max_bytes):
+            (capture_root / f"{name}.body").write_bytes(seed)
+            (capture_root / f"{name}.wire").write_bytes(seed)
+            receipt = {"method": "GET", "url": url, "final_url": url,
+                       "observed_at": "2026-11-09T00:00:00Z", "status": 200, "complete_body": True,
+                       "bytes": len(seed), "sha256": hashlib.sha256(seed).hexdigest(),
+                       "wire_bytes": len(seed), "wire_sha256": hashlib.sha256(seed).hexdigest(),
+                       "content_encoding": "identity", "content_length": len(seed), "error_code": None}
+            (capture_root / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+            (capture_root / "epa_data_sources_page.body").write_bytes(doc_body)
+            (capture_root / "epa_data_sources_page.wire").write_bytes(doc_body)
+            doc_receipt = {**receipt, "url": "https://www.epa.gov/frs/frs-data-sources",
+                           "final_url": "https://www.epa.gov/frs/frs-data-sources",
+                           "bytes": len(doc_body), "sha256": hashlib.sha256(doc_body).hexdigest(),
+                           "wire_bytes": len(doc_body), "wire_sha256": hashlib.sha256(doc_body).hexdigest(),
+                           "content_length": len(doc_body)}
+            (capture_root / "epa_data_sources_page.receipt.json").write_bytes(b'{"')
+            return seed, receipt
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"), use_local=True, backend="local")
+            with patch.object(epa_tsca, "capture_get", side_effect=drifted_seed_get):
+                with self.assertRaisesRegex(ValueError, "source_seed_id_count_drift"):
+                    capture_epa_tsca(storage, version="synthetic-seed-drift-corrupt",
+                                     capture_directory=str(Path(tmp) / "captures"))
+            quarantine = storage.list_prefix("_quarantine/" + DATASET_SLUG)
+            failure_key = next(key for key in quarantine if key.endswith("/metadata/failure.json"))
+            failure = json.loads(storage.read_key(failure_key))
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"], ["ids_seed"])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "epa_data_sources_page",
+                               "reason": "retained_capture_receipt_unreadable:epa_data_sources_page"}])
+            self.assertTrue(any(key.endswith("/raw/ids_seed.body") for key in quarantine))
+            self.assertFalse(any(key.endswith("/raw/epa_data_sources_page.body") for key in quarantine))
+            self.assertEqual(storage.list_prefix(DATASET_SLUG), [])
+
     def test_blocking_check_refuses_observed_live_population_shapes(self):
         for live_count in (26466, 26482):
             result = epa_frs_tsca_complete({"feature_count": live_count, "source_reported_count": 26454,
