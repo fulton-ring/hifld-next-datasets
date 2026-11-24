@@ -253,8 +253,8 @@ class UsaceCwDistrictsCaptureTests(unittest.TestCase):
         crs = geo["columns"]["geometry"]["crs"]
         self.assertEqual(crs["id"]["code"], 4140)
         self.assertIn("NAD83", crs["name"])
-        self.assertEqual(crs["datum_ensemble"]["name"], "NAD83 Canadian Spatial Reference System")
-        self.assertEqual(crs["datum_ensemble"]["ellipsoid"]["name"], "GRS 1980")
+        self.assertEqual(crs["datum"]["name"], "NAD83 Canadian Spatial Reference System")
+        self.assertEqual(crs["datum"]["ellipsoid"]["name"], "GRS 1980")
         self.assertEqual(geo["primary_column"], "geometry")
         from shapely import from_wkb
         first = from_wkb(table.column("geometry").to_pylist()[0])

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 import pyarrow.parquet as pq
@@ -218,8 +221,8 @@ class RiverMileMarkerCaptureTests(unittest.TestCase):
         crs = geo["columns"]["geometry"]["crs"]
         self.assertEqual(crs["id"]["code"], 4269)
         self.assertEqual(crs["name"], "NAD83")
-        self.assertEqual(crs["datum_ensemble"]["name"], "North American Datum 1983")
-        self.assertEqual(crs["datum_ensemble"]["ellipsoid"]["name"], "GRS 1980")
+        self.assertEqual(crs["datum"]["name"], "North American Datum 1983")
+        self.assertEqual(crs["datum"]["ellipsoid"]["name"], "GRS 1980")
         self.assertEqual(geo["primary_column"], "geometry")
         from shapely import from_wkb
         first = from_wkb(table.column("geometry").to_pylist()[0])
@@ -422,6 +425,40 @@ class RiverMileMarkerCaptureTests(unittest.TestCase):
             __import__("os").unlink(__import__("pathlib").Path(temporary.name) / (original_prefix + f"raw/item.{suffix}"))
         with self.assertRaisesRegex(ValueError, "retained_source_response_missing:item"):
             source.capture_validated(storage, "v20261112T000001Z", retained_source_version="v20261112T000000Z")
+
+    def test_ingest_asset_materializes_the_native_candidate_through_dagster(self):
+        """Dagster path: the ingest asset runs the real capture and the shared
+        writer emits the staged candidate with the source EPSG:4269 contract."""
+        from dagster import DagsterInstance, materialize
+        from dagster_hifld.assets.usace_river_mile_markers import river_mile_markers_usace_ienc
+        real_client = httpx.Client
+        def fixture_client(*args, **kwargs):
+            return real_client(transport=ArcGISFixture(), **kwargs)
+        with tempfile.TemporaryDirectory(prefix="rmm-dagster-path-") as directory:
+            dagster_home = Path(directory) / "dagster-home"
+            dagster_home.mkdir()
+            storage = StagingStorageResource(use_local=True, local_dir=directory)
+            with patch("dagster_hifld.sources.usace_river_mile_markers.httpx.Client",
+                       side_effect=fixture_client), \
+                    DagsterInstance.from_config(str(dagster_home)) as instance:
+                result = materialize([river_mile_markers_usace_ienc],
+                                     resources={"staging_storage": storage},
+                                     instance=instance)
+                self.assertTrue(result.success)
+                self.assertEqual(len(result.get_asset_materialization_events()), 1)
+            versions = {key.split("/")[2] for key in storage.list_prefix(
+                f"{source.DATASET_SLUG}/{source.FILE_SLUG}") if key.count("/") >= 2}
+            self.assertEqual(len(versions), 1)
+            version = versions.pop()
+            table = pq.read_table(io.BytesIO(storage.read_key(
+                f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{version}/metadata/native_candidate/{source.FILE_SLUG}.parquet")))
+            self.assertEqual(table.num_rows, FEATURE_COUNT)
+            geo = json.loads(table.schema.metadata[b"geo"])
+            self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4269)
+            self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
+            from shapely import from_wkb
+            first = from_wkb(table.column("geometry").to_pylist()[0])
+            self.assertEqual((round(first.x, 9), round(first.y, 9)), (round(-92.7 + 0.00001, 9), 31.4525))
 
 
 class BaselineContractTests(unittest.TestCase):

@@ -591,8 +591,8 @@ class UsaceCivilWorksDivisionsTests(unittest.TestCase):
         crs = geo_metadata["columns"]["geometry"]["crs"]
         self.assertEqual(crs["id"]["code"], 4140)
         self.assertIn("NAD83", crs.get("name", ""))
-        self.assertEqual(crs["datum_ensemble"]["name"], "NAD83 Canadian Spatial Reference System")
-        self.assertEqual(crs["datum_ensemble"]["ellipsoid"]["name"], "GRS 1980")
+        self.assertEqual(crs["datum"]["name"], "NAD83 Canadian Spatial Reference System")
+        self.assertEqual(crs["datum"]["ellipsoid"]["name"], "GRS 1980")
         self.assertEqual(geo_metadata["columns"]["geometry"]["bbox"],
                          [-170.0, -14.5, -70.0, 46.0])
 
