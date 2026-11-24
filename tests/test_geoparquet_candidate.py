@@ -172,6 +172,11 @@ class StreamingWriterTests(unittest.TestCase):
 
 
 MIGRATED_NATIVE_MODULES = (
+    "census_block_groups",
+    "census_tracts",
+    "congressional_districts",
+    "us_county_boundaries",
+    "us_state_boundaries",
     "usace_civil_works_divisions",
     "usace_cw_districts",
     "usace_distance_marks",
@@ -197,7 +202,7 @@ class _GeoDictLiteralFinder:
 
 
 class MigratedNativeModuleContractTests(unittest.TestCase):
-    """The migrated native USACE adapters source their GeoParquet ``geo``
+    """The migrated native adapters source their GeoParquet ``geo``
     metadata from the shared writer; no hand-built geo dict literals remain."""
 
     def test_migrated_native_modules_use_the_shared_writer(self):

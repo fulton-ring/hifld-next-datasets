@@ -270,10 +270,14 @@ class UsStateBoundariesTests(unittest.TestCase):
         geometries = shapely.from_wkb(table["geometry"].to_pylist())
         self.assertEqual([geometry.geom_type for geometry in geometries], ["Polygon", "MultiPolygon"])
         self.assertTrue(all(shapely.equals_exact(a, b, tolerance=0.0) for a, b in zip(frame.geometry, geometries)))
+        self.assertEqual(set(table.schema.metadata), {b"geo"})
         geo_metadata = json.loads(table.schema.metadata[b"geo"])
+        self.assertEqual(geo_metadata["version"], "1.1.0")
+        self.assertEqual(geo_metadata["primary_column"], "geometry")
         column = geo_metadata["columns"]["geometry"]
+        self.assertEqual(column["encoding"], "WKB")
         self.assertEqual(column["geometry_types"], ["MultiPolygon", "Polygon"])
-        self.assertTrue(CRS.from_json_dict(column["crs"]).equals(CRS.from_epsg(4269), ignore_axis_order=True))
+        self.assertEqual(column["crs"], CRS.from_epsg(4269).to_json_dict())
 
 
 if __name__ == "__main__":
