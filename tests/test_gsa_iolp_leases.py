@@ -460,7 +460,14 @@ class GsaIolpLeasesCaptureReplayTest(unittest.TestCase):
             self.assertEqual(len(tokens), 1)
             failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
             self.assertEqual(failure["reason_code"], "GsaIolpLeasesError")
-            self.assertEqual(failure["captured_names"], ["catalog_discovery"])
+            self.assertEqual(failure["captured_names"], ["catalog_discovery", "leases_xlsx"])
+            self.assertEqual((tokens[0] / "raw" / "leases_xlsx.body").read_bytes(),
+                             b"forbidden")
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "leases_xlsx.redirect",
+                               "reason":
+                                   "retained_capture_file_missing:"
+                                   "leases_xlsx.redirect:body"}])
             retained = (tokens[0] / "raw" / "catalog_discovery.body").read_bytes()
             self.assertEqual(json.loads(retained), _catalog_record())
             retained_receipt = json.loads(
@@ -477,6 +484,68 @@ class GsaIolpLeasesCaptureReplayTest(unittest.TestCase):
                 with self.assertRaises(GsaIolpLeasesError) as replay:
                     run()
             self.assertEqual(str(replay.exception), "capture_manifest_incomplete")
+
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        import dagster_hifld.sources.gsa_iolp_leases as src_mod
+
+        with tempfile.TemporaryDirectory() as temp:
+            root_dir = Path(temp)
+            storage = StagingStorageResource(use_local=True,
+                                             local_dir=str(root_dir / "staging"),
+                                             prefix="", backend="local")
+            root = root_dir / "capture"
+            catalog_body = json.dumps(_catalog_record()).encode("utf-8")
+            signed = ("https://inventory-filestore.s3.us-gov-west-1.amazonaws.com/"
+                      f"{CKAN_DATASET_ID}/d05232d8-dc36-46e0-905b-275413399499/"
+                      "2026-11-6-iolp-leases.xlsx?X-Amz-Signature=sig")
+            download_path = (f"/dataset/{CKAN_DATASET_ID}/"
+                             "resource/d05232d8-dc36-46e0-905b-275413399499/"
+                             "download/2026-11-6-iolp-leases.xlsx")
+
+            def respond(request: httpx.Request) -> httpx.Response:
+                url = str(request.url)
+                if url == CATALOG_URL:
+                    return httpx.Response(200, stream=_BodyStream(catalog_body))
+                if urlsplit(url).path == download_path:
+                    return httpx.Response(302, stream=_BodyStream(b""),
+                                          headers={"location": signed})
+                if urlsplit(url).path == urlsplit(signed).path:
+                    return httpx.Response(404, stream=_BodyStream(b"forbidden"))
+                raise AssertionError("unrouted request " + url)
+
+            real_client = httpx.Client
+            real_ckan = src_mod._capture_ckan_download
+
+            def corrupting_ckan(client, url, capture_root, name, **kwargs):
+                try:
+                    return real_ckan(client, url, capture_root, name, **kwargs)
+                except GsaIolpLeasesError:
+                    (Path(capture_root) / f"{name}.receipt.json").write_bytes(b"{")
+                    raise
+
+            with patch.object(src_mod, "_capture_ckan_download",
+                              side_effect=corrupting_ckan):
+                with patch("dagster_hifld.sources.gsa_iolp_leases.httpx.Client",
+                           side_effect=lambda **kwargs: real_client(
+                               transport=httpx.MockTransport(respond), **kwargs)):
+                    with self.assertRaises(GsaIolpLeasesError) as ctx:
+                        src_mod._capture(root, storage, "vtest")
+            self.assertEqual(str(ctx.exception), "ckan_download_file_status_not_ok")
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "GsaIolpLeasesError")
+            tokens = sorted((root_dir / "staging" / "_quarantine" / DATASET_SLUG).glob("*"))
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "GsaIolpLeasesError")
+            self.assertEqual(failure["captured_names"], ["catalog_discovery"])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "leases_xlsx",
+                               "reason": "retained_capture_receipt_unreadable:leases_xlsx"},
+                              {"name": "leases_xlsx.redirect",
+                               "reason":
+                                   "retained_capture_file_missing:"
+                                   "leases_xlsx.redirect:body"}])
 
 
 class GsaIolpLeasesAssetTest(unittest.TestCase):

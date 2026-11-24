@@ -1,4 +1,6 @@
 """Current Census TIGER/Line international boundary source contract and wiring tests."""
+import hashlib
+import json
 import os
 import tempfile
 import unittest
@@ -9,7 +11,9 @@ from dagster import DefaultScheduleStatus
 from shapely.geometry import LineString, MultiLineString, Point
 
 from dagster_hifld.assets.us_international_boundaries import us_international_boundaries_draft_schedule
+from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import census_latest
+from dagster_hifld.sources import us_international_boundaries as m_us
 from dagster_hifld.sources.us_international_boundaries import (
     DATASET_SLUG, EXPECTED_FIELDS, EXPECTED_VALUE_SETS,
     _decode, _geometry_wkb, _linestring_wkb, _multilinestring_wkb, _paths, _schema_dbf,
@@ -68,6 +72,46 @@ class UsInternationalBoundariesSourceContractTest(unittest.TestCase):
             (root / "t.dbf").write_bytes(b"\x03" + b"\x00" * 8)
             with self.assertRaises(ValueError):
                 _schema_dbf(root / "t.dbf")
+
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        release = _release(2026)
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            body = b"PK\x03\x04fixture-shapefile-zip"
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(b"{")
+            return body, {"method": "GET", "url": url, "final_url": url, "status": 200,
+                          "complete_body": True, "bytes": len(body),
+                          "wire_bytes": len(body),
+                          "sha256": hashlib.sha256(body).hexdigest(),
+                          "wire_sha256": hashlib.sha256(body).hexdigest()}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            storage = StagingStorageResource(use_local=True,
+                                             local_dir=str(Path(tmp) / "staging"), prefix="")
+            with patch.object(census_latest, "discover_shapefile",
+                              side_effect=lambda *args, **kwargs: release), \
+                    patch.object(m_us, "capture_get", side_effect=fake_capture_get), \
+                    patch.object(m_us, "_decode",
+                                 side_effect=ValueError("source_decode_failed")):
+                with self.assertRaisesRegex(ValueError, "source_decode_failed"):
+                    m_us._capture(root, storage, "vtest")
+            tokens = sorted((Path(tmp) / "staging" / "_quarantine"
+                             / m_us.DATASET_SLUG).glob("*"))
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"], [])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "census_internationalboundary_zip",
+                               "reason":
+                                   "retained_capture_receipt_unreadable:"
+                                   "census_internationalboundary_zip"}])
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "ValueError")
 
     def test_refresh_schedule_is_stopped(self):
         self.assertEqual(us_international_boundaries_draft_schedule.default_status, DefaultScheduleStatus.STOPPED)
