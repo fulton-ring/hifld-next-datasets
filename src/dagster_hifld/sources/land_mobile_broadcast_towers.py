@@ -39,7 +39,7 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     processing_identity,
-    quarantine_incomplete_capture,
+    retain_failed_capture,
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
@@ -541,20 +541,10 @@ def _capture(root: Path, storage: StagingStorageResource, version: str) -> tuple
              "artifact_roster": capture_roster_digests(root, exclude={"capture_manifest.json"})}) + b"\n")
         return body, (root / "lm_bcast.wire").read_bytes(), receipt
     except Exception as exc:
-        receipts: dict[str, dict] = {}
-        for path in root.glob("*.receipt.json"):
-            try:
-                name = path.name.removesuffix(".receipt.json")
-                receipts[name] = json.loads(path.read_bytes())
-                captures.setdefault(name, ((root / f"{name}.body").read_bytes(), receipts[name]))
-            except Exception:
-                pass
+        retain_failed_capture(storage, root, DATASET_SLUG, version, exc, error=ULSDraftError)
         manifest_path.write_bytes(_canonical(
             {"complete": False, "captured_at": datetime.now(timezone.utc).isoformat(),
-             "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        if captures:
-            quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captures,
-                                          type(exc).__name__)
+             "error_code": type(exc).__name__}) + b"\n")
         raise
 
 

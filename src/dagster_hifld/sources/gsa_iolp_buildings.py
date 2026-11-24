@@ -40,7 +40,7 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     processing_identity,
-    quarantine_incomplete_capture,
+    retain_failed_capture,
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
@@ -472,17 +472,11 @@ def _capture(root: Path, storage: StagingStorageResource, version: str) -> dict:
         }) + b"\n")
         return _load_capture(root, identity, roster)
     except Exception as exc:
-        receipts = {}
-        for path in sorted(root.glob("*.receipt.json")):
-            try:
-                receipts[path.name.removesuffix(".receipt.json")] = json.loads(path.read_bytes())
-            except Exception:
-                pass
+        retain_failed_capture(storage, root, DATASET_SLUG, version, exc,
+                              error=GsaIolpBuildingsError)
         manifest_path.write_bytes(_canonical({
             "complete": False, "captured_at": datetime.now(timezone.utc).isoformat(),
-            "error_code": type(exc).__name__, "receipts": receipts}) + b"\n")
-        quarantine_incomplete_capture(storage, root, DATASET_SLUG, version, captured,
-                                      type(exc).__name__)
+            "error_code": type(exc).__name__}) + b"\n")
         raise
 
 

@@ -581,6 +581,36 @@ class LandMobileBroadcastTowersLifecycleTests(unittest.TestCase):
             self.assertFalse(manifest["complete"])
             self.assertEqual(manifest["error_code"], "OSError")
 
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            body = b"partial fixture bytes"
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(body)
+            (capture_root / f"{name}.receipt.json").write_bytes(b"{")
+            raise OSError("connection reset")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            storage = source.StagingStorageResource(use_local=True,
+                                                    local_dir=str(root / "staging"), prefix="")
+            with patch.object(source, "capture_get", side_effect=fake_capture_get), \
+                    patch.object(source.httpx, "Client",
+                                 side_effect=lambda *args, **kwargs: EmptyClient()):
+                with self.assertRaisesRegex(OSError, "connection reset"):
+                    source.capture_land_mobile_broadcast_towers(storage, version="vfixture",
+                                                                capture_directory=str(root / "captures"))
+            tokens = sorted((root / "staging" / "_quarantine" / source.DATASET_SLUG).glob("*"))
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "OSError")
+            self.assertEqual(failure["captured_names"], [])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "lm_bcast",
+                               "reason": "retained_capture_receipt_unreadable:lm_bcast"}])
+            manifest = json.loads((root / "captures" / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "OSError")
+
     def test_missing_approval_preserves_populated_accepted_inventory(self):
         from dagster_hifld.assets.publish import _copy_version_files
         from dagster_hifld.release_approval import ReleaseApprovalError

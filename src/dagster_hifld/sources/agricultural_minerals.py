@@ -45,7 +45,7 @@ from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource
 from dagster_hifld.sources.capture_common import (
-    candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture,
+    candidate_prefix, capture_get, processing_identity, retain_failed_capture,
     seal_ready_candidate, verify_cached_candidate, write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
@@ -417,22 +417,10 @@ def _capture(root: Path, storage: StagingStorageResource) -> dict[str, tuple[byt
         }) + b"\n")
         return captures
     except Exception as exc:
-        retained = {}
-        for path in root.glob("*.receipt.json"):
-            name = path.name.removesuffix(".receipt.json")
-            try:
-                retained[name] = json.loads(path.read_bytes())
-            except Exception:
-                pass
-        try:
-            quarantine_incomplete_capture(storage, root, DATASET_SLUG, "acquisition",
-                {name: (body, receipt) for name, (body, _wire, receipt) in captures.items()},
-                type(exc).__name__)
-        except (OSError, ValueError):
-            pass
+        retain_failed_capture(storage, root, DATASET_SLUG, "acquisition", exc, error=ValueError)
         manifest_path.write_bytes(_canonical({
             "complete": False, "captured_at": datetime.now(timezone.utc).isoformat(),
-            "error_code": type(exc).__name__, "receipts": retained}) + b"\n")
+            "error_code": type(exc).__name__}) + b"\n")
         raise
 
 

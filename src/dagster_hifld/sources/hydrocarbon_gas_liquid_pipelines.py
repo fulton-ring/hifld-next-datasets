@@ -16,7 +16,7 @@ from dagster_hifld.http_capture import capture_roster_digests, validate_capture_
 from dagster_hifld.output_policy import validate_output_policy
 from dagster_hifld.release_approval import validate_release_provenance
 from dagster_hifld.resources import PublishedStorageResource, StagingStorageResource, default_capture_dir
-from dagster_hifld.sources.capture_common import candidate_prefix, capture_get, processing_identity, quarantine_incomplete_capture, seal_ready_candidate, verify_cached_candidate, write_immutable
+from dagster_hifld.sources.capture_common import candidate_prefix, capture_get, processing_identity, retain_failed_capture, seal_ready_candidate, verify_cached_candidate, write_immutable
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 
 DATASET_SLUG = FILE_SLUG = "hydrocarbon-gas-liquid-pipelines-1"
@@ -172,12 +172,8 @@ def _capture(root,storage,version):
         mp.write_bytes(_canonical({"complete":True,"captured_at":datetime.now(timezone.utc).isoformat(),"receipts":{"eia_hgl_zip":receipt},"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
         return body,(root/"eia_hgl_zip.wire").read_bytes(),receipt
     except Exception as exc:
-        rec={}
-        for p in root.glob("*.receipt.json"):
-            try: rec[p.name.removesuffix(".receipt.json")]=json.loads(p.read_bytes());caps.setdefault("eia_hgl_zip",((root/"eia_hgl_zip.body").read_bytes(),rec[p.name.removesuffix(".receipt.json")]))
-            except Exception: pass
-        mp.write_bytes(_canonical({"complete":False,"captured_at":datetime.now(timezone.utc).isoformat(),"error_code":type(exc).__name__,"receipts":rec})+b"\n")
-        if caps: quarantine_incomplete_capture(storage,root,DATASET_SLUG,version,caps,type(exc).__name__)
+        retain_failed_capture(storage,root,DATASET_SLUG,version,exc,error=ValueError)
+        mp.write_bytes(_canonical({"complete":False,"captured_at":datetime.now(timezone.utc).isoformat(),"error_code":type(exc).__name__})+b"\n")
         raise
 
 def capture_hgl_pipelines(storage:StagingStorageResource,*,version:str,capture_directory:str|None=None)->dict:

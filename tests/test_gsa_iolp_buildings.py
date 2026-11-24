@@ -487,7 +487,14 @@ class GsaIolpBuildingsCaptureReplayTest(unittest.TestCase):
             self.assertEqual(len(tokens), 1)
             failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
             self.assertEqual(failure["reason_code"], "GsaIolpBuildingsError")
-            self.assertEqual(failure["captured_names"], ["catalog_discovery"])
+            self.assertEqual(failure["captured_names"], ["buildings_xlsx", "catalog_discovery"])
+            self.assertEqual((tokens[0] / "raw" / "buildings_xlsx.body").read_bytes(),
+                             b"forbidden")
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "buildings_xlsx.redirect",
+                               "reason":
+                                   "retained_capture_file_missing:"
+                                   "buildings_xlsx.redirect:body"}])
             retained = (tokens[0] / "raw" / "catalog_discovery.body").read_bytes()
             self.assertEqual(json.loads(retained), _catalog_record())
             receipt = json.loads(
@@ -497,6 +504,45 @@ class GsaIolpBuildingsCaptureReplayTest(unittest.TestCase):
             with self.assertRaises(GsaIolpBuildingsError) as replay:
                 self._run_capture(root, storage, xlsx, refuse=True)
             self.assertEqual(str(replay.exception), "capture_manifest_incomplete")
+
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        import dagster_hifld.sources.gsa_iolp_buildings as src_mod
+
+        with tempfile.TemporaryDirectory() as temp:
+            root_dir = Path(temp)
+            xlsx = self._workbook_bytes(root_dir)
+            storage = self._staging(root_dir)
+            root = root_dir / "capture"
+            real_ckan = src_mod._capture_ckan_download
+
+            def corrupting_ckan(client, url, capture_root, name, **kwargs):
+                try:
+                    return real_ckan(client, url, capture_root, name, **kwargs)
+                except GsaIolpBuildingsError:
+                    (Path(capture_root) / f"{name}.receipt.json").write_bytes(b"{")
+                    raise
+
+            with patch.object(src_mod, "_capture_ckan_download",
+                              side_effect=corrupting_ckan):
+                with self.assertRaises(GsaIolpBuildingsError) as ctx:
+                    self._run_capture(root, storage, xlsx, file_status=404)
+            self.assertEqual(str(ctx.exception), "ckan_download_file_status_not_ok")
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "GsaIolpBuildingsError")
+            tokens = sorted((root_dir / "staging" / "_quarantine" / DATASET_SLUG).glob("*"))
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "GsaIolpBuildingsError")
+            self.assertEqual(failure["captured_names"], ["catalog_discovery"])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "buildings_xlsx",
+                               "reason":
+                                   "retained_capture_receipt_unreadable:buildings_xlsx"},
+                              {"name": "buildings_xlsx.redirect",
+                               "reason":
+                                   "retained_capture_file_missing:"
+                                   "buildings_xlsx.redirect:body"}])
 
     def _capture_root_evidence(self, root: Path) -> tuple[bytes, bytes, dict]:
         body = (root / "buildings_xlsx.body").read_bytes()
@@ -535,7 +581,8 @@ class GsaIolpBuildingsCaptureReplayTest(unittest.TestCase):
         self.assertEqual(len(tokens), 1)
         failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
         self.assertEqual(failure["reason_code"], reason)
-        self.assertEqual(failure["captured_names"], ["catalog_discovery"])
+        self.assertEqual(failure["captured_names"], ["buildings_xlsx", "catalog_discovery"])
+        self.assertTrue((tokens[0] / "raw" / "buildings_xlsx.body").is_file())
         retained = (tokens[0] / "raw" / "catalog_discovery.body").read_bytes()
         self.assertEqual(json.loads(retained), _catalog_record())
 

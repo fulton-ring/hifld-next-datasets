@@ -429,6 +429,45 @@ class AgriculturalMineralsStageTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "pinned_live_capture_drift"):
                         self.stage(storage)
 
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        package = package_bytes()
+        with _PatchedContext(package=package):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "capture"
+                storage = StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+
+                def fake_capture_get(client, url, r, name, max_bytes):
+                    body = {"mineplant_zip": package, "mineplant_fgdc": FIXTURE_MINEPLANT_FGDC,
+                            "atlas_legacy_fgdc": FIXTURE_ATLAS_FGDC}[name]
+                    wire = f"wire:{name}".encode()
+                    (r / f"{name}.body").write_bytes(body)
+                    (r / f"{name}.wire").write_bytes(wire)
+                    receipt = _receipt(body, wire, m._EXPECTED_URLS[name])
+                    if name == "mineplant_fgdc":
+                        (r / f"{name}.receipt.json").write_bytes(b"{")
+                    else:
+                        (r / f"{name}.receipt.json").write_bytes(_canonical(receipt) + b"\n")
+                    return body, receipt
+
+                with patch.object(m, "capture_get", side_effect=fake_capture_get), \
+                        patch.object(m, "_decode",
+                                     side_effect=ValueError("source_decode_failed")):
+                    with self.assertRaisesRegex(ValueError, "source_decode_failed"):
+                        self.stage(storage, capture_directory=str(root))
+                tokens = sorted((Path(tmp) / "stage" / "_quarantine" / m.DATASET_SLUG).glob("*"))
+                self.assertEqual(len(tokens), 1)
+                failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+                self.assertEqual(failure["reason_code"], "ValueError")
+                self.assertEqual(failure["captured_names"],
+                                 ["atlas_legacy_fgdc", "mineplant_zip"])
+                self.assertEqual(failure["not_retained"],
+                                 [{"name": "mineplant_fgdc",
+                                   "reason":
+                                       "retained_capture_receipt_unreadable:mineplant_fgdc"}])
+                manifest = json.loads((root / "capture_manifest.json").read_bytes())
+                self.assertFalse(manifest["complete"])
+                self.assertEqual(manifest["error_code"], "ValueError")
+
     def test_live_capture_seals_and_stages(self):
         package = package_bytes()
         with _PatchedContext(package=package):

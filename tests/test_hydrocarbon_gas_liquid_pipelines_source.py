@@ -1,4 +1,6 @@
 """Pinned EIA HGL pipelines source contract, drift refusals, and wiring tests."""
+import hashlib
+import json
 import os
 import unittest
 from unittest.mock import patch
@@ -7,6 +9,8 @@ from dagster import DefaultScheduleStatus
 from shapely.geometry import LineString, MultiLineString
 
 from dagster_hifld.assets.hydrocarbon_gas_liquid_pipelines import eia_hgl_pipelines_draft_schedule
+from dagster_hifld.resources import StagingStorageResource
+from dagster_hifld.sources import hydrocarbon_gas_liquid_pipelines as src
 from dagster_hifld.sources.hydrocarbon_gas_liquid_pipelines import (
     BOUNDS, DATASET_SLUG, EXPECTED_COUNT, EXPECTED_FIELDS, EXPECTED_LAYER,
     EXPECTED_LINESTRING_COUNT, EXPECTED_MULTILINESTRING_COUNT, EXPECTED_VERTEX_COUNT,
@@ -61,6 +65,54 @@ class EiaHglPipelinesSourceContractTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 from dagster_hifld.sources.hydrocarbon_gas_liquid_pipelines import _decode
                 _decode((root / "tampered.zip").read_bytes(), root)
+
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        import tempfile
+        from pathlib import Path
+
+        def fake_capture_get(_client, url, capture_root, name, *, max_bytes):
+            body = b"PK\x03\x04fixture-archive"
+            wire = b"wire-bytes"
+            (capture_root / f"{name}.body").write_bytes(body)
+            (capture_root / f"{name}.wire").write_bytes(wire)
+            (capture_root / f"{name}.receipt.json").write_bytes(b"{")
+            return body, {"method": "GET", "url": url, "final_url": url, "status": 200,
+                          "complete_body": True, "bytes": len(body),
+                          "wire_bytes": len(wire),
+                          "sha256": hashlib.sha256(body).hexdigest(),
+                          "wire_sha256": hashlib.sha256(wire).hexdigest()}
+
+        class EmptyClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "capture"
+            storage = StagingStorageResource(use_local=True,
+                                             local_dir=str(Path(tmp) / "staging"), prefix="")
+            with patch.object(src, "capture_get", side_effect=fake_capture_get), \
+                    patch.object(src.httpx, "Client",
+                                 side_effect=lambda *args, **kwargs: EmptyClient()), \
+                    patch.object(src, "_decode",
+                                 side_effect=ValueError("source_decode_failed")):
+                with self.assertRaisesRegex(ValueError, "source_decode_failed"):
+                    src._capture(root, storage, "vtest")
+            tokens = sorted((Path(tmp) / "staging" / "_quarantine"
+                             / src.DATASET_SLUG).glob("*"))
+            self.assertEqual(len(tokens), 1)
+            failure = json.loads((tokens[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"], [])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "eia_hgl_zip",
+                               "reason":
+                                   "retained_capture_receipt_unreadable:eia_hgl_zip"}])
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "ValueError")
 
     def test_dbf_schema_reader_rejects_truncated_header(self):
         import tempfile
