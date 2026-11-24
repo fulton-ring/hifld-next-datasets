@@ -101,6 +101,8 @@ from dagster_hifld.sources.capture_common import (
     write_candidate_outputs,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.geoparquet_candidate import CANDIDATE_BATCH_SIZE, stream_geoparquet_candidate
+from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "usace-civil-works-divisions"
 FILE_SLUG = DATASET_SLUG
@@ -562,8 +564,27 @@ def _rings_wkb(rings: list[list[list[float]]]) -> bytes:
     return geometry.wkb
 
 
-def _geoparquet(features: list[dict[str, object]], fields: list[dict[str, object]],
-                root: Path) -> bytes:
+def _merge_geo_bbox(path: Path, bounds: list[float]) -> None:
+    """Merge the division extent into the written file's geo column metadata.
+
+    The shared writer owns the GeoParquet contract but cannot express
+    per-column extras; this candidate keeps its source bbox there."""
+    file = pq.ParquetFile(path)
+    schema = file.schema_arrow
+    metadata = dict(schema.metadata or {})
+    geo = json.loads(metadata[b"geo"])
+    geo["columns"]["geometry"]["bbox"] = bounds
+    merged = {**metadata, b"geo": _canonical(geo)}
+    target = path.with_name(path.name + ".bbox-merged")
+    with pq.ParquetWriter(target, schema.with_metadata(merged),
+                          compression="zstd", use_dictionary=False) as writer:
+        for batch in file.iter_batches():
+            writer.write_batch(batch)
+    target.replace(path)
+
+
+def _geoparquet_candidate(features: list[dict[str, object]], fields: list[dict[str, object]],
+                          root: Path) -> tuple[Path, str, int]:
     if [field["name"] for field in fields] != FIELD_NAMES:
         raise ValueError("source_field_order_drift")
     kinds: dict[str, str] = {}
@@ -584,49 +605,47 @@ def _geoparquet(features: list[dict[str, object]], fields: list[dict[str, object
         pa.field("geometry", pa.binary(), nullable=True),
     ])
     rings_parts = [_geometry_rings(f.get("geometry")) for f in features]
-    columns = {
-        "OBJECTID": pa.array([f["attributes"]["OBJECTID"] for f in features], type=pa.int64()),
-    }
-    for name in FIELD_NAMES:
-        if name == "OBJECTID":
-            continue
-        kind = kinds[name]
-        if kind in ("string", "blob"):
-            columns[name] = pa.array([f["attributes"][name] for f in features],
-                                     type=pa.string())
-        elif kind == "integer":
-            columns[name] = pa.array([None if f["attributes"][name] is None
-                                      else int(f["attributes"][name]) for f in features],
-                                     type=pa.int64())
-        else:
-            columns[name] = pa.array([None if f["attributes"][name] is None
-                                      else float(f["attributes"][name]) for f in features],
-                                     type=pa.float64())
-    columns["geometry"] = pa.array([None if rings is None else _rings_wkb(rings)
-                                    for rings in rings_parts], type=pa.binary())
+    wkb_rows = [None if rings is None else _rings_wkb(rings) for rings in rings_parts]
     built = [_ring_geometry(rings)[0] if rings is not None else None for rings in rings_parts]
     present = [geometry for geometry in built if geometry is not None]
+    if not present:
+        raise ValueError("source_no_polygon_geometry")
     bounds = [min(geometry.bounds[i] for geometry in present) for i in (0, 1)] \
         + [max(geometry.bounds[i] for geometry in present) for i in (2, 3)]
-    column_metadata = {"encoding": "WKB",
-                       "geometry_types": sorted(set(g.geom_type for g in present)),
-                       "crs": pyproj.CRS.from_epsg(4140).to_json_dict(),
-                       "edges": "planar"}
-    if present:
-        column_metadata["bbox"] = bounds
-    geo = {"version": "1.1.0", "primary_column": "geometry",
-           "columns": {"geometry": column_metadata}}
-    sink = pa.BufferOutputStream()
-    pq.write_table(pa.Table.from_pydict(
-        columns, schema=schema.with_metadata({b"geo": _canonical(geo)})), sink,
-        compression="zstd")
-    body = sink.getvalue().to_pybytes()
+    geometry_types = sorted({geometry.geom_type for geometry in present})
+
+    def batches():
+        for start in range(0, len(features), CANDIDATE_BATCH_SIZE):
+            chunk = features[start:start + CANDIDATE_BATCH_SIZE]
+            arrays = [pa.array([f["attributes"]["OBJECTID"] for f in chunk], type=pa.int64())]
+            for name in FIELD_NAMES:
+                if name == "OBJECTID":
+                    continue
+                kind = kinds[name]
+                if kind in ("string", "blob"):
+                    arrays.append(pa.array([f["attributes"][name] for f in chunk],
+                                           type=pa.string()))
+                elif kind == "integer":
+                    arrays.append(pa.array([None if f["attributes"][name] is None
+                                            else int(f["attributes"][name]) for f in chunk],
+                                           type=pa.int64()))
+                else:
+                    arrays.append(pa.array([None if f["attributes"][name] is None
+                                            else float(f["attributes"][name]) for f in chunk],
+                                           type=pa.float64()))
+            arrays.append(pa.array(wkb_rows[start:start + CANDIDATE_BATCH_SIZE], type=pa.binary()))
+            yield pa.record_batch(arrays, schema=schema)
+
+    path, _digest, rows = stream_geoparquet_candidate(
+        schema, 4140, batches(), root / "candidate.parquet",
+        geometry_column="geometry", geometry_types=geometry_types)
+    _merge_geo_bbox(path, bounds)
     (root / "candidate-verification.json").write_bytes(_canonical({
         "rows": len(features),
         "objectid_first": features[0]["attributes"]["OBJECTID"],
         "objectid_last": features[-1]["attributes"]["OBJECTID"],
         "readback_columns": schema.names}) + b"\n")
-    return body
+    return path, sha256_file(path), rows
 
 
 def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
@@ -694,9 +713,9 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
                 "source_authority_accepted": False, "mapping_approved": False,
                 "release_accepted": False}
 
-    parquet_body = _geoparquet(features, fields, capture_root)
+    parquet_path, parquet_sha, _parquet_rows = _geoparquet_candidate(features, fields, capture_root)
     parquet_name = f"geoparquet/{DATASET_SLUG}.parquet"
-    source_objects = {parquet_name: {"bytes": len(parquet_body), "sha256": _sha(parquet_body)}}
+    source_objects = {parquet_name: {"bytes": parquet_path.stat().st_size, "sha256": parquet_sha}}
     item_metadata = json.loads(captures["item_before"][0])
     inputs = [{"input_id": n, "producer": PUBLISHER, "canonical_url": SERVICE_URL,
                "host": urlsplit(receipt["url"]).hostname,
@@ -812,7 +831,7 @@ def capture_usace_civil_works_divisions(storage: StagingStorageResource, *,
                   "freshness_accepted": False, "rights_accepted": False,
                   "source_authority_accepted": False, "schema_contract_accepted": False,
                   "release_accepted": False})
-    outputs = {parquet_name: parquet_body,
+    outputs = {parquet_name: parquet_path,
                "metadata/source_inputs.json": _canonical({"sha256": fingerprint}) + b"\n",
                "metadata/source_manifest.json": _canonical(manifest) + b"\n",
                "metadata/source_audit.json": _canonical(audit) + b"\n",

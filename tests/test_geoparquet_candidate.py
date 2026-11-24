@@ -1,4 +1,5 @@
 """Shared streaming GeoParquet candidate writer: CRS, metadata, row counts."""
+import ast
 import json
 import tempfile
 import unittest
@@ -168,6 +169,45 @@ class StreamingWriterTests(unittest.TestCase):
             batches = iter([pa.record_batch([pa.array([1.0], type=pa.float64())], names=["a"])])
             with self.assertRaisesRegex(ValueError, "candidate_batch_schema_mismatch"):
                 stream_geoparquet_candidate(schema, None, batches, Path(directory) / "c.parquet")
+
+
+MIGRATED_NATIVE_MODULES = (
+    "usace_civil_works_divisions",
+    "usace_cw_districts",
+    "usace_distance_marks",
+    "usace_notice_marks",
+    "usace_offices",
+    "usace_pylon_locations",
+    "usace_recommended_tracks",
+    "usace_river_mile_markers",
+)
+
+
+class _GeoDictLiteralFinder:
+    """Find dict literals carrying the GeoParquet ``geo`` contract keys."""
+
+    def __init__(self, tree: ast.AST):
+        self.lines = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Dict):
+                keys = {key.value for key in node.keys
+                        if isinstance(key, ast.Constant) and isinstance(key.value, str)}
+                if {"version", "primary_column"} <= keys:
+                    self.lines.append(node.lineno)
+
+
+class MigratedNativeModuleContractTests(unittest.TestCase):
+    """The migrated native USACE adapters source their GeoParquet ``geo``
+    metadata from the shared writer; no hand-built geo dict literals remain."""
+
+    def test_migrated_native_modules_use_the_shared_writer(self):
+        sources = Path(__file__).parents[1] / "src" / "dagster_hifld" / "sources"
+        for name in MIGRATED_NATIVE_MODULES:
+            with self.subTest(module=name):
+                text = (sources / f"{name}.py").read_text()
+                tree = ast.parse(text)
+                self.assertEqual(_GeoDictLiteralFinder(tree).lines, [])
+                self.assertIn("stream_geoparquet_candidate(", text)
 
 
 if __name__ == "__main__":

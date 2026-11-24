@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 import pyarrow.parquet as pq
@@ -88,7 +91,14 @@ class PylonLocationCaptureTests(unittest.TestCase):
         self.assertEqual(table.column("OBJECTID").to_pylist(), list(range(1, 4080)))
         self.assertEqual(table.column("native_x")[0].as_py(), -79.5 + 0.00001)
         self.assertEqual(table.column("native_y")[0].as_py(), 40.0)
-        self.assertEqual(json.loads(table.schema.metadata[b"geo"])["columns"]["geometry"]["geometry_types"], ["Point"])
+        geo = json.loads(table.schema.metadata[b"geo"])
+        self.assertEqual(geo["primary_column"], "geometry")
+        self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
+        self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4326)
+        self.assertEqual(geo["columns"]["geometry"]["crs"]["name"], "WGS 84")
+        from shapely import from_wkb
+        first = from_wkb(table.column("geometry").to_pylist()[0])
+        self.assertEqual((round(first.x, 9), round(first.y, 9)), (round(-79.5 + 0.00001, 9), 40.0))
 
     def test_before_after_id_drift_refuses_a_candidate(self):
         transport = ArcGISFixture(changed_after=True)
@@ -140,6 +150,41 @@ class PylonLocationCaptureTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source_dimension_drift"):
                 source.capture(storage, "v20261021T000000Z", client=client)
         self.assertFalse(storage.object_exists(storage.build_target_location(source.DATASET_SLUG, source.FILE_SLUG, "v20261021T000000Z", f"metadata/native_candidate/{source.FILE_SLUG}.parquet")))
+
+    def test_ingest_asset_materializes_the_native_candidate_through_dagster(self):
+        """Dagster path: the ingest asset runs the real point capture and the
+        shared writer emits the staged candidate with the EPSG:4326 contract."""
+        from dagster import DagsterInstance, materialize
+        from dagster_hifld.assets.usace_pylon_locations import usace_pylon_locations_usace_ienc
+        real_client = httpx.Client
+        def fixture_client(*args, **kwargs):
+            return real_client(transport=ArcGISFixture(), **kwargs)
+        with tempfile.TemporaryDirectory(prefix="pylon-dagster-path-") as directory:
+            dagster_home = Path(directory) / "dagster-home"
+            dagster_home.mkdir()
+            storage = StagingStorageResource(use_local=True, local_dir=directory)
+            with patch("dagster_hifld.sources.usace_pylon_locations.httpx.Client",
+                       side_effect=fixture_client), \
+                    DagsterInstance.from_config(str(dagster_home)) as instance:
+                result = materialize([usace_pylon_locations_usace_ienc],
+                                     resources={"staging_storage": storage},
+                                     instance=instance)
+                self.assertTrue(result.success)
+                self.assertEqual(len(result.get_asset_materialization_events()), 1)
+            versions = {key.split("/")[2] for key in storage.list_prefix(
+                f"{source.DATASET_SLUG}/{source.FILE_SLUG}") if key.count("/") >= 2}
+            self.assertEqual(len(versions), 1)
+            version = versions.pop()
+            table = pq.read_table(io.BytesIO(storage.read_key(
+                f"{source.DATASET_SLUG}/{source.FILE_SLUG}/{version}/metadata/native_candidate/{source.FILE_SLUG}.parquet")))
+            self.assertEqual(table.num_rows, COUNT)
+            geo = json.loads(table.schema.metadata[b"geo"])
+            self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4326)
+            self.assertEqual(geo["columns"]["geometry"]["crs"]["name"], "WGS 84")
+            self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
+            from shapely import from_wkb
+            first = from_wkb(table.column("geometry").to_pylist()[0])
+            self.assertEqual((round(first.x, 9), round(first.y, 9)), (round(-79.5 + 0.00001, 9), 40.0))
 
     def test_normal_repository_registers_pylon_refresh_and_preserves_existing_refreshes(self):
         from dagster import AssetKey, DefaultScheduleStatus

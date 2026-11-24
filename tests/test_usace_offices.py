@@ -204,6 +204,18 @@ class USACEOfficesEditingWitnessTests(unittest.TestCase):
             for entry in manifest["inputs"]:
                 self.assertIsNone(entry["release_date"])
                 self.assertIn("editing_witness", entry["release_date_unknown_reason"])
+            import io
+            import pyarrow.parquet as pq
+            from shapely import from_wkb
+            table = pq.read_table(io.BytesIO(storage.read_key(
+                f"{SLUG}/{SLUG}/v20261114a/geoparquet/{SLUG}.parquet")))
+            geo = json.loads(table.schema.metadata[b"geo"])
+            self.assertEqual(geo["primary_column"], "geometry")
+            self.assertEqual(geo["columns"]["geometry"]["geometry_types"], ["Point"])
+            self.assertEqual(geo["columns"]["geometry"]["crs"]["id"]["code"], 4326)
+            self.assertEqual(geo["columns"]["geometry"]["crs"]["name"], "WGS 84")
+            point = from_wkb(table.column("geometry").to_pylist()[0])
+            self.assertEqual((point.x, point.y), (-77.0, 39.0))
 
     def test_stage_rejects_witness_change_between_before_and_after_probes(self):
         with tempfile.TemporaryDirectory() as tmp:

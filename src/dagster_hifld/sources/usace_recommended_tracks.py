@@ -11,6 +11,7 @@ from collections.abc import Mapping
 import json
 import math
 import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -18,7 +19,6 @@ from uuid import uuid4
 
 import httpx
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pyproj
 from shapely.geometry import LineString, MultiLineString
 from shapely import to_wkb
@@ -42,6 +42,7 @@ from dagster_hifld.sources.capture_common import (
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
 from dagster_hifld.sources.arcgis_capture_sequence import capture_request_steps, ExactIdCapturePlan
+from dagster_hifld.sources.geoparquet_candidate import CANDIDATE_BATCH_SIZE, stream_geoparquet_candidate
 
 DATASET_SLUG = "recommended-tracks-usace-ienc"
 FILE_SLUG = DATASET_SLUG
@@ -216,37 +217,31 @@ def _source_geometries(features: list[dict]) -> list[object]:
     return geometries
 
 
-def _make_parquet(features: list[dict]) -> bytes:
-    arrays: dict[str, pa.Array] = {}
-    for name, kind in ATTRIBUTE_FIELDS:
-        values = [feature["attributes"][name] for feature in features]
-        if kind == "esriFieldTypeOID":
-            if any(type(value) is not int for value in values):
-                raise ValueError("source_object_id_type_drift")
-            arrow_type = pa.int64()
-        elif kind == "esriFieldTypeInteger":
-            arrow_type = pa.int32()
-        elif kind in _STRING_TYPES:
-            arrow_type = pa.string()
-        else:
-            raise ValueError("unsupported_source_field_type:" + kind)
-        arrays[name] = pa.array(values, type=arrow_type)
+def _make_parquet(features: list[dict], capture_dir: Path) -> tuple[Path, str, int]:
+    arrow_types = {name: (pa.int64() if kind == "esriFieldTypeOID"
+                          else pa.int32() if kind == "esriFieldTypeInteger"
+                          else pa.string()) for name, kind in ATTRIBUTE_FIELDS}
+    schema = pa.schema([pa.field(name, arrow_types[name]) for name, _ in ATTRIBUTE_FIELDS]
+                       + [pa.field("geometry", pa.binary())])
     geometries = _source_geometries(features)
-    arrays["geometry"] = pa.array([to_wkb(geometry, byte_order=1, output_dimension=2)
-                                    for geometry in geometries], type=pa.binary())
-    table = pa.table(arrays)
-    metadata = dict(table.schema.metadata or {})
-    metadata[b"geo"] = _json({
-        "version": "1.1.0", "primary_column": "geometry",
-        "columns": {"geometry": {
-            "encoding": "WKB", "geometry_types": ["LineString", "MultiLineString"],
-            "crs": pyproj.CRS.from_epsg(4326).to_json_dict(),
-        }},
-    }).strip()
-    table = table.replace_schema_metadata(metadata)
-    sink = pa.BufferOutputStream()
-    pq.write_table(table, sink, compression="zstd", version="2.6")
-    return sink.getvalue().to_pybytes()
+    wkb_rows = [to_wkb(geometry, byte_order=1, output_dimension=2) for geometry in geometries]
+
+    def batches():
+        for start in range(0, len(features), CANDIDATE_BATCH_SIZE):
+            chunk = features[start:start + CANDIDATE_BATCH_SIZE]
+            arrays = []
+            for name, kind in ATTRIBUTE_FIELDS:
+                values = [feature["attributes"][name] for feature in chunk]
+                if kind == "esriFieldTypeOID":
+                    if any(type(value) is not int for value in values):
+                        raise ValueError("source_object_id_type_drift")
+                arrays.append(pa.array(values, type=arrow_types[name]))
+            arrays.append(pa.array(wkb_rows[start:start + CANDIDATE_BATCH_SIZE], type=pa.binary()))
+            yield pa.record_batch(arrays, schema=schema)
+
+    return stream_geoparquet_candidate(
+        schema, 4326, batches(), Path(capture_dir) / "candidate.parquet",
+        geometry_column="geometry", geometry_types=["LineString", "MultiLineString"])
 
 
 def _make_geojson(features: list[dict]) -> bytes:
@@ -419,7 +414,9 @@ def capture(storage: StagingStorageResource, *, capture_directory: str | None = 
     version = "v1.0.0-" + content_derived_version(
         version_record_sha, source_geometry_sha, source_schema_sha, identity)[1:]
     prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    parquet = _make_parquet(features)
+    with tempfile.TemporaryDirectory(prefix="hifld-recommended-tracks-candidate-") as candidate_dir:
+        _candidate, _parquet_sha, _candidate_rows = _make_parquet(features, Path(candidate_dir))
+        parquet = _candidate.read_bytes()
     geojson = _make_geojson(features)
     observed_at = max(str(receipt["observed_at"]) for _body, receipt in captures.values())
     inputs = []

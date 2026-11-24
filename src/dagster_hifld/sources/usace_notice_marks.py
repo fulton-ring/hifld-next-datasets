@@ -6,6 +6,7 @@ import hashlib
 import math
 import shutil
 import struct
+import tempfile
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,8 +15,6 @@ from uuid import uuid4
 from typing import Mapping
 
 import pyarrow as pa
-import pyarrow.parquet as pq
-import pyproj
 import httpx
 
 from dagster_hifld.http_capture import validated_capture_view
@@ -24,6 +23,7 @@ from dagster_hifld.sources.arcgis_capture import capture_layer, RetainedCaptureV
 from dagster_hifld.sources.esri_common import (
     arrow_type as _arrow_type, canonical as _canonical, sha as _sha,
 )
+from dagster_hifld.sources.geoparquet_candidate import CANDIDATE_BATCH_SIZE, stream_geoparquet_candidate
 from dagster_hifld.sources.arcgis_layer import (
     capture_witness,
     fetch_capture_retry, load_replay as _load_replay, write_outputs as _write_outputs,
@@ -154,36 +154,42 @@ def validate_notice_snapshot(captures: Mapping[str, tuple[bytes, dict]]) -> tupl
     return fields, features, audit
 
 
-def notice_geoparquet(fields: list[dict], features: list[dict]) -> bytes:
+def notice_geoparquet(fields: list[dict], features: list[dict], capture_root: Path) -> tuple[Path, str, int]:
     """Encode source attributes with declared types and point ordinates unchanged."""
     attr_fields = [f for f in fields if f["name"] != "SHAPE"]
-    arrays = [pa.array([r["attributes"][f["name"]] for r in features], type=_arrow_type(f)) for f in attr_fields]
-    geometry = []
+    schema = pa.schema([pa.field(f["name"], _arrow_type(f), nullable=f.get("nullable", True)) for f in attr_fields]
+                       + [pa.field("geometry", pa.binary(), nullable=False)])
     dimensions = set()
     for row in features:
         point = row["geometry"]
         if set(point) - {"x", "y", "z", "m", "spatialReference"} or not {"x", "y"} <= set(point):
             raise ValueError("source_point_ordinate_roster_invalid")
-        has_z, has_m = "z" in point, "m" in point
-        dimensions.add((has_z, has_m))
+        dimensions.add(("z" in point, "m" in point))
         if len(dimensions) > 1:
             raise ValueError("source_point_ordinate_roster_drift")
-        ordinates = [point["x"], point["y"]]
-        if has_z: ordinates.append(point["z"])
-        if has_m: ordinates.append(point["m"])
-        if any(type(value) not in (int, float) or not math.isfinite(value) for value in ordinates):
-            raise ValueError("source_point_ordinate_invalid")
-        type_code = 1 + (1000 if has_z and not has_m else 2000 if has_m and not has_z else 3000 if has_z and has_m else 0)
-        geometry.append(struct.pack("<BI" + "d" * len(ordinates), 1, type_code, *ordinates))
-    arrays.append(pa.array(geometry, type=pa.binary()))
-    schema = pa.schema([pa.field(f["name"], _arrow_type(f), nullable=f.get("nullable", True)) for f in attr_fields]
-                       + [pa.field("geometry", pa.binary(), nullable=False)])
-    metadata = {"version":"1.1.0", "primary_column":"geometry", "columns":{"geometry":{
-        "encoding":"WKB", "geometry_types":["Point" + (" Z" if dimensions and next(iter(dimensions))[0] else "") + (" M" if dimensions and next(iter(dimensions))[1] else "")], "crs":pyproj.CRS.from_epsg(4326).to_json_dict(), "edges":"planar"}}}
-    table = pa.Table.from_arrays(arrays, schema=schema.with_metadata({b"geo":_canonical(metadata)}))
-    sink = pa.BufferOutputStream()
-    pq.write_table(table, sink, compression="zstd", use_dictionary=False)
-    return sink.getvalue().to_pybytes()
+    has_z, has_m = next(iter(dimensions)) if dimensions else (False, False)
+    type_code = 1 + (1000 if has_z and not has_m else 2000 if has_m and not has_z else 3000 if has_z and has_m else 0)
+
+    def batches():
+        for start in range(0, len(features), CANDIDATE_BATCH_SIZE):
+            chunk = features[start:start + CANDIDATE_BATCH_SIZE]
+            arrays = [pa.array([r["attributes"][f["name"]] for r in chunk], type=_arrow_type(f)) for f in attr_fields]
+            geometry = []
+            for row in chunk:
+                point = row["geometry"]
+                ordinates = [point["x"], point["y"]]
+                if has_z: ordinates.append(point["z"])
+                if has_m: ordinates.append(point["m"])
+                if any(type(value) not in (int, float) or not math.isfinite(value) for value in ordinates):
+                    raise ValueError("source_point_ordinate_invalid")
+                geometry.append(struct.pack("<BI" + "d" * len(ordinates), 1, type_code, *ordinates))
+            arrays.append(pa.array(geometry, type=pa.binary()))
+            yield pa.record_batch(arrays, schema=schema)
+
+    return stream_geoparquet_candidate(
+        schema, 4326, batches(), Path(capture_root) / "candidate.parquet",
+        geometry_column="geometry",
+        geometry_types=["Point" + (" Z" if has_z else "") + (" M" if has_m else "")])
 
 
 def _query(params: dict) -> str:
@@ -293,85 +299,92 @@ def capture_usace_notice_marks(storage: StagingStorageResource, *, version: str,
                 raise
     try:
         fields, features, audit = validate_notice_snapshot(captures)
-        parquet = notice_geoparquet(fields, features)
     except Exception as exc:
         if not replay:
             _record_incomplete(root,storage,version,captures,exc)
         raise
-    source_evidence = {
-        name: {
-            "body_sha256": _sha(body),
-            "wire_sha256": _sha((root / f"{name}.wire").read_bytes()),
+    with tempfile.TemporaryDirectory(prefix="hifld-notice-marks-candidate-") as candidate_dir:
+        try:
+            parquet, parquet_sha, _parquet_rows = notice_geoparquet(fields, features, Path(candidate_dir))
+        except Exception as exc:
+            if not replay:
+                _record_incomplete(root,storage,version,captures,exc)
+            raise
+        source_evidence = {
+            name: {
+                "body_sha256": _sha(body),
+                "wire_sha256": _sha((root / f"{name}.wire").read_bytes()),
+            }
+            for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures))
         }
-        for name, (body, _receipt) in ((name, captures[name]) for name in sorted(captures))
-    }
-    source_hash = _sha(_canonical(source_evidence))
-    identity = processing_identity(Path(__file__).parents[3])
-    candidate_identity = {"processing_identity": identity, "source_evidence_sha256": source_hash}
-    version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
-                                     audit["source_schema_sha256"], candidate_identity)
-    prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
-    audit.update({"source_capture_sha256":source_hash, "source_release_accepted":False,
-                  "source_freshness_accepted":False, "schema_contract_accepted":False,
-                  "id_contract_accepted":False, "coverage_accepted":False,
-                  "rights_accepted":False, "mapping_approved":False, "release_accepted":False})
-    manifest = {"schema_version":1, "approved":False, "title":"Notice Marks (USACE IENC)",
-        "description":"Complete native USACE IENC NOTICE_MARK_POINT layer candidate. Source release date, baseline compatibility, downstream ID/schema contracts, broader coverage and rights require independent acceptance.",
-        "publisher":PUBLISHER, "agency":"US Army Corps of Engineers", "source_url":LAYER_URL,
-        "license":None, "source_modified":None, "date_issued":None, "date_modified":None,
-        "processor":"HIFLD Next", "code_commit":identity["code_commit"],
-        "inputs":[{"input_id":n,"producer":PUBLISHER,"host":"ienccloud.us","role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"Official layer metadata does not establish the source release date."} for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))],
-        "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"attributes":"all declared attributes and physical types retained","ids":"OBJECTID and Feature_ID unchanged","geometry":"Point ordinates retained in source EPSG:4326; no repair or reprojection","candidate_status":"unapproved"}}],
-        "lineage":"BTS-linked official USACE IENC Feature Classes MapServer; this layer is limited to IENC chart coverage.",
-        "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Source attributes and Point ordinates retained as an unapproved native candidate.","objects":[{"path":"geoparquet/notice-marks-usace-ienc.parquet","bytes":len(parquet),"sha256":_sha(parquet)}]}}},
-        "unsupported_output_formats":{"geopackage":"Independent source, compatibility and rights review pending.","pmtiles":"No display transformation approved."}}
-    validate_release_provenance(manifest)
-    validate_output_policy(manifest)
-    ready = {"approved":False,"version":version,"feature_count":len(features),"source_reported_count":len(features),"source_population_complete":True,
-             "source_record_sha256":audit["source_record_sha256"],"source_id_sha256":audit["source_id_sha256"],
-             "source_schema_sha256":audit["source_schema_sha256"],"source_release_accepted":False,
-             "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
-             "coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    outputs = {"geoparquet/notice-marks-usace-ienc.parquet":parquet,
-               "metadata/source_manifest.json":_canonical(manifest)+b"\n",
-               "metadata/source_audit.json":_canonical(audit)+b"\n",
-               "metadata/candidate_ready.json":_canonical(ready)+b"\n",
-               "metadata/processing_identity.json":_canonical(identity)+b"\n"}
-    for name, (body, receipt) in captures.items():
-        outputs[f"raw/{name}.body"] = body
-        outputs[f"raw/{name}.wire"] = (root/f"{name}.wire").read_bytes()
-        outputs[f"raw/{name}.receipt.json"] = _canonical(receipt)+b"\n"
-    descriptors = {name:{"bytes":len(body),"sha256":_sha(body)} for name,body in outputs.items()}
-    fingerprint = _sha(_canonical(candidate_identity))
-    state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
-    receipts = {name:receipt for name,(_body,receipt) in captures.items()}
-    if storage.object_snapshot(state_key) is not None:
-        bundle = json.loads(load_first_construction(storage,state_key,version,fingerprint))
-        payload = bundle.get("payload")
-        if not isinstance(payload,dict) or not isinstance(payload.get("objects"),dict) or not isinstance(payload.get("capture_receipts"),dict):
-            raise ValueError("cached_candidate_original_receipts_missing")
-        original_receipts = payload["capture_receipts"]
-        if set(original_receipts) != set(captures):
-            raise ValueError("cached_candidate_capture_roster_changed")
-        for name,(fresh_body,_receipt) in captures.items():
-            if storage.read_key(f"{prefix}/raw/{name}.body") != fresh_body or storage.read_key(f"{prefix}/raw/{name}.wire") != (root/f"{name}.wire").read_bytes():
-                raise ValueError("cached_source_bytes_changed:"+name)
-        verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,
-            identity,audit["source_record_sha256"],audit["source_schema_sha256"],payload["objects"],original_receipts)
+        source_hash = _sha(_canonical(source_evidence))
+        identity = processing_identity(Path(__file__).parents[3])
+        candidate_identity = {"processing_identity": identity, "source_evidence_sha256": source_hash}
+        version = content_derived_version(audit["source_record_sha256"], audit["source_geometry_sha256"],
+                                         audit["source_schema_sha256"], candidate_identity)
+        prefix = candidate_prefix(DATASET_SLUG, FILE_SLUG, version)
+        audit.update({"source_capture_sha256":source_hash, "source_release_accepted":False,
+                      "source_freshness_accepted":False, "schema_contract_accepted":False,
+                      "id_contract_accepted":False, "coverage_accepted":False,
+                      "rights_accepted":False, "mapping_approved":False, "release_accepted":False})
+        manifest = {"schema_version":1, "approved":False, "title":"Notice Marks (USACE IENC)",
+            "description":"Complete native USACE IENC NOTICE_MARK_POINT layer candidate. Source release date, baseline compatibility, downstream ID/schema contracts, broader coverage and rights require independent acceptance.",
+            "publisher":PUBLISHER, "agency":"US Army Corps of Engineers", "source_url":LAYER_URL,
+            "license":None, "source_modified":None, "date_issued":None, "date_modified":None,
+            "processor":"HIFLD Next", "code_commit":identity["code_commit"],
+            "inputs":[{"input_id":n,"producer":PUBLISHER,"host":"ienccloud.us","role":"producer_publication","canonical_url":LAYER_URL,"retrieval_url":r["url"],"observed_final_url":r["final_url"],"retrieved_at":r["observed_at"],"http_status":r["status"],"bytes":r["bytes"],"sha256":r["sha256"],"license":"Unresolved; rights review pending.","attribution":"USACE IENC; rights review pending.","release_date":None,"release_date_unknown_reason":"Official layer metadata does not establish the source release date."} for n,(_b,r) in ((name, captures[name]) for name in sorted(captures))],
+            "transformations":[{"operation":"native_esri_json_to_geoparquet_candidate","parameters":{"attributes":"all declared attributes and physical types retained","ids":"OBJECTID and Feature_ID unchanged","geometry":"Point ordinates retained in source EPSG:4326; no repair or reprojection","candidate_status":"unapproved"}}],
+            "lineage":"BTS-linked official USACE IENC Feature Classes MapServer; this layer is limited to IENC chart coverage.",
+            "prebuilt_output_policy":{"schema_version":1,"formats":{"geoparquet":{"reason":"Source attributes and Point ordinates retained as an unapproved native candidate.","objects":[{"path":"geoparquet/notice-marks-usace-ienc.parquet","bytes":parquet.stat().st_size,"sha256":parquet_sha}]}}},
+            "unsupported_output_formats":{"geopackage":"Independent source, compatibility and rights review pending.","pmtiles":"No display transformation approved."}}
+        validate_release_provenance(manifest)
+        validate_output_policy(manifest)
+        ready = {"approved":False,"version":version,"feature_count":len(features),"source_reported_count":len(features),"source_population_complete":True,
+                 "source_record_sha256":audit["source_record_sha256"],"source_id_sha256":audit["source_id_sha256"],
+                 "source_schema_sha256":audit["source_schema_sha256"],"source_release_accepted":False,
+                 "freshness_accepted":False,"schema_contract_accepted":False,"id_contract_accepted":False,
+                 "coverage_accepted":False,"rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+        outputs = {"geoparquet/notice-marks-usace-ienc.parquet":parquet,
+                   "metadata/source_manifest.json":_canonical(manifest)+b"\n",
+                   "metadata/source_audit.json":_canonical(audit)+b"\n",
+                   "metadata/candidate_ready.json":_canonical(ready)+b"\n",
+                   "metadata/processing_identity.json":_canonical(identity)+b"\n"}
+        for name, (body, receipt) in captures.items():
+            outputs[f"raw/{name}.body"] = body
+            outputs[f"raw/{name}.wire"] = (root/f"{name}.wire").read_bytes()
+            outputs[f"raw/{name}.receipt.json"] = _canonical(receipt)+b"\n"
+        descriptors = {name: ({"bytes": body.stat().st_size, "sha256": parquet_sha} if isinstance(body, Path)
+        else {"bytes": len(body), "sha256": _sha(body)}) for name,body in outputs.items()}
+        fingerprint = _sha(_canonical(candidate_identity))
+        state_key = f"_construction-state/{DATASET_SLUG}/{version}.json"
+        receipts = {name:receipt for name,(_body,receipt) in captures.items()}
+        if storage.object_snapshot(state_key) is not None:
+            bundle = json.loads(load_first_construction(storage,state_key,version,fingerprint))
+            payload = bundle.get("payload")
+            if not isinstance(payload,dict) or not isinstance(payload.get("objects"),dict) or not isinstance(payload.get("capture_receipts"),dict):
+                raise ValueError("cached_candidate_original_receipts_missing")
+            original_receipts = payload["capture_receipts"]
+            if set(original_receipts) != set(captures):
+                raise ValueError("cached_candidate_capture_roster_changed")
+            for name,(fresh_body,_receipt) in captures.items():
+                if storage.read_key(f"{prefix}/raw/{name}.body") != fresh_body or storage.read_key(f"{prefix}/raw/{name}.wire") != (root/f"{name}.wire").read_bytes():
+                    raise ValueError("cached_source_bytes_changed:"+name)
+            verify_cached_candidate(storage,Path(__file__).parents[3],state_key,prefix,version,fingerprint,
+                identity,audit["source_record_sha256"],audit["source_schema_sha256"],payload["objects"],original_receipts)
+            validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
+            return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(features),"source_reported_count":len(features),
+                    "source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],
+                    "source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
+                    "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],
+                    "drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json",
+                    "capture_directory":str(root),"reused":True,"source_release_accepted":False,"source_freshness_accepted":False,
+                    "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,
+                    "rights_accepted":False,"mapping_approved":False,"release_accepted":False}
+        _write_outputs(storage, prefix, outputs)
+        seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
+            "source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
+            "capture_receipts":receipts,"objects":descriptors})
         validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
-        return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(features),"source_reported_count":len(features),
-                "source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],
-                "source_id_min":audit["source_id_min"],"source_id_max":audit["source_id_max"],
-                "source_schema_sha256":audit["source_schema_sha256"],"source_coverage_scope":audit["source_coverage_scope"],
-                "drift_guard":audit["drift_guard"],"candidate_ready":prefix+"/metadata/candidate_ready.json",
-                "capture_directory":str(root),"reused":True,"source_release_accepted":False,"source_freshness_accepted":False,
-                "schema_contract_accepted":False,"id_contract_accepted":False,"coverage_accepted":False,
-                "rights_accepted":False,"mapping_approved":False,"release_accepted":False}
-    _write_outputs(storage, prefix, outputs)
-    seal_ready_candidate(storage,state_key,version,fingerprint,{"processing_identity":identity,
-        "source_record_sha256":audit["source_record_sha256"],"source_schema_sha256":audit["source_schema_sha256"],
-        "capture_receipts":receipts,"objects":descriptors})
-    validate_construction_code_identity(Path(__file__).parents[3],identity["code_commit"],identity["files"])
     (root/"capture_manifest.json").write_bytes(_canonical({"complete":True,"receipts":{n:r for n,(_b,r) in captures.items()},"artifact_roster":capture_roster_digests(root,exclude={"capture_manifest.json"})})+b"\n")
     return {"dataset_slug":DATASET_SLUG,"file_slug":FILE_SLUG,"version":version,"feature_count":len(features),"source_reported_count":len(features),
             "source_population_complete":True,"source_id_sha256":audit["source_id_sha256"],
