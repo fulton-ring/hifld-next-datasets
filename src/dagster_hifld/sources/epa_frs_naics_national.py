@@ -33,6 +33,7 @@ from dagster_hifld.sources.capture_common import (
     content_derived_version,
     processing_identity,
     quarantine_incomplete_capture,
+    retain_failed_capture,
     seal_ready_candidate,
     write_immutable,
 )
@@ -560,22 +561,9 @@ def capture_epa_frs_national_naics(storage: StagingStorageResource, *, version: 
             "rights_accepted": False, "mapping_approved": False, "release_accepted": False,
         }
     except Exception as exc:
-        reason = str(exc) if isinstance(exc, EPAFRSNationalNAICSError) else type(exc).__name__
         if not quarantined:
-            for receipt_path in sorted(capture_root.glob("*.receipt.json")) if capture_root.exists() else []:
-                name = receipt_path.name.removesuffix(".receipt.json")
-                if name in captures:
-                    continue
-                body_path = capture_root / f"{name}.body"
-                try:
-                    receipt = json.loads(receipt_path.read_bytes())
-                    if isinstance(receipt, dict) and body_path.is_file():
-                        captures.setdefault(name, (body_path.read_bytes(), receipt))
-                except (OSError, ValueError):
-                    continue
-            if captures:
-                quarantine_incomplete_capture(storage, capture_root, DATASET_SLUG, version,
-                                              captures, reason)
+            retain_failed_capture(storage, capture_root, DATASET_SLUG, version, exc,
+                                  error=EPAFRSNationalNAICSError)
         raise
     finally:
         csv_path.unlink(missing_ok=True)

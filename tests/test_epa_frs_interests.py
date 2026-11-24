@@ -608,6 +608,40 @@ class EpaFrsInterestsTests(unittest.TestCase):
                     failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
                     self.assertTrue(failure["reason_code"])
 
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        rows = _fixture_rows(FIXTURE_COUNT)
+        schema_sha = src._profile_schema({"fields": _fixture_layer_fields()})[1]
+        transport = make_responder(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_root = root / "capture"
+            with fixture_mode(schema_sha, transport):
+                storage = StagingStorageResource(use_local=True, local_dir=str(root / "staging"),
+                                                 prefix="", backend="local")
+                src.capture_epa_frs_interests(storage, version="corrupt-pin-run",
+                                              capture_directory=str(capture_root))
+                (capture_root / "page_000000.receipt.json").write_bytes(b'{"method"')
+                with self.assertRaises(src.EPAFRSInterestsError) as raised:
+                    src.capture_epa_frs_interests(storage, version="corrupt-pin-run-2",
+                                                  capture_directory=str(capture_root))
+                self.assertEqual(str(raised.exception), "retained_capture_receipt_invalid:page_000000")
+                self.assertNotIsInstance(raised.exception, (json.JSONDecodeError, OSError))
+            quarantined = sorted((root / "staging" / "_quarantine" / src.DATASET_SLUG).glob("*"))
+            self.assertEqual(len(quarantined), 1)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "retained_capture_receipt_invalid:page_000000")
+            self.assertIn("portal_item", failure["captured_names"])
+            self.assertIn("page_tail", failure["captured_names"])
+            self.assertNotIn("page_000000", failure["captured_names"])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "page_000000",
+                               "reason": "retained_capture_receipt_unreadable:page_000000"}])
+            for name in ("portal_item", "service_before", "layer_before", "count_before",
+                         "page_tail", "layer_after", "service_after", "count_after"):
+                for suffix in ("body", "wire", "receipt.json"):
+                    self.assertTrue((quarantined[0] / "raw" / f"{name}.{suffix}").is_file())
+            self.assertFalse((quarantined[0] / "raw" / "page_000000.body").exists())
+
 
     def test_corrupt_existing_output_is_reconstructed_not_sealed(self):
         # Review follow-up: construction must never trust an existing output

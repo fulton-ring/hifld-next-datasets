@@ -202,7 +202,11 @@ class EpaFrsTriTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "incomplete_source_capture:page_000"):
                         tri.capture_epa_frs_tri(storage, version="torn", capture_directory=tmp + "/captures")
                     root = next((Path(tmp) / "captures").iterdir())
-                    receipt = json.loads((root / "capture_manifest.json").read_bytes())["receipts"]["page_000"]
+                    manifest = json.loads((root / "capture_manifest.json").read_bytes())
+                    self.assertFalse(manifest["complete"])
+                    self.assertEqual(manifest["error_code"], "ValueError")
+                    self.assertNotIn("receipts", manifest)
+                    receipt = json.loads((root / "page_000.receipt.json").read_bytes())
                     self.assertEqual(receipt["url"], urls["page_000"])
                     self.assertFalse(receipt["complete_body"])
                     self.assertGreater(receipt["wire_bytes"], 0)
@@ -212,6 +216,56 @@ class EpaFrsTriTests(unittest.TestCase):
                     receipt_key = next(key for key in quarantined if key.endswith("/raw/page_000.receipt.json"))
                     self.assertEqual(json.loads(storage.read_key(receipt_key)), receipt)
                     self.assertFalse(storage.list_prefix(f"{tri.DATASET_SLUG}/"))
+
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        captures = self._capture_fixture()
+        for name in ("layer_before", "layer_after"):
+            layer = json.loads(captures[name][0])
+            layer["advancedQueryCapabilities"]["supportsPagination"] = True
+            captures[name] = (json.dumps(layer).encode(), captures[name][1])
+        urls = {name: url for name, url in tri._source_metadata_urls() + tri._source_after_urls()}
+        urls["ids_seed"] = tri._query_url(where="1=1", returnIdsOnly="true", f="json")
+        plan = tri._page_plan([8, 21], json.loads(captures["layer_before"][0]))[1]
+        urls.update({name: url for name, url, _ids in plan})
+        bodies = {urls[name]: body for name, (body, _receipt) in captures.items()}
+        real_client = httpx.Client
+
+        class BrokenStream(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b'{"features":['
+                raise httpx.ReadError("stream interrupted")
+
+        def serve(request):
+            if str(request.url) == urls["page_000"]:
+                root = next((Path(tmp) / "captures").iterdir())
+                (root / "ids_before.receipt.json").write_bytes(b'{"')
+                return httpx.Response(200, stream=BrokenStream())
+            return httpx.Response(200, stream=httpx.ByteStream(bodies[str(request.url)]))
+
+        with tempfile.TemporaryDirectory() as tmp, self._schema_pin(captures), patch.object(
+                tri.httpx, "Client", side_effect=lambda **kwargs:
+                real_client(transport=httpx.MockTransport(serve), **kwargs)):
+            storage = tri.StagingStorageResource(local_dir=tmp, use_local=True)
+            with self.assertRaises(ValueError) as raised:
+                tri.capture_epa_frs_tri(storage, version="corrupt",
+                                        capture_directory=tmp + "/captures")
+            self.assertEqual(str(raised.exception), "incomplete_source_capture:page_000")
+            self.assertNotIsInstance(raised.exception,
+                                     (json.JSONDecodeError, OSError))
+            failure_keys = [key for key in storage.list_prefix(f"_quarantine/{tri.DATASET_SLUG}/")
+                            if key.endswith("/metadata/failure.json")]
+            self.assertEqual(len(failure_keys), 1)
+            failure = json.loads(storage.read_key(failure_keys[0]))
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertIn("portal_item", failure["captured_names"])
+            self.assertIn("page_000", failure["captured_names"])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "ids_before",
+                               "reason": "retained_capture_receipt_unreadable:ids_before"}])
+            wire_key = next(key for key in storage.list_prefix(f"_quarantine/{tri.DATASET_SLUG}/")
+                            if key.endswith("/raw/page_000.wire"))
+            self.assertEqual(storage.read_key(wire_key), b'{"features":[')
+            self.assertFalse(storage.list_prefix(f"{tri.DATASET_SLUG}/"))
 
 
 if __name__ == "__main__":

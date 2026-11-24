@@ -166,6 +166,39 @@ class EpaFrsSicCodesSourceTests(unittest.TestCase):
             self.assertEqual(failure["reason_code"], "EpaFrsSicCaptureError")
             self.assertTrue((quarantined[0] / "raw" / "page_000.body").exists())
 
+    def test_corrupt_receipt_is_recorded_not_dropped(self):
+        docs = self._docs(self._fields(), self._features())
+
+        def broken_get(_client, url, capture_root, name, *, max_bytes):
+            if name == "page_000":
+                (capture_root / "table_before.receipt.json").write_bytes(b'{"')
+                raise sic.EpaFrsSicCaptureError("synthetic_page_stream_failed")
+            return self._fake_get(docs)(_client, url, capture_root, name, max_bytes=max_bytes)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(sic.EpaFrsSicCaptureError) as raised:
+                self._run_capture(tmp, docs, get=broken_get)
+            self.assertEqual(str(raised.exception), "synthetic_page_stream_failed")
+            self.assertNotIsInstance(raised.exception, (json.JSONDecodeError, OSError))
+            quarantined = list((Path(tmp) / "_quarantine" / sic.DATASET_SLUG).iterdir())
+            self.assertEqual(len(quarantined), 1)
+            failure = json.loads((quarantined[0] / "metadata" / "failure.json").read_bytes())
+            self.assertEqual(failure["reason_code"], "EpaFrsSicCaptureError")
+            self.assertEqual(failure["captured_names"], ["count_before", "ids_before", "service"])
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "table_before",
+                               "reason": "retained_capture_receipt_unreadable:table_before"}])
+            for name in ("count_before", "ids_before", "service"):
+                for suffix in ("body", "wire", "receipt.json"):
+                    self.assertTrue((quarantined[0] / "raw" / f"{name}.{suffix}").is_file())
+            self.assertFalse((quarantined[0] / "raw" / "table_before.body").exists())
+            capture_roots = [p for p in Path(tmp).glob("fixture-v1-*") if p.is_dir()]
+            self.assertEqual(len(capture_roots), 1)
+            manifest = json.loads((capture_roots[0] / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "EpaFrsSicCaptureError")
+            self.assertNotIn("receipts", manifest)
+
     def test_second_identical_capture_reuses_sealed_candidate(self):
         docs = self._docs(self._fields(), self._features())
         with tempfile.TemporaryDirectory() as tmp:
