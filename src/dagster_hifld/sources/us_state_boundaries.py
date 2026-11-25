@@ -26,6 +26,7 @@ from dagster_hifld.sources.capture_common import (
     write_immutable,
 )
 from dagster_hifld.sources.esri_common import canonical as _canonical, sha as _sha
+from dagster_hifld.sources.geoparquet_candidate import stream_geoparquet_candidate
 
 try:  # geometry inspection needs geopandas; the runtime environment provides it
     import geopandas as gpd
@@ -197,38 +198,32 @@ def _geoparquet(frame) -> bytes:
     geometries = list(shapely.to_wkb(frame.geometry.array, byte_order=1, output_dimension=2))
     arrays.append(pa.array(geometries, type=pa.binary(), safe=True))
     fields.append(pa.field("geometry", pa.binary(), nullable=False))
-    geo_metadata = {
-        "version": "1.1.0",
-        "primary_column": "geometry",
-        "columns": {
-            "geometry": {
-                "encoding": "WKB",
-                "geometry_types": geometry_types,
-                "crs": frame.crs.to_json_dict(),
-            }
-        },
-    }
-    output = io.BytesIO()
-    table = pa.Table.from_arrays(arrays, schema=pa.schema(fields, metadata={b"geo": _canonical(geo_metadata)}))
-    pq.write_table(table, output, compression="zstd", use_dictionary=False)
-    readback = pq.read_table(pa.BufferReader(output.getvalue()))
-    if readback.num_rows != len(frame) or readback.column_names != names + ["geometry"]:
-        raise ValueError("tiger_output_schema_or_population_readback_drift")
-    for name in names:
-        expected = frame[name].tolist()
-        if name in STRING_FIELDS:
-            expected = [None if value is None or (isinstance(value, float) and value != value) else str(value)
-                        for value in expected]
-        else:
-            expected = [None if value is None else int(value) for value in expected]
-        if readback[name].to_pylist() != expected:
-            raise ValueError("tiger_output_attribute_readback_drift:" + name)
-    if readback["geometry"].to_pylist() != geometries:
-        raise ValueError("tiger_output_native_wkb_readback_drift")
-    geo = json.loads(readback.schema.metadata[b"geo"])
-    if geo["columns"]["geometry"]["geometry_types"] != geometry_types:
-        raise ValueError("tiger_output_geometry_metadata_drift")
-    return output.getvalue()
+    schema = pa.schema(fields)
+    batch = pa.record_batch(arrays, schema=schema)
+    with tempfile.TemporaryDirectory(prefix="census-state-geo-") as tmp:
+        candidate = Path(tmp) / "candidate.parquet"
+        stream_geoparquet_candidate(
+            schema, EXPECTED_CRS, iter([batch]), candidate,
+            geometry_column="geometry", geometry_types=geometry_types)
+        readback = pq.read_table(candidate)
+        if readback.num_rows != len(frame) or readback.column_names != names + ["geometry"]:
+            raise ValueError("tiger_output_schema_or_population_readback_drift")
+        for name in names:
+            expected = frame[name].tolist()
+            if name in STRING_FIELDS:
+                expected = [None if value is None or (isinstance(value, float) and value != value) else str(value)
+                            for value in expected]
+            else:
+                expected = [None if value is None else int(value) for value in expected]
+            if readback[name].to_pylist() != expected:
+                raise ValueError("tiger_output_attribute_readback_drift:" + name)
+        if readback["geometry"].to_pylist() != geometries:
+            raise ValueError("tiger_output_native_wkb_readback_drift")
+        geo = json.loads(readback.schema.metadata[b"geo"])
+        if (geo["version"] != "1.1.0" or geo["primary_column"] != "geometry"
+                or geo["columns"]["geometry"]["geometry_types"] != geometry_types):
+            raise ValueError("tiger_output_geometry_metadata_drift")
+        return candidate.read_bytes()
 
 
 def capture_us_state_boundaries(

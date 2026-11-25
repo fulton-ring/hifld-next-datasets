@@ -13,7 +13,6 @@ from pathlib import Path, PurePosixPath
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pyogrio
-import pyproj
 import shapely
 
 from dagster_hifld.provenance import validate_provenance
@@ -22,6 +21,7 @@ from dagster_hifld.sources import census_latest
 from dagster_hifld.sources.capture_common import (STAGED_RELEASE_DERIVATIVE_NAMES,
     processing_identity as shared_processing_identity, validate_staged_release_derivatives)
 from dagster_hifld.sources.esri_common import sha as _sha
+from dagster_hifld.sources.geoparquet_candidate import stream_geoparquet_candidate
 from dagster_hifld.validation import sha256_file
 
 DATASET_SLUG = "census-tracts-2"
@@ -214,19 +214,6 @@ def processing_identity() -> dict[str, object]:
     return identity
 
 
-def _geo_schema(schema: pa.Schema) -> pa.Schema:
-    geo = {
-        "version": "1.1.0", "primary_column": "SHAPE",
-        "columns": {"SHAPE": {
-            "encoding": "WKB", "geometry_types": [SOURCE_GEOMETRY],
-            "crs": pyproj.CRS.from_epsg(4269).to_json_dict(),
-        }},
-    }
-    metadata = dict(schema.metadata or {})
-    metadata[b"geo"] = _canonical(geo).rstrip(b"\n")
-    return schema.with_metadata(metadata)
-
-
 def _batch_digest(batch: pa.RecordBatch) -> bytes:
     return batch.replace_schema_metadata(None).serialize().to_pybytes()
 
@@ -247,9 +234,10 @@ def _stream_layer(uri: str, output_path: Path) -> dict[str, object]:
             raise CensusTractsError("streamed_layer_metadata_drift")
         if tuple(reader.schema.names) != EXPECTED_NAMES or tuple(field.type for field in reader.schema) != EXPECTED_TYPES:
             raise CensusTractsError("streamed_arrow_schema_drift")
-        schema = _geo_schema(reader.schema)
         source_arrow_schema = str(reader.schema)
-        with pq.ParquetWriter(output_path, schema, compression="zstd", use_dictionary=True, write_statistics=True) as writer:
+
+        def validated_batches():
+            nonlocal rows, invalid, empty, z_values
             for batch in reader:
                 if tuple(batch.schema.names) != EXPECTED_NAMES or tuple(field.type for field in batch.schema) != EXPECTED_TYPES:
                     raise CensusTractsError("streamed_batch_schema_drift")
@@ -284,9 +272,13 @@ def _stream_layer(uri: str, output_path: Path) -> dict[str, object]:
                     upper[0] = max(upper[0], float(bounds[:, 2].max())); upper[1] = max(upper[1], float(bounds[:, 3].max()))
                 digest.update(_batch_digest(batch))
                 rows += batch.num_rows
-                writer.write_batch(batch)
                 if rows % 8192 < batch.num_rows and shutil.disk_usage(output_path.parent).free < MIN_FREE_BYTES:
                     raise CensusTractsError("minimum_disk_reserve_reached_during_candidate_stream")
+                yield batch
+
+        stream_geoparquet_candidate(
+            reader.schema, SOURCE_CRS, validated_batches(), output_path,
+            geometry_column="SHAPE", geometry_types=[SOURCE_GEOMETRY])
         if (not FEATURE_COUNT_RANGE[0] <= rows <= FEATURE_COUNT_RANGE[1]
                 or len(seen_oids) != rows or len(seen_geoids) != rows):
             raise CensusTractsError("source_layer_population_or_identifier_drift")

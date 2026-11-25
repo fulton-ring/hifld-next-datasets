@@ -1,10 +1,18 @@
+import hashlib
 import json
 import os
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
+import geopandas as gpd
 import httpx
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pyproj
+from shapely.geometry import Polygon
 
 from dagster_hifld.assets.congressional_districts import congressional_districts
 from dagster_hifld.assets.ingest_registry import hifld_ingest_assets
@@ -203,6 +211,112 @@ class ReceiptTests(unittest.TestCase):
                     source.CongressionalDistrictsQuarantineError,
                     "capture_archive_receipt_mismatch"):
                 source._read_archive(root, name, {**by_name[name], "bytes": 1}, edition)
+
+
+class ReplayStagingWritePathTests(unittest.TestCase):
+    """Run the full replay staging path on a synthetic capture and check the
+    GeoParquet contract of the file the shared candidate writer produced."""
+
+    ISO_XML = ('<?xml version="1.0" encoding="UTF-8"?>'
+               '<MD_Metadata><fileId>fixture</fileId></MD_Metadata>\n')
+
+    @classmethod
+    def setUpClass(cls):
+        cls.vintage, cls.congress = 2026, 120
+
+    def _district_frame(self, statefp, districts):
+        columns = list(source.source_fields(self.congress)[:-1])
+        data = {name: [] for name in columns}
+        polygons = []
+        for index, district in enumerate(districts):
+            geoid = statefp + district
+            data["STATEFP"].append(statefp)
+            data[f"CD{self.congress:03d}FP"].append(district)
+            data["GEOID"].append(geoid)
+            data["GEOIDFQ"].append("0400000US" + geoid)
+            data["NAMELSAD"].append(f"Congressional District {district}")
+            data["LSAD"].append("CD")
+            data["CDSESSN"].append(str(self.congress))
+            data["MTFCC"].append("S3160")
+            data["FUNCSTAT"].append("00")
+            data["ALAND"].append(1_000_000)
+            data["AWATER"].append(0)
+            data["INTPTLAT"].append("+32.0000000")
+            data["INTPTLON"].append(f"-08{index + 6}.000000")
+            polygons.append(Polygon([(index, 0), (index + 1, 0), (index + 1, 1), (index, 1), (index, 0)]))
+        return gpd.GeoDataFrame(data, geometry=polygons, crs="EPSG:4269")
+
+    def _archive_zip(self, statefp, districts):
+        stem = f"tl_{self.vintage}_{statefp}_cd{self.congress:03d}"
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / stem
+            work.mkdir()
+            self._district_frame(statefp, districts).to_file(work / (stem + ".shp"), engine="pyogrio")
+            members = {}
+            for suffix in source.EXPECTED_MEMBERS:
+                path = work / (stem + suffix)
+                members[stem + suffix] = (
+                    self.ISO_XML.encode() if suffix in (".shp.ea.iso.xml", ".shp.iso.xml")
+                    else path.read_bytes())
+            zip_path = Path(tmp) / (stem + ".zip")
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                for name, body in members.items():
+                    archive.writestr(name, body)
+            return zip_path.read_bytes()
+
+    def test_replay_staging_writes_shared_writer_geoparquet(self):
+        with tempfile.TemporaryDirectory() as temp:
+            temp_root = Path(temp)
+            capture = temp_root / "hifld-native-reconstruction" / "387" / "capture"
+            capture.mkdir(parents=True)
+            rows = []
+            for statefp, districts in (("01", ("01", "02")), ("02", ("01",))):
+                body = self._archive_zip(statefp, districts)
+                rows.append(_receipt(self.vintage, self.congress, statefp, body=body))
+                (capture / f"tl_{self.vintage}_{statefp}_cd{self.congress:03d}.zip").write_bytes(body)
+            (capture / "receipts.json").write_bytes(source._canonical(rows))
+            storage = StagingStorageResource(local_dir=str(temp_root / "staging"), prefix="pinned-prefix", use_local=True)
+            old_mode = os.environ.get("HIFLD_CD_MODE")
+            old_root = os.environ.get("HIFLD_CAPTURE_ROOT")
+            os.environ["HIFLD_CD_MODE"] = "replay"
+            os.environ["HIFLD_CAPTURE_ROOT"] = str(temp_root)
+            try:
+                with patch.object(source, "MIN_SOURCE_GEOIDS", 2):
+                    first = source.stage_congressional_districts_candidate(
+                        storage, source.DATASET_SLUG, source.FILE_SLUG)
+                    second = source.stage_congressional_districts_candidate(
+                        storage, source.DATASET_SLUG, source.FILE_SLUG)
+            finally:
+                if old_mode is None:
+                    os.environ.pop("HIFLD_CD_MODE", None)
+                else:
+                    os.environ["HIFLD_CD_MODE"] = old_mode
+                if old_root is None:
+                    os.environ.pop("HIFLD_CAPTURE_ROOT", None)
+                else:
+                    os.environ["HIFLD_CAPTURE_ROOT"] = old_root
+            self.assertEqual(first["version"], second["version"])
+            self.assertEqual(first["candidate_identity"], second["candidate_identity"])
+            self.assertEqual(first["source_feature_count"], 3)
+            self.assertEqual(first["prebuilt_geoparquet_sha256"], second["prebuilt_geoparquet_sha256"])
+            output_key = (first["source_manifest_key"].removesuffix("metadata/source_manifest.json")
+                          + f"geoparquet/{source.FILE_SLUG}.parquet")
+            staged = storage.read_key(output_key)
+            self.assertEqual(hashlib.sha256(staged).hexdigest(), first["prebuilt_geoparquet_sha256"])
+            self.assertEqual(len(staged), first["prebuilt_geoparquet_bytes"])
+            parquet = pq.read_table(pa.BufferReader(staged))
+            self.assertEqual(parquet.num_rows, 3)
+            self.assertEqual(parquet.column_names, list(source.source_fields(self.congress)))
+            self.assertEqual(set(parquet.schema.metadata), {b"geo"})
+            geo = json.loads(parquet.schema.metadata[b"geo"])
+            self.assertEqual(geo["version"], "1.1.0")
+            self.assertEqual(geo["primary_column"], "wkb_geometry")
+            column = geo["columns"]["wkb_geometry"]
+            self.assertEqual(column["encoding"], "WKB")
+            self.assertEqual(column["geometry_types"], ["Polygon"])
+            self.assertEqual(column["crs"], pyproj.CRS.from_epsg(4269).to_json_dict())
+            self.assertEqual(parquet["GEOID"].to_pylist(), ["0101", "0102", "0201"])
+            self.assertEqual(parquet["CDSESSN"].to_pylist(), [str(self.congress)] * 3)
 
 
 class RegistrationTests(unittest.TestCase):

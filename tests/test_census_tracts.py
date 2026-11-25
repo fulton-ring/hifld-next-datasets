@@ -1,4 +1,5 @@
 import hashlib
+import json
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -7,6 +8,7 @@ from unittest.mock import patch
 
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pyproj
 import shapely
 from dagster import DefaultScheduleStatus
 
@@ -96,9 +98,13 @@ class CensusTractsTests(unittest.TestCase):
             self.assertEqual(output.column_names, list(source.EXPECTED_NAMES))
             for index, name in enumerate(source.EXPECTED_NAMES):
                 self.assertEqual(output.column(name).to_pylist(), batch.column(index).to_pylist())
-            geo = __import__("json").loads(output.schema.metadata[b"geo"])
+            self.assertEqual(set(output.schema.metadata), {b"geo"})
+            geo = json.loads(output.schema.metadata[b"geo"])
+            self.assertEqual(geo["version"], "1.1.0")
+            self.assertEqual(geo["primary_column"], "SHAPE")
+            self.assertEqual(geo["columns"]["SHAPE"]["encoding"], "WKB")
             self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["MultiPolygon"])
-            self.assertEqual(geo["columns"]["SHAPE"]["crs"]["id"], {"authority": "EPSG", "code": 4269})
+            self.assertEqual(geo["columns"]["SHAPE"]["crs"], pyproj.CRS.from_epsg(4269).to_json_dict())
             self.assertTrue(result["native_objectid_sha256"])
             self.assertEqual(result["feature_count"], 2)
             self.assertEqual(result["invalid_geometries"], 1)

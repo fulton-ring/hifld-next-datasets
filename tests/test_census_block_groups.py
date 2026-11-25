@@ -2,12 +2,15 @@ import hashlib
 import json
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pyproj
+import shapely
 from dagster import DefaultScheduleStatus
 
 from dagster_hifld.assets.census_block_groups import (
@@ -28,11 +31,11 @@ from dagster_hifld.sources.census_block_groups import (
     _validate_capture,
     EXPECTED_NATIVE_FIELDS,
     _canonical,
-    _geo_schema,
     _reuse_existing_candidate,
     SOURCE_OWNED_FILES,
     CATALOG_OWNED_METADATA,
 )
+from dagster_hifld.sources.geoparquet_candidate import stream_geoparquet_candidate
 from dagster_hifld.resources import StagingStorageResource
 from dagster_hifld.sources import census_block_groups as block_groups_source
 from dagster_hifld.sources import census_latest
@@ -67,11 +70,11 @@ class CensusBlockGroupsTests(unittest.TestCase):
             "INTPTLON": pa.array(["-086.0000000"] * count, type=pa.string()),
             "SHAPE": pa.array([b"\x01"] * count, type=pa.binary()),
         })
-        schema = _geo_schema(table.schema)
-        table = table.cast(schema).replace_schema_metadata(schema.metadata)
         parquet_path = target / "geoparquet" / "census-block-groups-3.parquet"
         parquet_path.parent.mkdir()
-        pq.write_table(table, parquet_path, compression="zstd", use_dictionary=True)
+        stream_geoparquet_candidate(
+            table.schema, "EPSG:4269", table.to_batches(), parquet_path,
+            geometry_column="SHAPE", geometry_types=["MultiPolygon"])
         parquet_sha = hashlib.sha256(parquet_path.read_bytes()).hexdigest()
         audit = {
             "approved": False, "layer": "Block_Group", "feature_count": count,
@@ -83,7 +86,7 @@ class CensusBlockGroupsTests(unittest.TestCase):
             "coverage_scope": f"all rows returned by the exact Block_Group layer in the {RELEASE.vintage} national substate GDB",
             "native_objectid_sha256": "c" * 64, "statefp_counts": {"01": count},
             "parquet_bytes": parquet_path.stat().st_size, "parquet_sha256": parquet_sha,
-            "bounds": [-1.0, -1.0, 1.0, 1.0], "arrow_schema": str(schema),
+            "bounds": [-1.0, -1.0, 1.0, 1.0], "arrow_schema": str(table.schema),
         }
         baseline = {"schema_version": 1, "approved": False, "status": "blocked",
                     "reason_codes": ["published_baseline_and_ID_schema_contract_acceptance_pending"]}
@@ -167,6 +170,55 @@ class CensusBlockGroupsTests(unittest.TestCase):
         )
         changed = batch.set_column(8, batch.schema.field("SHAPE"), pa.array([b"\x01\x03"]))
         self.assertNotEqual(_batch_digest(batch), _batch_digest(changed))
+
+    def test_stream_preserves_source_values_and_shared_writer_geo_contract(self):
+        geoms = [
+            shapely.to_wkb(shapely.MultiPolygon([shapely.box(-86.5, 32.4, -86.4, 32.5)])),
+            shapely.to_wkb(shapely.MultiPolygon([shapely.box(-86.4, 32.5, -86.3, 32.6)])),
+        ]
+        batch = pa.record_batch([
+            pa.array([1, 2], type=pa.int64()),
+            pa.array(["010010201001", "010010201002"]),
+            pa.array(["1500000US010010201001", "1500000US010010201002"]),
+            pa.array(["Block Group 1", "Block Group 2"]),
+            pa.array([9825303.0, 3320818.0], type=pa.float64()),
+            pa.array([28435.0, 5669.0], type=pa.float64()),
+            pa.array(["+32.4819731", "+32.4757580"]),
+            pa.array(["-86.4915648", "-86.4724678"]),
+            pa.array(geoms, type=pa.binary()),
+        ], names=list(EXPECTED_NAMES))
+
+        class Reader:
+            schema = batch.schema
+            def __iter__(self):
+                return iter([batch])
+
+        @contextmanager
+        def open_arrow(*args, **kwargs):
+            yield ({"crs": "EPSG:4269", "geometry_type": "MultiPolygon", "fid_column": "OBJECTID"}, Reader())
+
+        with tempfile.TemporaryDirectory() as temp, \
+             patch.object(block_groups_source.pyogrio, "read_info", return_value={}), \
+             patch.object(block_groups_source.pyogrio, "open_arrow", side_effect=open_arrow), \
+             patch.object(block_groups_source, "FEATURE_COUNT_RANGE", (1, 3)):
+            output_path = Path(temp) / "block_groups.parquet"
+            result = block_groups_source._stream_layer("unused", output_path)
+            output = pq.read_table(output_path)
+            self.assertEqual(output.num_rows, 2)
+            self.assertEqual(output.column_names, list(EXPECTED_NAMES))
+            for index, name in enumerate(EXPECTED_NAMES):
+                self.assertEqual(output.column(name).to_pylist(), batch.column(index).to_pylist())
+            self.assertEqual(set(output.schema.metadata), {b"geo"})
+            geo = json.loads(output.schema.metadata[b"geo"])
+            self.assertEqual(geo["version"], "1.1.0")
+            self.assertEqual(geo["primary_column"], "SHAPE")
+            self.assertEqual(geo["columns"]["SHAPE"]["encoding"], "WKB")
+            self.assertEqual(geo["columns"]["SHAPE"]["geometry_types"], ["MultiPolygon"])
+            self.assertEqual(geo["columns"]["SHAPE"]["crs"], pyproj.CRS.from_epsg(4269).to_json_dict())
+            self.assertEqual(result["feature_count"], 2)
+            self.assertEqual(result["invalid_geometries"], 0)
+            self.assertEqual(result["empty_geometries"], 0)
+            self.assertEqual(result["z_geometries"], 0)
 
     def test_manifest_pins_native_parquet_without_approving_release_or_other_formats(self):
         identity = {"code_commit": "packaged-sha256:" + "a" * 64,

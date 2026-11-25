@@ -43,6 +43,7 @@ from dagster_hifld.http_capture import capture_http_response
 from dagster_hifld.provenance import provenance_projection
 from dagster_hifld.resources import StagingStorageResource, default_capture_dir
 from dagster_hifld.sources.esri_common import sha as _sha
+from dagster_hifld.sources.geoparquet_candidate import stream_geoparquet_candidate
 
 DATASET_SLUG = "congressional-districts"
 FILE_SLUG = DATASET_SLUG
@@ -486,13 +487,6 @@ def _read_archive(root: Path, name: str, receipt: dict, edition: CongressionalEd
     return table
 
 
-def _geo_metadata(geometry_types: list[str]) -> dict[bytes, bytes]:
-    crs = pyproj.CRS.from_epsg(4269).to_json_dict()
-    body = {"version": "1.1.0", "primary_column": "wkb_geometry", "columns": {
-        "wkb_geometry": {"encoding": "WKB", "geometry_types": geometry_types, "crs": crs}}}
-    return {b"geo": _canonical(body)}
-
-
 def stage_congressional_districts_candidate(
     storage: StagingStorageResource,
     dataset: str,
@@ -539,16 +533,17 @@ def stage_congressional_districts_candidate(
         "processing_fingerprint": processing_fingerprint,
     }))
     version = f"v0.0.0-{edition.layer.lower()}-{candidate_identity[:16]}-{processing_fingerprint[:16]}"
-    # Keep source attributes and WKB unchanged. The output column metadata is
-    # added for GeoParquet interoperability; no feature values are transformed.
-    table = table.replace_schema_metadata({**(table.schema.metadata or {}), **_geo_metadata(geometry_types)})
+    # Keep source attributes and WKB unchanged. The shared candidate writer
+    # attaches the GeoParquet geo metadata; no feature values are transformed.
     with tempfile.TemporaryDirectory(prefix="cd-native-") as tmp:
         parquet_path = Path(tmp) / f"{file_slug}.parquet"
-        pq.write_table(table, parquet_path, compression="zstd", use_dictionary=False, write_statistics=True)
+        stream_geoparquet_candidate(
+            table.schema, "EPSG:4269", table.to_batches(), parquet_path,
+            geometry_column="wkb_geometry", geometry_types=geometry_types)
         decoded = pq.read_table(parquet_path)
         if (decoded.num_rows != table.num_rows or decoded.schema.names != table.schema.names
             or tuple(field.type for field in decoded.schema) != tuple(field.type for field in table.schema)
-            or not decoded.equals(table)):
+            or not decoded.equals(table.replace_schema_metadata(decoded.schema.metadata))):
             raise CongressionalDistrictsQuarantineError("native_parquet_full_value_or_type_roundtrip_failed")
         parquet = parquet_path.read_bytes()
     target = storage.build_target_location(dataset, file_slug, version, "").rstrip("/")
