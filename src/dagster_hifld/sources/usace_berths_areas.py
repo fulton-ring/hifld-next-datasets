@@ -33,7 +33,7 @@ from dagster_hifld.sources.capture_common import (
     candidate_prefix,
     capture_get,
     processing_identity,
-    quarantine_incomplete_capture,
+    retain_failed_capture,
     seal_ready_candidate,
     verify_cached_candidate,
     write_immutable,
@@ -417,24 +417,12 @@ def _read_capture(root: Path, storage: StagingStorageResource,
                 on_validation_error=_validate)
             _validate(captures)
     except Exception as exc:
-        retained = {}
-        for path in sorted(root.glob("*.receipt.json")):
-            try:
-                name = path.name.removesuffix(".receipt.json")
-                receipt = json.loads(path.read_bytes())
-                retained[name] = receipt
-                body_path, wire_path = root / f"{name}.body", root / f"{name}.wire"
-                if body_path.is_file() and wire_path.is_file():
-                    captures.setdefault(name, (body_path.read_bytes(), receipt))
-            except (OSError, ValueError):
-                retained[path.name] = {"receipt_readback_failed": True}
         (root / "capture_manifest.json").write_bytes(_canonical({
             "captured_at": datetime.now(timezone.utc).isoformat(), "complete": False,
-            "error_code": type(exc).__name__, "receipts": retained,
+            "error_code": type(exc).__name__,
         }) + b"\n")
         if captures:
-            quarantine_incomplete_capture(storage, root, DATASET_SLUG, version,
-                                           captures, type(exc).__name__)
+            retain_failed_capture(storage, root, DATASET_SLUG, version, exc, error=ValueError)
         raise
     (root / "capture_manifest.json").write_bytes(_canonical({
         "captured_at": datetime.now(timezone.utc).isoformat(), "complete": True,

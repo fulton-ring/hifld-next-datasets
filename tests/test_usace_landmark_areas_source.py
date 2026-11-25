@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import io
 import json
+import tempfile
 import unittest
 import copy
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+from unittest.mock import patch
 
+import httpx
 import pyarrow.parquet as pq
 import shapely
 from dagster import DefaultScheduleStatus
@@ -17,6 +21,7 @@ from dagster_hifld.native_geoparquet_catalog import geometry_metadata
 COUNT = 6
 IDS = list(range(1, COUNT + 1))
 ID_SHA256 = "17ec0c346922df8a32b8fee47a41171e9d6fddd3b46b04f9c3a70d9eb7b14af7"
+import dagster_hifld.sources.usace_landmark_areas as source
 from dagster_hifld.sources.usace_landmark_areas import (
     BTS_ITEM_ID,
     EXPECTED_FIELD_DECLARATIONS,
@@ -356,7 +361,50 @@ class UsaceLandmarkAreasSourceTest(unittest.TestCase):
             shapely.from_wkb(_esri_polygon({"rings": [ring]})).wkb_hex[:10],
             "0103000000",
         )
+    def test_failed_capture_quarantines_readable_evidence_and_records_unreadable_receipt(self):
+        docs = _docs()
+        docs["page_000"] = {**docs["page_000"], "features": docs["page_000"]["features"][:-1]}
+        roster = dict(source._capture_roster(IDS))
+        roster["ids_seed"] = source._query({"where": "1=1", "returnIdsOnly": "true", "f": "json"})
+        bodies = {url: json.dumps(doc, separators=(",", ":")).encode()
+                  for name, url in roster.items() for doc in [docs[name]]}
+        hook_url = roster["page_000"]
 
+        def serve(request):
+            url = str(request.url)
+            if url == hook_url:
+                root = next((Path(tmp) / "captures").iterdir())
+                (root / "count_before.receipt.json").write_bytes(b'{')
+            return httpx.Response(200, stream=httpx.ByteStream(bodies[url]))
+
+        real_client = httpx.Client
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+                source.httpx, "Client",
+                side_effect=lambda **kwargs: real_client(transport=httpx.MockTransport(serve), **kwargs)):
+            storage = source.StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            with self.assertRaises(ValueError) as raised:
+                source.capture_usace_landmark_areas(storage, version="torn-page",
+                                 capture_directory=str(Path(tmp) / "captures"))
+            self.assertEqual(str(raised.exception), "source_feature_population_incomplete")
+            self.assertNotIsInstance(raised.exception, (json.JSONDecodeError, OSError))
+            self.assertEqual(storage.list_prefix(source.DATASET_SLUG), [])
+            quarantine_keys = storage.list_prefix("_quarantine/" + source.DATASET_SLUG)
+            failure_key = next(key for key in quarantine_keys if key.endswith("/metadata/failure.json"))
+            failure = json.loads(storage.read_key(failure_key))
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"],
+                             sorted(name for name in roster if name != "count_before"))
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "count_before",
+                               "reason": "retained_capture_receipt_unreadable:count_before"}])
+            self.assertTrue(any(key.endswith("/raw/bts_item.body") for key in quarantine_keys))
+            self.assertTrue(any(key.endswith("/raw/" + "page_000" + ".wire") for key in quarantine_keys))
+            self.assertTrue(any(key.endswith("/raw/ids_before.receipt.json") for key in quarantine_keys))
+            root = next((Path(tmp) / "captures").iterdir())
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "ValueError")
+            self.assertNotIn("receipts", manifest)
 
 if __name__ == "__main__":
     unittest.main()
