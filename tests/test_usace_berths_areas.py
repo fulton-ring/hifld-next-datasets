@@ -1,10 +1,13 @@
+import copy
 import json
 import shutil
 import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 from dagster import DefaultScheduleStatus
@@ -18,6 +21,37 @@ from dagster_hifld.assets.usace_berths_areas import (
 from dagster_hifld.construction_provenance import validate_construction_code_identity
 from dagster_hifld.sources.capture_common import processing_identity
 from dagster_hifld.sources import usace_berths_areas as source
+
+
+def _capture_failure_docs() -> dict[str, dict]:
+    """Minimal complete BERTHS_AREA document set for driving the real capture."""
+    sr = {"wkid": 4326, "latestWkid": 4326}
+    layer = {
+        "id": source.LAYER_ID, "name": "BERTHS_AREA", "geometryType": "esriGeometryPolygon",
+        "spatialReference": sr,
+        "extent": {**source.EXPECTED_EXTENT, "spatialReference": sr},
+        "maxRecordCount": 2000, "fields": source.EXPECTED_FIELD_DECLARATIONS,
+    }
+    return {
+        "bts_item": {"id": source.BTS_ITEM_ID, "owner": "USDOT_BTS",
+                     "title": "Inland Electronic Navigational Charts",
+                     "description": ("https://ienccloud.us/arcgis/rest/services/IENC_Feature_Classes and "
+                                     "USACE_IENC_Master_Service_gdb.zip.")},
+        "service_directory": {"services": [{"name": "IENC_Feature_Classes/BERTHS_AREA",
+                                            "type": "MapServer"}]},
+        "service_before": {"mapName": "BERTHS_AREA", "copyrightText": "USACE IENC",
+                           "spatialReference": sr},
+        "layer_before": layer, "layer_after": copy.deepcopy(layer),
+        "count_before": {"count": 2}, "count_after": {"count": 2},
+        "ids_before": {"objectIdFieldName": "OBJECTID", "objectIds": [1, 2]},
+        "ids_after": {"objectIdFieldName": "OBJECTID", "objectIds": [1, 2]},
+        "page_000": {"geometryType": "esriGeometryPolygon", "spatialReference": sr,
+                     "features": [{"attributes": {"OBJECTID": oid},
+                                   "geometry": {"rings": [[[-90.0, 38.0], [-90.0, 38.1],
+                                                          [-89.9, 38.1], [-89.9, 38.0],
+                                                          [-90.0, 38.0]]]}}
+                                  for oid in (1, 2)]},
+    }
 
 
 class UsaceBerthsAreasTests(unittest.TestCase):
@@ -94,7 +128,49 @@ class UsaceBerthsAreasTests(unittest.TestCase):
             validate_construction_code_identity(
                 packaged_root, identity["code_commit"], identity["files"], identity=identity,
             )
+    def test_failed_capture_quarantines_readable_evidence_and_records_unreadable_receipt(self):
+        docs = _capture_failure_docs()
+        docs["page_000"] = {**docs["page_000"], "features": docs["page_000"]["features"][:-1]}
+        roster = dict(source._capture_urls([1, 2]))
+        bodies = {url: json.dumps(doc, separators=(",", ":")).encode()
+                  for name, url in roster.items() for doc in [docs[name]]}
+        hook_url = roster["page_000"]
 
+        def serve(request):
+            url = str(request.url)
+            if url == hook_url:
+                root = Path(tmp) / "captures"
+                (root / "count_before.receipt.json").write_bytes(b'{')
+            return httpx.Response(200, stream=httpx.ByteStream(bodies[url]))
+
+        real_client = httpx.Client
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+                source.httpx, "Client",
+                side_effect=lambda **kwargs: real_client(transport=httpx.MockTransport(serve), **kwargs)):
+            storage = source.StagingStorageResource(local_dir=str(Path(tmp) / "stage"))
+            with self.assertRaises(ValueError) as raised:
+                source.capture_usace_berths_areas(storage, version="torn-page",
+                                 capture_directory=str(Path(tmp) / "captures"))
+            self.assertEqual(str(raised.exception), "source_feature_population_incomplete")
+            self.assertNotIsInstance(raised.exception, (json.JSONDecodeError, OSError))
+            self.assertEqual(storage.list_prefix(source.DATASET_SLUG), [])
+            quarantine_keys = storage.list_prefix("_quarantine/" + source.DATASET_SLUG)
+            failure_key = next(key for key in quarantine_keys if key.endswith("/metadata/failure.json"))
+            failure = json.loads(storage.read_key(failure_key))
+            self.assertEqual(failure["reason_code"], "ValueError")
+            self.assertEqual(failure["captured_names"],
+                             sorted(name for name in roster if name != "count_before"))
+            self.assertEqual(failure["not_retained"],
+                             [{"name": "count_before",
+                               "reason": "retained_capture_receipt_unreadable:count_before"}])
+            self.assertTrue(any(key.endswith("/raw/bts_item.body") for key in quarantine_keys))
+            self.assertTrue(any(key.endswith("/raw/" + "page_000" + ".wire") for key in quarantine_keys))
+            self.assertTrue(any(key.endswith("/raw/ids_before.receipt.json") for key in quarantine_keys))
+            root = Path(tmp) / "captures"
+            manifest = json.loads((root / "capture_manifest.json").read_bytes())
+            self.assertFalse(manifest["complete"])
+            self.assertEqual(manifest["error_code"], "ValueError")
+            self.assertNotIn("receipts", manifest)
 
 _BTS_ITEM = {
     "id": "7ec34864c8804468a9cf52d437fe4b6c",
